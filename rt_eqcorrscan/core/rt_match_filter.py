@@ -9,7 +9,7 @@ Classes for real-time matched-filter detection of earthquakes.
     (https://www.gnu.org/copyleft/lesser.html)
 """
 
-from eqcorrscan import Tribe
+from eqcorrscan import Tribe, Template
 
 
 class RealTimeTribe(Tribe):
