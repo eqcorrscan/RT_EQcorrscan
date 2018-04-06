@@ -1,0 +1,9 @@
+build
+dist
+*.so
+*.pyc
+*.log
+.Spotlight-V100
+.Trashes
+.DS_Store
+.idea
