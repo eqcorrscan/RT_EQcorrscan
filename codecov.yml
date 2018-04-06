@@ -1,0 +1,41 @@
+codecov:
+  notify:
+    require_ci_to_pass: true
+comment: false
+coverage:
+  precision: 2
+  range:
+  - 70.0
+  - 100.0
+  round: down
+  status:
+    changes: true
+    patch:
+      default:
+        base: auto
+        enabled: true
+        if_ci_failed: error
+        if_no_uploads: error
+        if_not_found: error
+        set_pending: true
+        target: 90.0
+    project:
+      default:
+        enabled: true
+        if_ci_failed: error
+        if_no_uploads: error
+        if_not_found: error
+        set_pending: true
+        target: auto
+        threshold: 1.5
+parsers:
+  gcov:
+    branch_detection:
+      conditional: true
+      loop: true
+      macro: false
+      method: false
+  javascript:
+    enable_partials: false
+ignore:
+  rt_eqcorrscan-jsyvc

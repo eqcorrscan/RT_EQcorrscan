@@ -1,12 +1,10 @@
 from __future__ import print_function
 try:
     # use setuptools if we can
-    from setuptools import setup, Command, Extension
-    from setuptools.command.build_ext import build_ext
+    from setuptools import setup
     using_setuptools = True
 except ImportError:
-    from distutils.core import setup, Command, Extension
-    from distutils.command.build_ext import build_ext
+    from distutils.core import setup
     using_setuptools = False
 
 import glob

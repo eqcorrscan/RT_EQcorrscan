@@ -5,6 +5,8 @@ omit =
   rt_eqcorrscan/__init__.py
   rt_eqcorrscan/core/__init__.py
   rt_eqcorrscan/utils/__init__.py
+  rt_eqcorrscan/core/tests/*.py
+  rt_eqcorrscan/utils/tests/*.py
 [report]
 exclude_lines =
    pragma: no cover
@@ -13,4 +15,4 @@ exclude_lines =
    raise AssertionError
    raise NotImplementedError
    if __name__ == __main__:
-ignore_errors = True
+
