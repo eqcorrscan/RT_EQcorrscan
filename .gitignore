@@ -7,3 +7,6 @@ dist
 .Trashes
 .DS_Store
 .idea
+.coverage
+RT_EQcorrscan.egg-info
+.pytest_cache

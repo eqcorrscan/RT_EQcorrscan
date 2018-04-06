@@ -1,0 +1,16 @@
+[run]
+branch = True
+source = rt_eqcorrscan
+omit =
+  rt_eqcorrscan/__init__.py
+  rt_eqcorrscan/core/__init__.py
+  rt_eqcorrscan/utils/__init__.py
+[report]
+exclude_lines =
+   pragma: no cover
+   def __repr__
+   if self\.debug
+   raise AssertionError
+   raise NotImplementedError
+   if __name__ == __main__:
+ignore_errors = True
