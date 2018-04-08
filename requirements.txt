@@ -12,4 +12,3 @@ pytest-xdist
 pytest-rerunfailures
 codecov
 eqcorrscan>=0.3.0
-lxml
