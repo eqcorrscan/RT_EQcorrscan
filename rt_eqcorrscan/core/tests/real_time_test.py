@@ -12,7 +12,7 @@ from obspy.clients.fdsn import Client
 from rt_eqcorrscan.core.rt_match_filter import RealTimeTribe
 
 
-class MatchFilterTest(unittest.TestCase):
+class RealTimeTribeTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         client = Client('GEONET')
@@ -31,22 +31,11 @@ class MatchFilterTest(unittest.TestCase):
         cls.client = "GEONET"
 
     def test_init_with_tribe(self):
-        rt_tribe = RealTimeTribe(tribe=self.tribe, client=self.client)
+        rt_tribe = RealTimeTribe(
+            tribe=self.tribe, server_url="link.geonet.org.nz")
         self.assertEqual(rt_tribe.templates, self.tribe.templates)
-        self.assertEqual(rt_tribe.client, self.client)
-
-    def test_init_with_templates(self):
-        rt_tribe = RealTimeTribe(templates=self.tribe.templates,
-                                 client=self.client)
-        self.assertEqual(rt_tribe.templates, self.tribe.templates)
-        self.assertEqual(rt_tribe.client, self.client)
-
-    def test_reprint(self):
-        rt_tribe = RealTimeTribe(tribe=self.tribe, client=self.client)
-        rt_repr_str = rt_tribe.__repr__()
-        expected_str = 'Real-Time Tribe of {0} templates on client {1}'.format(
-            len(self.tribe), self.client)
-        self.assertEqual(rt_repr_str, expected_str)
+        self.assertEqual(rt_tribe.client.server_hostname,
+                         "link.geonet.org.nz")
 
 
 if __name__ == "__main__":
