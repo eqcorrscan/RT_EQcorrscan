@@ -55,6 +55,8 @@ class RealTimeClient(EasySeedLinkClient):
         return print_str
 
     def buffer_full(self):
+        if len(self.buffer) == 0:
+            return False
         for tr in self.buffer:
             if tr.stats.endtime - tr.stats.starttime < self.buffer_capacity:
                 return False
@@ -104,7 +106,7 @@ class RealTimeClient(EasySeedLinkClient):
             verbose_print("Buffer contains {0}".format(self.buffer), 3,
                           self.verbosity)
 
-    def on_terminate(self):
+    def on_terminate(self):  # pragma: no cover
         """
         Handle termination gracefully
         """
@@ -112,7 +114,7 @@ class RealTimeClient(EasySeedLinkClient):
                       1, self.verbosity)
         return self.buffer
 
-    def on_error(self):
+    def on_error(self):  # pragma: no cover
         """
         Handle errors gracefully.
         """
