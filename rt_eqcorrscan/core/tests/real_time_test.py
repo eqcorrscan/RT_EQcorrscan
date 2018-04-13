@@ -38,6 +38,12 @@ class RealTimeTribeTest(unittest.TestCase):
         self.assertEqual(rt_tribe.client.server_hostname,
                          "link.geonet.org.nz")
 
+    def test_buffer_too_short(self):
+        with self.assertRaises(AssertionError):
+            RealTimeTribe(
+                tribe=self.tribe, server_url="link.geonet.org.nz",
+                buffer_capacity=200)
+
 
 if __name__ == "__main__":
     unittest.main()
