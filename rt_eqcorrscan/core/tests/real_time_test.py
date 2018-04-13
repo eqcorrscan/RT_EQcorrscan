@@ -27,12 +27,13 @@ class RealTimeTribeTest(unittest.TestCase):
         cls.tribe = Tribe().construct(
             method='from_client', catalog=catalog, client_id='GEONET',
             lowcut=2.0, highcut=9.0, samp_rate=50.0, filt_order=4,
-            length=3.0, prepick=0.15, swin='all', process_len=3600)
+            length=3.0, prepick=0.15, swin='all', process_len=600)
         cls.client = "GEONET"
 
     def test_init_with_tribe(self):
         rt_tribe = RealTimeTribe(
-            tribe=self.tribe, server_url="link.geonet.org.nz")
+            tribe=self.tribe, server_url="link.geonet.org.nz",
+            buffer_capacity=1200)
         self.assertEqual(rt_tribe.templates, self.tribe.templates)
         self.assertEqual(rt_tribe.client.server_hostname,
                          "link.geonet.org.nz")

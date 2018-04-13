@@ -36,15 +36,15 @@ class RealTimeTribe(Tribe):
     def __init__(self, tribe=None, server_url=None, buffer_capacity=600,
                  detect_interval=60):
         super().__init__(templates=tribe.templates)
-        assert(buffer_capacity >= max(
-            [template.process_length for template in self.templates]))
-        assert(buffer_capacity >= detect_interval)
         self.buffer = Stream()
         self.party = Party()
         self.detect_interval = detect_interval
         self.client = RealTimeClient(
             server_url=server_url, autoconnect=True, buffer=self.buffer,
             buffer_capacity=buffer_capacity)
+        assert(buffer_capacity >= max(
+            [template.process_length for template in self.templates]))
+        assert(buffer_capacity >= detect_interval)
 
     def __repr__(self):
         """
@@ -52,8 +52,9 @@ class RealTimeTribe(Tribe):
 
         .. rubric:: Example
 
-        >>> tribe = RealTimeTribe(tribe=Tribe([Template(name='a')]),
-        ...                       server_url="geofon.gfz-potsdam.de")
+        >>> tribe = RealTimeTribe(
+        ...     tribe=Tribe([Template(name='a', process_length=60)]),
+        ...     server_url="geofon.gfz-potsdam.de")
         >>> print(tribe) # doctest: +NORMALIZE_WHITESPACE
         Real-Time Tribe of 1 templates on client:
         Seed-link client at geofon.gfz-potsdam.de, buffer capacity: 600s
