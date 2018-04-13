@@ -66,7 +66,8 @@ class RealTimeTribe(Tribe):
             self.__len__(), self.client)
 
     def run(self, threshold, threshold_type, trig_int,
-            keep_detections=86400, detect_directory="detections"):
+            keep_detections=86400, detect_directory="detections",
+            max_run_length=None):
         """
         Run the RealTimeTribe detection.
 
@@ -90,14 +91,20 @@ class RealTimeTribe(Tribe):
         :param detect_directory:
             Relative path to directory for detections. This directory will be
             created if it doesn't exist.
-
+        :type max_run_length: float
+        :param max_run_length:
+            Maximum detection run time in seconds. Default is to run
+            indefinitely.
         """
+        run_start = UTCDateTime.now()
+        running = True
+
         last_possible_detection = UTCDateTime(0)
         if not os.path.isdir(detect_directory):
             os.makedirs(detect_directory)
         self.client.background_run()
         time.sleep(self.client.buffer_capacity)
-        while True:
+        while running:
             start_time = UTCDateTime.now()
             new_party = self.detect(
                 stream=self.client.buffer, plotvar=False, threshold=threshold,
@@ -125,6 +132,9 @@ class RealTimeTribe(Tribe):
                 family.detections = _detections
             run_time = UTCDateTime.now() - start_time
             time.sleep(self.detect_interval - run_time)
+            if UTCDateTime.now() > run_start + max_run_length:
+                running = False
+        return self.party
 
 
 if __name__ == "__main__":
