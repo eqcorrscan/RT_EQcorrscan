@@ -36,8 +36,8 @@ class RealTimeTribe(Tribe):
     def __init__(self, tribe=None, server_url=None, buffer_capacity=600,
                  detect_interval=60):
         super().__init__(templates=tribe.templates)
-        assert(buffer_capacity >= max([template.process_length
-                                       for template in tribe]))
+        assert(buffer_capacity >= max(
+            [template.process_length for template in self.templates]))
         assert(buffer_capacity >= detect_interval)
         self.buffer = Stream()
         self.party = Party()
@@ -97,6 +97,7 @@ class RealTimeTribe(Tribe):
         self.client.background_run()
         time.sleep(self.client.buffer_capacity)
         while True:
+            start_time = UTCDateTime.now()
             new_party = self.detect(
                 stream=self.client.buffer, plotvar=False, threshold=threshold,
                 threshold_type=threshold_type, trig_int=trig_int)
@@ -115,7 +116,14 @@ class RealTimeTribe(Tribe):
                             day_dir, detection.detect_time.strftime(
                                 "%Y%m%dT%H%M%S.xml")))
                         self.party += detection  # Does this method work?
-            # TODO: Remove old detections to save memory
+            for family in self.party:
+                _detections = []
+                for detection in family:
+                    if detection.detect_time > start_time - keep_detections:
+                        _detections.append(detection)
+                family.detections = _detections
+            run_time = UTCDateTime.now() - start_time
+            time.sleep(self.detect_interval - run_time)
 
 
 if __name__ == "__main__":
