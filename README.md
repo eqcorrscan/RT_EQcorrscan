@@ -5,6 +5,7 @@ Holding ground for the project.
 
 *Work in progress*
 
+[![Build Status](https://travis-ci.org/eqcorrscan/RT_EQcorrscan.svg?branch=master)](https://travis-ci.org/eqcorrscan/RT_EQcorrscan)
 [![codecov](https://codecov.io/gh/eqcorrscan/RT_EQcorrscan/branch/master/graph/badge.svg)](https://codecov.io/gh/eqcorrscan/RT_EQcorrscan)
 [![CircleCI](https://circleci.com/gh/eqcorrscan/RT_EQcorrscan.svg?style=svg)](https://circleci.com/gh/eqcorrscan/RT_EQcorrscan)
 
