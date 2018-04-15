@@ -27,7 +27,7 @@ class RealTimeTribeTest(unittest.TestCase):
         cls.tribe = Tribe().construct(
             method='from_client', catalog=catalog, client_id='GEONET',
             lowcut=2.0, highcut=9.0, samp_rate=50.0, filt_order=4,
-            length=3.0, prepick=0.15, swin='all', process_len=120)
+            length=3.0, prepick=0.15, swin='all', process_len=300)
         cls.client = "GEONET"
 
     def test_init_with_tribe(self):
@@ -46,9 +46,9 @@ class RealTimeTribeTest(unittest.TestCase):
     def test_run(self):
         rt_tribe = RealTimeTribe(
             tribe=self.tribe, server_url="link.geonet.org.nz",
-            buffer_capacity=120)
+            buffer_capacity=600)
         party = rt_tribe.run(threshold=8, threshold_type="MAD", trig_int=3,
-                             max_run_length=200)
+                             max_run_length=800)
         self.assertTrue(isinstance(party, Party))
 
 
