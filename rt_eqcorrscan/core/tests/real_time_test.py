@@ -46,12 +46,12 @@ class RealTimeTribeTest(unittest.TestCase):
     def test_run(self):
         tribe = self.tribe.copy()
         for template in tribe:
-            template.process_len=150
+            template.process_length = 150
         rt_tribe = RealTimeTribe(
             tribe=tribe, server_url="link.geonet.org.nz",
             buffer_capacity=200)
         party = rt_tribe.run(threshold=8, threshold_type="MAD", trig_int=3,
-                             max_run_length=300)
+                             max_run_length=300, debug=3)
         self.assertTrue(isinstance(party, Party))
 
 

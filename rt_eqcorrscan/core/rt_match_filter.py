@@ -15,6 +15,7 @@ from obspy import Stream, UTCDateTime
 from eqcorrscan import Tribe, Template, Party
 
 from rt_eqcorrscan.utils.seedlink import RealTimeClient
+from rt_eqcorrscan.utils.debug_log import verbose_print
 
 
 class RealTimeTribe(Tribe):
@@ -67,7 +68,7 @@ class RealTimeTribe(Tribe):
 
     def run(self, threshold, threshold_type, trig_int,
             keep_detections=86400, detect_directory="detections",
-            max_run_length=None):
+            max_run_length=None, debug=0):
         """
         Run the RealTimeTribe detection.
 
@@ -95,6 +96,8 @@ class RealTimeTribe(Tribe):
         :param max_run_length:
             Maximum detection run time in seconds. Default is to run
             indefinitely.
+        :type debug: int
+        :param debug: Verbosity level, 0-5.
         """
         run_start = UTCDateTime.now()
         running = True
@@ -102,14 +105,34 @@ class RealTimeTribe(Tribe):
         last_possible_detection = UTCDateTime(0)
         if not os.path.isdir(detect_directory):
             os.makedirs(detect_directory)
-        self.client.background_run()
-        time.sleep(self.client.buffer_capacity)
+        if not self.client.busy:
+            tr_ids = set(tr.id for template in self.templates for tr in template.st)
+            for tr_id in list(tr_ids):
+                self.client.select_stream(
+                    net=tr_id.split('.')[0], station=tr_id.split('.')[1],
+                    selector=tr_id.split('.')[3])
+            self.client.background_run()
+            verbose_print("Started real-time streaming", 1, debug)
+            time.sleep(self.client.buffer_capacity)
+        else:
+            print("Client already in streaming mode, cannot add channels")
+            if not self.client.buffer_full():
+                time.sleep(self.client.buffer_capacity -
+                           self.client.buffer_length() + 5)
         while running:
             start_time = UTCDateTime.now()
+            st = self.client.buffer.copy()
+            st.trim(starttime=max([tr.stats.starttime for tr in st]),
+                    endtime=min([tr.stats.endtime for tr in st]))
+            # I think I need to copy this to ensure it isn't worked on in place.
+            verbose_print("Starting detection run at {0}".format(start_time),
+                          1, debug)
             new_party = self.detect(
-                stream=self.client.buffer, plotvar=False, threshold=threshold,
-                threshold_type=threshold_type, trig_int=trig_int)
+                stream=st, plotvar=False, threshold=threshold,
+                threshold_type=threshold_type, trig_int=trig_int, debug=debug)
             for family in new_party:
+                _family = family.copy()
+                _family.detections = []
                 for detection in family:
                     if detection.detect_time > last_possible_detection:
                         year_dir = os.path.join(
@@ -117,20 +140,19 @@ class RealTimeTribe(Tribe):
                         if not os.path.isdir(year_dir):
                             os.makedirs(year_dir)
                         day_dir = os.path.join(
-                            year_dir, str(detection.detect_time.jday))
+                            year_dir, str(detection.detect_time.julday))
                         if not os.path.isdir(day_dir):
                             os.makedirs(day_dir)
                         detection.event.write(os.path.join(
                             day_dir, detection.detect_time.strftime(
-                                "%Y%m%dT%H%M%S.xml")))
-                        self.party += detection  # Does this method work?
-            for family in self.party:
-                _detections = []
-                for detection in family:
-                    if detection.detect_time > start_time - keep_detections:
-                        _detections.append(detection)
-                family.detections = _detections
+                                "%Y%m%dT%H%M%S.xml")), format="QUAKEML")
+                        _family += detection
+                    self.party += _family
+            if len(self.party) > 0:
+                verbose_print("Removing duplicate detections", 3, debug)
+                # TODO: Use the declustering in EQcorrscan.
             run_time = UTCDateTime.now() - start_time
+            verbose_print("Detection took {0}s".format(run_time), 0, debug)
             time.sleep(self.detect_interval - run_time)
             if UTCDateTime.now() > run_start + max_run_length:
                 running = False

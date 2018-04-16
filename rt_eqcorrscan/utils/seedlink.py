@@ -99,8 +99,8 @@ class RealTimeClient(EasySeedLinkClient):
         if _tr.stats.npts * _tr.stats.delta > self.buffer_capacity:
             verbose_print(
                 "Trimming trace to {0}-{1}".format(
-                    _tr.stats.endtime - self.buffer_capacity, _tr.stats.endtime),
-                3, self.verbosity)
+                    _tr.stats.endtime - self.buffer_capacity,
+                    _tr.stats.endtime), 3, self.verbosity)
             _tr.trim(_tr.stats.endtime - self.buffer_capacity)
         else:
             verbose_print("Buffer contains {0}".format(self.buffer), 3,
