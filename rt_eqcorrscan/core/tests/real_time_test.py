@@ -49,10 +49,13 @@ class RealTimeTribeTest(unittest.TestCase):
             template.process_length = 150
         rt_tribe = RealTimeTribe(
             tribe=tribe, server_url="link.geonet.org.nz",
-            buffer_capacity=200)
-        party = rt_tribe.run(threshold=8, threshold_type="MAD", trig_int=3,
-                             max_run_length=300, debug=3)
+            buffer_capacity=200, detect_interval=5)
+        party = rt_tribe.run(threshold=6, threshold_type="MAD", trig_int=3,
+                             max_run_length=220, debug=3)
         self.assertTrue(isinstance(party, Party))
+        # Test re-starting
+        party += rt_tribe.run(threshold=6, threshold_type="MAD", trig_int=3,
+                              max_run_length=20, debug=3)
 
 
 if __name__ == "__main__":
