@@ -48,10 +48,10 @@ install:
   - conda list
   # done installing dependencies
   - git version
-  - python setup.py install
+  - python setup.py build
 
 script:
-   - py.test -s
+   - python setup.py test
 
 after_success:
   # Check how much code is actually tested and send this report to codecov

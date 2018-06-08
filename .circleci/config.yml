@@ -47,13 +47,13 @@ jobs:
           name: install RT_EQcorrscan
           command: |
             . venv/bin/activate
-            python setup.py install
+            python setup.py build
       # run tests!
       - run:
           name: run tests
           command: |
             . venv/bin/activate
-            py.test
+            python setup.py test
 
       - run:
           name: Upload to codecov
