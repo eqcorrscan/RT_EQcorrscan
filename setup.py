@@ -77,8 +77,9 @@ def setup_package():
         # For these actions, NumPy is not required.
         pass
     else:
-        setup_args['packages'] = ['rt_eqcorrscan', 'rt_eqcorrscan.utils',
-                                  'rt_eqcorrscan.core']
+        setup_args['packages'] = [
+            'rt_eqcorrscan', 'rt_eqcorrscan.utils', 'rt_eqcorrscan.core',
+            'rt_eqcorrscan.plotting']
     if os.path.isdir("build"):
         shutil.rmtree("build")
     setup(**setup_args)

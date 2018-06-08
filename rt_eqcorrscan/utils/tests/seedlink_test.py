@@ -21,18 +21,18 @@ class SeedLinkTest(unittest.TestCase):
         self.rt_client.background_run()
         time.sleep(20)
         self.rt_client.background_stop()
-        self.assertEqual(self.rt_client.buffer_length(),
+        self.assertEqual(self.rt_client.buffer_length,
                          self.rt_client.buffer_capacity)
 
     def test_full_buffer(self):
         self.rt_client.buffer = Stream()
         self.rt_client.background_run()
-        self.assertFalse(self.rt_client.buffer_full())
+        self.assertFalse(self.rt_client.buffer_full)
         time.sleep(6)
-        self.assertFalse(self.rt_client.buffer_full())
+        self.assertFalse(self.rt_client.buffer_full)
         time.sleep(8)
         self.rt_client.background_stop()
-        self.assertTrue(self.rt_client.buffer_full())
+        self.assertTrue(self.rt_client.buffer_full)
 
 
 if __name__ == "__main__":
