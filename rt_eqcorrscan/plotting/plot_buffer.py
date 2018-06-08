@@ -37,7 +37,7 @@ class PlotBuffer:
         :type size: tuple
         :param size: Size in inches of plot (width, height)
         """
-        self.data = buffer.copy()
+        self.data = buffer.copy().sort()
         self.fig, axes = plt.subplots(len(self.data), 1, sharex=True)
         self.fig.set_size_inches(size)
         if len(self.data) == 1:

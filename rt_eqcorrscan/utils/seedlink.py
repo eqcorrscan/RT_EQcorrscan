@@ -90,7 +90,8 @@ class RealTimeClient(EasySeedLinkClient):
         while self.busy:
             self.run()
 
-    def background_run(self, plot=False, plot_length=600, ylimits=(-2, 2)):
+    def background_run(self, plot=False, plot_length=600, ylimits=(-2, 2),
+                       size=(6, 6)):
         """Run the seedlink client in the background."""
         self.busy = True
         streaming_thread = threading.Thread(
@@ -102,7 +103,8 @@ class RealTimeClient(EasySeedLinkClient):
         if plot:
             plotting_thread = threading.Thread(
                 target=self._plot, name="PlotThread", kwargs={
-                    'plot_length': plot_length, 'ylimits': ylimits})
+                    'plot_length': plot_length, 'ylimits': ylimits,
+                    'size': size})
             plotting_thread.daemon = True
             plotting_thread.start()
             self.threads.append(plotting_thread)
@@ -116,13 +118,13 @@ class RealTimeClient(EasySeedLinkClient):
         for thread in self.threads:
             thread.join()
 
-    def _plot(self, plot_length, ylimits):
+    def _plot(self, plot_length, ylimits, size):
         """Plot the data as it comes in."""
         while len(self.buffer) == 0:
             # Wait until we have some data
             time.sleep(SLEEP_STEP)
         plotter = PlotBuffer(buffer=self.buffer, plot_length=plot_length,
-                             ylimits=ylimits)
+                             ylimits=ylimits, size=size)
         old_buffer_limits = {tr.id: (tr.stats.starttime, tr.stats.endtime)
                              for tr in self.buffer}
         while self.busy:
@@ -139,7 +141,7 @@ class RealTimeClient(EasySeedLinkClient):
                                      interpolation_samples=0)
                     plotter = PlotBuffer(
                         buffer=new_buffer, plot_length=plotter.plot_length,
-                        ylimits=ylimits)
+                        ylimits=ylimits, size=size)
                 else:
                     plotter.update(new_data=self.buffer,
                                    plot_end=UTCDateTime.now())
