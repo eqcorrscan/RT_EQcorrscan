@@ -56,7 +56,7 @@ class RealTimeClient(EasySeedLinkClient):
 
         >>> client = RealTimeClient(server_url="geofon.gfz-potsdam.de")
         >>> print(client) # doctest: +NORMALIZE_WHITESPACE
-        Seed-link client at geofon.gfz-potsdam.de, buffer capacity: 600s
+        Seed-link client at geofon.gfz-potsdam.de, status: Stopped, buffer capacity: 600s
             Current Buffer:
         0 Trace(s) in Stream:
         <BLANKLINE>

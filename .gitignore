@@ -10,3 +10,4 @@ dist
 .coverage
 RT_EQcorrscan.egg-info
 .pytest_cache
+detections
