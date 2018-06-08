@@ -53,7 +53,7 @@ jobs:
           name: run tests
           command: |
             . venv/bin/activate
-            python setup.py test
+            py.test
 
       - run:
           name: Upload to codecov
