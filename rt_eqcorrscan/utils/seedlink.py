@@ -13,15 +13,12 @@ from __future__ import (absolute_import, division, print_function,
 from future.builtins import *  # NOQA
 
 import threading
-import time
 import logging
 
 from obspy.clients.seedlink.easyseedlink import EasySeedLinkClient
-from obspy import Stream, UTCDateTime
+from obspy import Stream
 
-from rt_eqcorrscan.plotting.plot_buffer import PlotBuffer
 
-SLEEP_STEP = 1.0
 LOGGING_MAP = {
     'info': logging.INFO, 'debug': logging.DEBUG, 'warning': logging.WARNING,
     'error': logging.ERROR, 'critical': logging.CRITICAL}
@@ -56,7 +53,8 @@ class RealTimeClient(EasySeedLinkClient):
 
         >>> client = RealTimeClient(server_url="geofon.gfz-potsdam.de")
         >>> print(client) # doctest: +NORMALIZE_WHITESPACE
-        Seed-link client at geofon.gfz-potsdam.de, status: Stopped, buffer capacity: 600s
+        Seed-link client at geofon.gfz-potsdam.de, status: Stopped, buffer \
+        capacity: 600s
             Current Buffer:
         0 Trace(s) in Stream:
         <BLANKLINE>
@@ -86,12 +84,14 @@ class RealTimeClient(EasySeedLinkClient):
         return (max([tr.stats.endtime for tr in self.buffer]) -
                 min([tr.stats.starttime for tr in self.buffer]))
 
+    def get_stream(self):
+        return self.buffer.copy()
+
     def _bg_run(self):
         while self.busy:
             self.run()
 
-    def background_run(self, plot=False, plot_length=600, ylimits=(-2, 2),
-                       size=(6, 6)):
+    def background_run(self):
         """Run the seedlink client in the background."""
         self.busy = True
         streaming_thread = threading.Thread(
@@ -100,15 +100,6 @@ class RealTimeClient(EasySeedLinkClient):
         streaming_thread.start()
         self.threads.append(streaming_thread)
         logging.info("Started streaming")
-        if plot:
-            plotting_thread = threading.Thread(
-                target=self._plot, name="PlotThread", kwargs={
-                    'plot_length': plot_length, 'ylimits': ylimits,
-                    'size': size})
-            plotting_thread.daemon = True
-            plotting_thread.start()
-            self.threads.append(plotting_thread)
-            logging.info("Plotting thread started")
 
     def background_stop(self):
         """Stop the background thread."""
@@ -118,52 +109,18 @@ class RealTimeClient(EasySeedLinkClient):
         for thread in self.threads:
             thread.join()
 
-    def _plot(self, plot_length, ylimits, size):
-        """Plot the data as it comes in."""
-        while len(self.buffer) == 0:
-            # Wait until we have some data
-            time.sleep(SLEEP_STEP)
-        plotter = PlotBuffer(buffer=self.buffer, plot_length=plot_length,
-                             ylimits=ylimits, size=size)
-        old_buffer_limits = {tr.id: (tr.stats.starttime, tr.stats.endtime)
-                             for tr in self.buffer}
-        while self.busy:
-            buffer_limits = {tr.id: (tr.stats.starttime, tr.stats.endtime)
-                             for tr in self.buffer}
-            if buffer_limits != old_buffer_limits:
-                logging.info("New data to plot")
-                if len(self.buffer) != len(plotter.data):
-                    # Create a new plotter
-                    plotter.stop()
-                    # Keep the old data
-                    new_buffer = self.buffer + plotter.data
-                    new_buffer.merge(method=1, fill_value=0,
-                                     interpolation_samples=0)
-                    plotter = PlotBuffer(
-                        buffer=new_buffer, plot_length=plotter.plot_length,
-                        ylimits=ylimits, size=size)
-                else:
-                    plotter.update(new_data=self.buffer,
-                                   plot_end=UTCDateTime.now())
-                old_buffer_limits = buffer_limits
-            time.sleep(SLEEP_STEP)
-        logging.info("Stopping plotting")
-        plotter.stop()
-        logging.info("Plotting stopped")
-
     def on_data(self, trace):
         """
         Handle incoming data
         :param trace:
-        :return: buffer if full.
         """
-        logging.info("Packet of {0} samples for {1}".format(
+        logging.debug("Packet of {0} samples for {1}".format(
             trace.stats.npts, trace.id))
         self.buffer += trace
         self.buffer.merge()
         _tr = self.buffer.select(id=trace.id)[0]
         if _tr.stats.npts * _tr.stats.delta > self.buffer_capacity:
-            logging.info(
+            logging.debug(
                 "Trimming trace to {0}-{1}".format(
                     _tr.stats.endtime - self.buffer_capacity,
                     _tr.stats.endtime))
@@ -184,6 +141,9 @@ class RealTimeClient(EasySeedLinkClient):
         """
         logging.error("SeedLink error")
         pass
+
+    def on_seedlink_error(self):
+        self.on_error()
 
 
 if __name__ == "__main__":

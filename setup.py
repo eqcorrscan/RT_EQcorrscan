@@ -20,7 +20,7 @@ Real-time EQcorrscan: Real-time wrappers for EQcorrscan's earthquake detection
 methods.
 '''
 
-scriptfiles = glob.glob("rt_eqcorrscan/scripts/*")
+scriptfiles = glob.glob("rt_eqcorrscan/scripts/*.py")
 
 
 def setup_package():
@@ -34,7 +34,7 @@ def setup_package():
 
     install_requires = ['matplotlib>=1.3.0', 'scipy>=0.18', 'LatLon',
                         'bottleneck', 'obspy>=1.0.3', 'numpy>=1.12',
-                        'h5py', "eqcorrscan>=0.3.0"]
+                        'h5py', "eqcorrscan>=0.3.0", 'bokeh']
     install_requires.extend(build_requires)
 
     setup_args = {

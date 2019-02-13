@@ -16,7 +16,9 @@ from obspy import Stream, UTCDateTime
 from eqcorrscan import Tribe, Template, Party
 
 from rt_eqcorrscan.utils.seedlink import RealTimeClient
+from rt_eqcorrscan.plotting.plot_buffer import EQcorrscanPlot
 
+SLEEP_STEP = 1.0
 LOGGING_MAP = {
     'info': logging.INFO, 'debug': logging.DEBUG, 'warning': logging.WARNING,
     'error': logging.ERROR, 'critical': logging.CRITICAL}
@@ -29,6 +31,8 @@ class RealTimeTribe(Tribe):
 
     :type tribe: `eqcorrscan.core.match_filter.Tribe
     :param tribe: Tribe of templates to use for detection.
+    :type inventory: :class: `obspy.core.station.Inventory`
+    :param inventory: Inventory of stations used for detection.
     :type server_url: str
     :param server_url: Address of seedlink client.
     :type buffer_capacity: float
@@ -39,8 +43,12 @@ class RealTimeTribe(Tribe):
     :param detect_interval:
         Frequency to conduct detection. Must be less than buffer_capacity.
     """
-    def __init__(self, tribe=None, server_url=None, buffer_capacity=600,
-                 detect_interval=60, log_level='warning'):
+    def __init__(self, tribe=None, inventory=None, server_url=None,
+                 buffer_capacity=600, detect_interval=60, log_level='warning',
+                 plot=True, plot_length=300):
+        assert (buffer_capacity >= max(
+            [template.process_length for template in self.templates]))
+        assert (buffer_capacity >= detect_interval)
         try:
             logging.basicConfig(
                 level=LOGGING_MAP[log_level],
@@ -51,14 +59,15 @@ class RealTimeTribe(Tribe):
         self.log_level = log_level
         super().__init__(templates=tribe.templates)
         self.buffer = Stream()
+        self.inventory = inventory
         self.party = Party()
+        self.busy = True
         self.detect_interval = detect_interval
         self.client = RealTimeClient(
             server_url=server_url, autoconnect=True, buffer=self.buffer,
             buffer_capacity=buffer_capacity)
-        assert(buffer_capacity >= max(
-            [template.process_length for template in self.templates]))
-        assert(buffer_capacity >= detect_interval)
+        self.plot = plot
+        self.plot_length = plot_length
 
     def __repr__(self):
         """
@@ -71,7 +80,8 @@ class RealTimeTribe(Tribe):
         ...     server_url="geofon.gfz-potsdam.de")
         >>> print(tribe) # doctest: +NORMALIZE_WHITESPACE
         Real-Time Tribe of 1 templates on client:
-        Seed-link client at geofon.gfz-potsdam.de, status: Stopped, buffer capacity: 600s
+        Seed-link client at geofon.gfz-potsdam.de, status: Stopped, \
+        buffer capacity: 600s
             Current Buffer:
         0 Trace(s) in Stream:
         <BLANKLINE>
@@ -79,6 +89,33 @@ class RealTimeTribe(Tribe):
         return 'Real-Time Tribe of {0} templates on client:\n{1}'.format(
             self.__len__(), self.client)
 
+    @property
+    def expected_channels(self):
+        return set(tr.id for template in self.templates for tr in template.st)
+
+    def _plot(self):
+        """Plot the data as it comes in."""
+        wait_length = 0
+        while len(self.client.buffer) < len(self.expected_channels):
+            if wait_length >= self.detect_interval:
+                logging.warning("Starting plotting without the full dataset")
+                break
+            # Wait until we have some data
+            logging.debug(
+                "Waiting for data, currently have {0} channels of {1} "
+                "expected channels".format(
+                    len(self.client.buffer), len(self.expected_channels)))
+            wait_length += SLEEP_STEP
+            time.sleep(SLEEP_STEP)
+            pass
+        plotter = EQcorrscanPlot(
+            rt_client=self.client, plot_length=self.plot_length,
+            template_catalog=[t.event for t in self.templates],
+            inventory=self.inventory)
+        plotter.background_run()
+
+    # TODO: Remove old detections to save memory. Write detections to file
+    #  during operation.
     def run(self, threshold, threshold_type, trig_int,
             keep_detections=86400, detect_directory="detections",
             max_run_length=None):
@@ -109,8 +146,6 @@ class RealTimeTribe(Tribe):
         :param max_run_length:
             Maximum detection run time in seconds. Default is to run
             indefinitely.
-        :type debug: int
-        :param debug: Verbosity level, 0-5.
         """
         run_start = UTCDateTime.now()
         running = True
@@ -119,9 +154,7 @@ class RealTimeTribe(Tribe):
         if not os.path.isdir(detect_directory):
             os.makedirs(detect_directory)
         if not self.client.busy:
-            tr_ids = set(tr.id for template in self.templates
-                         for tr in template.st)
-            for tr_id in list(tr_ids):
+            for tr_id in self.expected_channels:
                 self.client.select_stream(
                     net=tr_id.split('.')[0], station=tr_id.split('.')[1],
                     selector=tr_id.split('.')[3])
@@ -134,9 +167,13 @@ class RealTimeTribe(Tribe):
             if not self.client.buffer_full:
                 time.sleep(self.client.buffer_capacity -
                            self.client.buffer_length + 5)
+        if self.plot:  # pragma: no cover
+            # Set up plotting thread
+            self._plot()
+            logging.info("Plotting thread started")
         while running:
             start_time = UTCDateTime.now()
-            st = self.client.buffer.copy()
+            st = self.client.get_stream()
             st.trim(starttime=max([tr.stats.starttime for tr in st]),
                     endtime=min([tr.stats.endtime for tr in st]))
             # I think I need to copy this to ensure it isn't worked on in place.
