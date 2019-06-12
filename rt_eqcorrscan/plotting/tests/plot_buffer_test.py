@@ -6,6 +6,7 @@ Not to be run on CI.
 
 import unittest
 import time
+import logging
 
 from obspy import Catalog, Inventory
 
@@ -13,8 +14,12 @@ from rt_eqcorrscan.utils.seedlink import RealTimeClient
 from rt_eqcorrscan.plotting.plot_buffer import EQcorrscanPlot
 
 
+logging.basicConfig(
+    level="INFO",
+    format="%(asctime)s\t%(name)s\t%(levelname)s\t%(message)s")
+
 SLEEP_STEP = 0.5
-MAX_DURATION = 120
+MAX_DURATION = 3600
 
 
 # TODO: Test template and inventory map plotting and detection plotting on waveforms and alpha changes on map.
@@ -38,7 +43,8 @@ class SeedLinkTest(unittest.TestCase):
         plotter = EQcorrscanPlot(
             rt_client=rt_client, plot_length=600,
             template_catalog=Catalog(),
-            inventory=Inventory(networks=[], source="bob"), update_interval=100)
+            inventory=Inventory(networks=[], source="bob"),
+            update_interval=1000)
         plotter.background_run()
 
         duration = 0
@@ -46,7 +52,10 @@ class SeedLinkTest(unittest.TestCase):
             time.sleep(SLEEP_STEP)
             duration += SLEEP_STEP
         rt_client.background_stop()
-        self.assertEqual(len(rt_client.get_stream()[0]), buffer_capacity)
+        self.assertEqual(
+            len(rt_client.get_stream()[0]) *
+            rt_client.get_stream()[0].stats.delta,
+            buffer_capacity)
 
 
 if __name__ == "__main__":

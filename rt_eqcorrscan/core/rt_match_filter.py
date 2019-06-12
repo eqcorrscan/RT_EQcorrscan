@@ -12,7 +12,7 @@ import time
 import os
 import logging
 
-from obspy import Stream, UTCDateTime
+from obspy import Stream, UTCDateTime, Catalog
 from eqcorrscan import Tribe, Template, Party
 
 from rt_eqcorrscan.utils.seedlink import RealTimeClient
@@ -68,6 +68,7 @@ class RealTimeTribe(Tribe):
             buffer_capacity=buffer_capacity)
         self.plot = plot
         self.plot_length = plot_length
+        self.detection_catalog = Catalog()
 
     def __repr__(self):
         """
@@ -111,11 +112,9 @@ class RealTimeTribe(Tribe):
         plotter = EQcorrscanPlot(
             rt_client=self.client, plot_length=self.plot_length,
             template_catalog=[t.event for t in self.templates],
-            inventory=self.inventory)
+            inventory=self.inventory, detection_catalog=self.detection_catalog)
         plotter.background_run()
 
-    # TODO: Remove old detections to save memory. Write detections to file
-    #  during operation.
     def run(self, threshold, threshold_type, trig_int,
             keep_detections=86400, detect_directory="detections",
             max_run_length=None):
@@ -187,6 +186,7 @@ class RealTimeTribe(Tribe):
                 _family.detections = []
                 for detection in family:
                     if detection.detect_time > last_possible_detection:
+                        # TODO use relative magnitude calculation in EQcorrscan
                         year_dir = os.path.join(
                             detect_directory, str(detection.detect_time.year))
                         if not os.path.isdir(year_dir):
@@ -199,16 +199,44 @@ class RealTimeTribe(Tribe):
                             day_dir, detection.detect_time.strftime(
                                 "%Y%m%dT%H%M%S.xml")), format="QUAKEML")
                         _family += detection
+                        self.detection_catalog += detection.event
                     self.party += _family
             if len(self.party) > 0:
                 logging.info("Removing duplicate detections")
-                # TODO: Use the declustering in EQcorrscan.
+                self.party.decluster(trig_int=trig_int)
             run_time = UTCDateTime.now() - start_time
             logging.info("Detection took {0}s".format(run_time))
+            # Remove old detections here
+            for family in self.party:
+                family.detections = [
+                    d for d in family.detections
+                    if d.detect_time >= UTCDateTime.now() - keep_detections]
+            self.detection_catalog.events = [
+                e for e in self.detection_catalog
+                if _event_time(e) >= UTCDateTime.now() - keep_detections]
             time.sleep(self.detect_interval - run_time)
             if UTCDateTime.now() > run_start + max_run_length:
                 running = False
         return self.party
+
+
+def _event_time(event):
+    """
+    Get event time for an event: uses origin if available, else uses first pick
+
+    :type event: `obspy.core.event.Event`
+    :param event: event to get the time of
+    :return: UTCDateTime
+    """
+    try:
+        origin = event.preferred_origin() or event.origins[0]
+    except IndexError:
+        origin = None
+    if origin and origin.time is not None:
+        return origin.time
+    if len(event.picks) == 0:
+        return None
+    return min([p.time for p in event.picks])
 
 
 if __name__ == "__main__":

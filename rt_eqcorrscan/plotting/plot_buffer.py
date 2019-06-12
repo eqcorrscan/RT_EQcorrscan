@@ -43,13 +43,15 @@ class EQcorrscanPlot:
     :type update_interval: int
     :param update_interval: Update frequency of plot in ms
     """
-    def __init__(self, rt_client, plot_length, template_catalog, inventory, 
-                 update_interval=100, plot_height=800, plot_width=1200):
+    def __init__(self, rt_client, plot_length, template_catalog, inventory,
+                 detection_catalog, update_interval=100, plot_height=800,
+                 plot_width=1200):
         channels = [tr.id for tr in rt_client.buffer]
         self.channels = sorted(channels)
         self.plot_length = plot_length
         self.template_catalog = template_catalog
         self.inventory = inventory
+        self.detection_catalog = detection_catalog
 
         # TODO: Hovertool is not outputting useful things
         self.hover = HoverTool(
@@ -67,6 +69,7 @@ class EQcorrscanPlot:
         make_doc = partial(
             define_plot, rt_client=rt_client, channels=channels,
             catalog=self.template_catalog, inventory=self.inventory,
+            detection_catalog=self.detection_catalog,
             map_options=self.map_options, plot_options=self.plot_options,
             plot_length=self.plot_length, update_interval=update_interval)
 
@@ -129,12 +132,9 @@ def define_plot(doc, rt_client, channels, catalog, inventory, map_options,
     for channel in channels:
         tr = stream.select(id=channel)[0]
         times = np.arange(
-            # (tr.stats.endtime - plot_length).datetime,
             tr.stats.starttime.datetime,
             (tr.stats.endtime + tr.stats.delta).datetime,
             step=dt.timedelta(seconds=tr.stats.delta))
-        # data = np.zeros(len(times))
-        # data[-tr.stats.npts:] = tr.data
         data = tr.data
         trace_sources.update(
             {channel: ColumnDataSource({'time': times, 'data': data})})
@@ -151,7 +151,7 @@ def define_plot(doc, rt_client, channels, catalog, inventory, map_options,
 
     # Set up the trace plots
     trace_plots = []
-    now = dt.datetime.now()
+    now = dt.datetime.utcnow()
     p1 = figure(
         y_axis_location="right",
         x_range=[now - dt.timedelta(seconds=plot_length), now],
@@ -185,7 +185,7 @@ def define_plot(doc, rt_client, channels, catalog, inventory, map_options,
             p.min_border_bottom = 0
             p.min_border_top = 0
             p_line = p.line(
-                x="time", y='data', source=trace_sources[channel],
+                x="time", y="data", source=trace_sources[channel],
                 color="black", line_width=2)
             legend = Legend(items=[(channel, [p_line])])
             p.add_layout(legend, 'left')
@@ -225,7 +225,7 @@ def define_plot(doc, rt_client, channels, catalog, inventory, map_options,
                 rollover=int(plot_length * tr.stats.sampling_rate))
             previous_timestamps.update({channel: tr.stats.endtime})
             Logger.debug("New data plotted for {0}".format(channel))
-        now = dt.datetime.now()
+        now = dt.datetime.utcnow()
         trace_plots[0].x_range.start = now - dt.timedelta(seconds=plot_length)
         trace_plots[0].x_range.end = now
         # TODO: Update the map - just alphas need to be changed. - streaming might not be the way.
