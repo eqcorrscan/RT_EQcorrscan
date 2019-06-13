@@ -68,7 +68,7 @@ class RealTimeTribe(Tribe):
             buffer_capacity=buffer_capacity)
         self.plot = plot
         self.plot_length = plot_length
-        self.detection_catalog = Catalog()
+        self.detections = []
 
     def __repr__(self):
         """
@@ -111,8 +111,8 @@ class RealTimeTribe(Tribe):
             pass
         plotter = EQcorrscanPlot(
             rt_client=self.client, plot_length=self.plot_length,
-            template_catalog=[t.event for t in self.templates],
-            inventory=self.inventory, detection_catalog=self.detection_catalog)
+            tribe=self, inventory=self.inventory,
+            detections=self.detections)
         plotter.background_run()
 
     def run(self, threshold, threshold_type, trig_int,
@@ -199,7 +199,6 @@ class RealTimeTribe(Tribe):
                             day_dir, detection.detect_time.strftime(
                                 "%Y%m%dT%H%M%S.xml")), format="QUAKEML")
                         _family += detection
-                        self.detection_catalog += detection.event
                     self.party += _family
             if len(self.party) > 0:
                 logging.info("Removing duplicate detections")
@@ -211,9 +210,7 @@ class RealTimeTribe(Tribe):
                 family.detections = [
                     d for d in family.detections
                     if d.detect_time >= UTCDateTime.now() - keep_detections]
-            self.detection_catalog.events = [
-                e for e in self.detection_catalog
-                if _event_time(e) >= UTCDateTime.now() - keep_detections]
+            self.detections = [d for f in self.party for d in f]
             time.sleep(self.detect_interval - run_time)
             if UTCDateTime.now() > run_start + max_run_length:
                 running = False
