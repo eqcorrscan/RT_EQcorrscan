@@ -8,9 +8,13 @@ import unittest
 import time
 import logging
 
-from obspy import Catalog, UTCDateTime
+from itertools import cycle
+
+from obspy import UTCDateTime
 from obspy.core.event import Event, Pick, WaveformStreamID
 from obspy.clients.fdsn import Client
+
+from eqcorrscan.core.match_filter import Tribe, Detection, Template
 
 from rt_eqcorrscan.utils.seedlink import RealTimeClient
 from rt_eqcorrscan.plotting.plot_buffer import EQcorrscanPlot
@@ -46,6 +50,10 @@ class SeedLinkTest(unittest.TestCase):
         now = UTCDateTime.now()
         template_cat = client.get_events(
             starttime=now - 3600, endtime=now)
+        tribe = Tribe(templates=[
+            Template(event=event, name=event.resource_id.id.split("/")[-1])
+            for event in template_cat])
+        template_names = cycle([t.name for t in tribe])
 
         buffer_capacity = 1200
         rt_client = RealTimeClient(
@@ -61,20 +69,25 @@ class SeedLinkTest(unittest.TestCase):
             # Wait until we have some data
             time.sleep(SLEEP_STEP)
 
-        detection_catalog = Catalog()
+        detections = []
         plotter = EQcorrscanPlot(
             rt_client=rt_client, plot_length=600,
-            template_catalog=template_cat, inventory=inv,
-            update_interval=1000, detection_catalog=detection_catalog)
+            tribe=tribe, inventory=inv, update_interval=1000,
+            detections=detections)
         plotter.background_run()
 
         duration = 0
         while duration < MAX_DURATION:
-            detection_catalog.append(
-                Event(picks=[
-                    Pick(time=UTCDateTime.now(),
-                         waveform_id=WaveformStreamID(seed_string=seed_id))
-                    for seed_id in seed_list]))
+            detections.append(
+                Detection(
+                    template_name=next(template_names),
+                    detect_time=UTCDateTime.now(), no_chans=999,
+                    detect_val=999, threshold=999, threshold_type="MAD",
+                    threshold_input=999, typeofdet="unreal",
+                    event=Event(picks=[
+                        Pick(time=UTCDateTime.now(),
+                             waveform_id=WaveformStreamID(seed_string=seed_id))
+                        for seed_id in seed_list])))
             time.sleep(20)
             duration += 20
         rt_client.background_stop()

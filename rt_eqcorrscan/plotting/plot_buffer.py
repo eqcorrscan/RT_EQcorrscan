@@ -33,28 +33,28 @@ class EQcorrscanPlot:
     """
     Streaming bokeh plotting of waveforms.
 
-    :type stream: :class: `obspy.core.stream.Stream`
-    :param stream: List of strings of seed_ids for traces to be plotted.
+    :type rt_client:
+    :param rt_client: The real-time streaming client in use.
     :type plot_length: float
     :param plot_length: Plot length in seconds
-    :type template_catalog: :class:`obspy.core.event.Catalog`
-    :param template_catalog:
-        Catalog of template events - these will be plotted in map-view and
-        will light up when they make a detection
+    :type tribe: `eqcorrscan.core.match_filter.Tribe`
+    :param tribe: Tribe of templates used in real-time detection
     :type inventory: :class:`obspy.core.station.Inventory`
     :param inventory: Inventory of stations used - will be plotted on the map.
+    :type detections: list
+    :param detections: List of `eqcorrscan.core.match_filter.Detection`
     :type update_interval: int
     :param update_interval: Update frequency of plot in ms
     """
-    def __init__(self, rt_client, plot_length, template_catalog, inventory,
-                 detection_catalog, update_interval=100, plot_height=800,
+    def __init__(self, rt_client, plot_length, tribe, inventory,
+                 detections, update_interval=100, plot_height=800,
                  plot_width=1500):
         channels = [tr.id for tr in rt_client.buffer]
         self.channels = sorted(channels)
         self.plot_length = plot_length
-        self.template_catalog = template_catalog
+        self.tribe = tribe
         self.inventory = inventory
-        self.detection_catalog = detection_catalog
+        self.detections = detections
 
         self.hover = HoverTool(
             tooltips=[
@@ -62,6 +62,11 @@ class EQcorrscanPlot:
                 ("Amplitude", "@data")],
             formatters={'time': 'datetime'},
             mode='vline')
+        self.map_hover = HoverTool(
+            tooltips=[
+                ("Latitude", "@lats"),
+                ("Longitude", "@lons"),
+                ("ID", "@id")])
         self.tools = "pan,wheel_zoom,reset"
         self.plot_options = {
             "plot_width": int(2 * (plot_width / 3)),
@@ -69,15 +74,15 @@ class EQcorrscanPlot:
             "tools": [self.hover, self.tools], "x_axis_type": "datetime"}
         self.map_options = {
             "plot_width": int(plot_width / 3), "plot_height": plot_height,
-            "tools": [self.hover, self.tools]}
+            "tools": [self.map_hover, self.tools]}
         self.updateValue = True
         Logger.info("Initializing plotter")
         make_doc = partial(
             define_plot, rt_client=rt_client, channels=channels,
-            catalog=self.template_catalog, inventory=self.inventory,
-            detection_catalog=self.detection_catalog,
-            map_options=self.map_options, plot_options=self.plot_options,
-            plot_length=self.plot_length, update_interval=update_interval)
+            tribe=self.tribe, inventory=self.inventory,
+            detections=self.detections, map_options=self.map_options,
+            plot_options=self.plot_options, plot_length=self.plot_length,
+            update_interval=update_interval)
 
         apps = {'/RT_EQcorrscan': Application(FunctionHandler(make_doc))}
 
@@ -105,27 +110,43 @@ class EQcorrscanPlot:
             thread.join()
 
 
-def define_plot(doc, rt_client, channels, catalog, inventory,
-                detection_catalog, map_options, plot_options, plot_length,
-                update_interval, data_color="grey"):
+def define_plot(doc, rt_client, channels, tribe, inventory,
+                detections, map_options, plot_options, plot_length,
+                update_interval, data_color="grey", lowcut=1.0, highcut=20.0):
     """ Set up the plot. """
     # Set up the data source
-    stream = rt_client.get_stream()
-    template_lats, template_lons, template_alphas = ([], [], [])
-    for template in catalog:
+    stream = rt_client.get_stream().copy().detrend()
+    if lowcut and highcut:
+        stream.filter("bandpass", freqmin=lowcut, freqmax=highcut)
+        title = "Streaming data: {0}-{1} Hz bandpass".format(lowcut, highcut)
+    elif lowcut:
+        stream.filter("highpass", lowcut)
+        title = "Streaming data: {0} Hz highpass".format(lowcut)
+    elif highcut:
+        stream.filter("lowpass", highcut)
+        title = "Streaming data: {0} Hz lowpass".format(highcut)
+    else:
+        title = "Raw streaming data"
+
+    template_lats, template_lons, template_alphas, template_ids = (
+        [], [], [], [])
+    for template in tribe:
         try:
-            origin = template.preferred_origin() or template.origins[0]
+            origin = (template.event.preferred_origin() or
+                      template.event.origins[0])
         except IndexError:
             continue
         template_lats.append(origin.latitude)
         template_lons.append(origin.longitude)
         template_alphas.append(0)
+        template_ids.append(template.event.resource_id.id.split("/")[-1])
 
-    station_lats, station_lons = ([], [])
+    station_lats, station_lons, station_ids = ([], [], [])
     for network in inventory:
         for station in network:
             station_lats.append(station.latitude)
             station_lons.append(station.longitude)
+            station_ids.append(station.code)
 
     # Get plot bounds in web mercator
     wgs_84 = Proj(init='epsg:4326')
@@ -158,12 +179,12 @@ def define_plot(doc, rt_client, channels, catalog, inventory,
         station_y.append(_y)
 
     template_source = ColumnDataSource({
-        'template_lats': template_y,
-        'template_lons': template_x,
-        'template_alphas': template_alphas})
+        'y': template_y, 'x': template_x,
+        'lats': template_lats, 'lons': template_lons,
+        'template_alphas': template_alphas, 'id': template_ids})
     station_source = ColumnDataSource({
-        'station_lats': station_y,
-        'station_lons': station_x})
+        'y': station_y, 'x': station_x,
+        'lats': station_lats, 'lons': station_lons, 'id': station_ids})
 
     trace_sources = {}
     # Allocate empty arrays
@@ -185,17 +206,16 @@ def define_plot(doc, rt_client, channels, catalog, inventory,
     attribution = "Tiles by Carto, under CC BY 3.0. Data by OSM, under ODbL"
     map_plot.add_tile(WMTSTileSource(url=url, attribution=attribution))
     map_plot.circle(
-        x="template_lons", y="template_lats", source=template_source,
-        color="firebrick", fill_alpha="template_alphas")
+        x="x", y="y", source=template_source, color="firebrick",
+        fill_alpha="template_alphas", size=10)
     map_plot.triangle(
-        x="station_lons", y="station_lats", source=station_source,
-        color="blue", alpha=1.0)
+        x="x", y="y", size=10, source=station_source, color="blue", alpha=1.0)
 
     # Set up the trace plots
     trace_plots = []
     now = dt.datetime.utcnow()
     p1 = figure(
-        y_axis_location="right", title="Streaming Data",
+        y_axis_location="right", title=title,
         x_range=[now - dt.timedelta(seconds=plot_length), now],
         plot_height=int(plot_options["plot_height"] * 1.2),
         **{key: value for key, value in plot_options.items()
@@ -220,7 +240,8 @@ def define_plot(doc, rt_client, channels, catalog, inventory,
     p1.xaxis.formatter = datetick_formatter
 
     # Add detection lines
-    detection_source = _get_pick_times(detection_catalog, channels[0])
+    detection_source = _get_pick_times(
+        detections, channels[0], datastream={})
     detection_source.update(
         {"pick_values": [[
             int(min(stream.select(id=channels[0])[0].data) * .9),
@@ -251,7 +272,8 @@ def define_plot(doc, rt_client, channels, catalog, inventory,
             p.xaxis.formatter = datetick_formatter
 
             # Add detection lines
-            detection_source = _get_pick_times(detection_catalog, channel)
+            detection_source = _get_pick_times(
+                detections, channel, datastream=detection_sources)
             detection_source.update(
                 {"pick_values": [[
                     int(min(stream.select(id=channel)[0].data) * .9),
@@ -275,7 +297,13 @@ def define_plot(doc, rt_client, channels, catalog, inventory,
     
     def update():
         Logger.debug("Plot updating")
-        stream = rt_client.get_stream()
+        stream = rt_client.get_stream().copy().detrend()
+        if lowcut and highcut:
+            stream.filter("bandpass", freqmin=lowcut, freqmax=highcut)
+        elif lowcut:
+            stream.filter("highpass", lowcut)
+        elif highcut:
+            stream.filter("lowpass", highcut)
         for i, channel in enumerate(channels):
             try:
                 tr = stream.select(id=channel)[0]
@@ -297,7 +325,8 @@ def define_plot(doc, rt_client, channels, catalog, inventory,
             trace_sources[channel].stream(
                 new_data=new_data,
                 rollover=int(plot_length * tr.stats.sampling_rate))
-            new_picks = _get_pick_times(detection_catalog, channel)
+            new_picks = _get_pick_times(
+                detections, channel, datastream=detection_sources)
             new_picks.update({
                 'pick_values': [
                     [int(trace_plots[i].y_range.start * .9),
@@ -311,26 +340,98 @@ def define_plot(doc, rt_client, channels, catalog, inventory,
         now = dt.datetime.utcnow()
         trace_plots[0].x_range.start = now - dt.timedelta(seconds=plot_length)
         trace_plots[0].x_range.end = now
-        # TODO: Update the map - just alphas need to be changed. - streaming might not be the way.
-        # TODO: This should look take the detection catalog as it is updated
-        # self.map_source.stream(new_data=_new_detections)
+        _update_template_alphas(
+            detections, tribe, decay=plot_length / 10, now=now,
+            datastream=template_source)
 
     doc.add_periodic_callback(update, update_interval)
     doc.title = "EQcorrscan Real-time plotter"
     doc.add_root(plots)
 
 
-def _get_pick_times(catalog, seed_id):
-    picks = []
-    for event in catalog:
+def _update_template_alphas(detections, tribe, decay, now, datastream):
+    """
+    Update the template location datastream.
+
+    :type detections: list of `eqcorrscan.core.match_filter.Detection`
+    :param detections: Detections to use to update the datastream
+    :type tribe: `eqcorrscan.core.match_filter.Tribe`
+    :param tribe: Templates used
+    :type decay: float
+    :param decay: Colour decay length in seconds
+    :type now: `datetime.datetime`
+    :param now: Reference time-stamp
+    :type datastream: `bokeh.models.DataStream`
+    :param datastream: Data stream to update
+    """
+    wgs_84 = Proj(init='epsg:4326')
+    wm = Proj(init='epsg:3857')
+    template_lats, template_lons, template_alphas, template_ids = (
+        [], [], [], [])
+    template_x, template_y = ([], [])
+    for template in tribe:
         try:
-            pick = [p for p in event.picks
+            origin = (template.event.preferred_origin() or
+                      template.event.origins[0])
+        except IndexError:
+            continue
+        template_lats.append(origin.latitude)
+        template_lons.append(origin.longitude)
+
+        template_ids.append(template.event.resource_id.id.split("/")[-1])
+        _x, _y = transform(wgs_84, wm, origin.longitude, origin.latitude)
+        template_x.append(_x)
+        template_y.append(_y)
+        template_detections = [
+            d for d in detections if d.template_name == template.name]
+        if len(template_detections) == 0:
+            template_alphas.append(0)
+        else:
+            detect_time = min([d.detect_time for d in template_detections])
+            offset = (now - detect_time.datetime).total_seconds()
+            alpha = 1. - (offset / decay)
+            Logger.debug('Updating alpha to {0:.4f}'.format(alpha))
+            template_alphas.append(alpha)
+    datastream.data = {'y': template_y, 'x': template_x, 'lats': template_lats,
+                       'lons': template_lons,
+                       'template_alphas': template_alphas, 'id': template_ids}
+    return
+
+
+def _get_pick_times(detections, seed_id, datastream):
+    """
+    Get new pick times from catalog for a given channel.
+
+    :type detections: list of `eqcorrscan.core.match_filter.Detection
+    :param detections: List of detections
+    :type seed_id: str
+    :param seed_id: The full Seed-id (net.sta.loc.chan) for extract picks for
+    :type datastream: dict
+    :param datastream:
+        Dictionary keyed by seed-id containing the DataStreams used for
+        plotting the picks. Will compare against this to find new picks.
+
+    :rtype: dict
+    :return: Dictionary with one key ("picks") of the pick-times.
+    """
+    picks = []
+    for detection in detections:
+        try:
+            pick = [p for p in detection.event.picks
                     if p.waveform_id.get_seed_string() == seed_id][0]
         except IndexError:
             pick = None
             pass
         if pick:
-            picks.append([pick.time.datetime, pick.time.datetime])
+            old_picks = datastream.get(seed_id, None)
+            if old_picks is None:
+                old_picks = []
+            else:
+                old_picks = old_picks.data["picks"]
+            if [pick.time.datetime, pick.time.datetime] not in old_picks:
+                Logger.debug("Plotting new pick on {0} at {1}".format(
+                    seed_id, pick.time))
+                picks.append([pick.time.datetime, pick.time.datetime])
     return {"picks": picks}
 
 
