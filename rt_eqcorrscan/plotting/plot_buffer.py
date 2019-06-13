@@ -13,8 +13,11 @@ import logging
 import threading
 import datetime as dt
 
+from pyproj import Proj, transform
+
 from bokeh.plotting import figure
-from bokeh.models import ColumnDataSource, HoverTool, Legend
+from bokeh.models import ColumnDataSource, HoverTool, Legend, WMTSTileSource
+from bokeh.models.glyphs import MultiLine
 from bokeh.models.formatters import DatetimeTickFormatter
 from bokeh.layouts import gridplot, column
 from bokeh.server.server import Server
@@ -45,7 +48,7 @@ class EQcorrscanPlot:
     """
     def __init__(self, rt_client, plot_length, template_catalog, inventory,
                  detection_catalog, update_interval=100, plot_height=800,
-                 plot_width=1200):
+                 plot_width=1500):
         channels = [tr.id for tr in rt_client.buffer]
         self.channels = sorted(channels)
         self.plot_length = plot_length
@@ -53,13 +56,16 @@ class EQcorrscanPlot:
         self.inventory = inventory
         self.detection_catalog = detection_catalog
 
-        # TODO: Hovertool is not outputting useful things
         self.hover = HoverTool(
-            tooltips=[("index", "$index"), ("(x,y)", "(@x, $y)")])
-        self.tools = "pan,box_zoom,reset"
+            tooltips=[
+                ("UTCDateTime", "@time{%m/%d %H:%M:%S}"),
+                ("Amplitude", "@data")],
+            formatters={'time': 'datetime'},
+            mode='vline')
+        self.tools = "pan,wheel_zoom,reset"
         self.plot_options = {
             "plot_width": int(2 * (plot_width / 3)),
-            "plot_height": int(plot_height / len(channels)),
+            "plot_height": int((plot_height - 20) / len(channels)),
             "tools": [self.hover, self.tools], "x_axis_type": "datetime"}
         self.map_options = {
             "plot_width": int(plot_width / 3), "plot_height": plot_height,
@@ -99,8 +105,9 @@ class EQcorrscanPlot:
             thread.join()
 
 
-def define_plot(doc, rt_client, channels, catalog, inventory, map_options,
-                plot_options, plot_length, update_interval):
+def define_plot(doc, rt_client, channels, catalog, inventory,
+                detection_catalog, map_options, plot_options, plot_length,
+                update_interval, data_color="grey"):
     """ Set up the plot. """
     # Set up the data source
     stream = rt_client.get_stream()
@@ -120,12 +127,43 @@ def define_plot(doc, rt_client, channels, catalog, inventory, map_options,
             station_lats.append(station.latitude)
             station_lons.append(station.longitude)
 
-    map_source = ColumnDataSource({
-        'template_lats': template_lats,
-        'template_lons': template_lons,
-        'template_alphas': template_alphas,
-        'station_lats': station_lats,
-        'station_lons': station_lons})
+    # Get plot bounds in web mercator
+    wgs_84 = Proj(init='epsg:4326')
+    wm = Proj(init='epsg:3857')
+    try:
+        min_lat, min_lon, max_lat, max_lon = (
+            min(template_lats + station_lats),
+            min(template_lons + station_lons),
+            max(template_lats + station_lats),
+            max(template_lons + station_lons))
+    except ValueError as e:
+        Logger.error(e)
+        Logger.info("Setting map bounds to NZ")
+        min_lat, min_lon, max_lat, max_lon = (-47., 165., -34., 179.9)
+    bottom_left = transform(wgs_84, wm, min_lon, min_lat)
+    top_right = transform(wgs_84, wm, max_lon, max_lat)
+    map_x_range = (bottom_left[0], top_right[0])
+    map_y_range = (bottom_left[1], top_right[1])
+
+    template_x, template_y = ([], [])
+    for lon, lat in zip(template_lons, template_lats):
+        _x, _y = transform(wgs_84, wm, lon, lat)
+        template_x.append(_x)
+        template_y.append(_y)
+
+    station_x, station_y = ([], [])
+    for lon, lat in zip(station_lons, station_lats):
+        _x, _y = transform(wgs_84, wm, lon, lat)
+        station_x.append(_x)
+        station_y.append(_y)
+
+    template_source = ColumnDataSource({
+        'template_lats': template_y,
+        'template_lons': template_x,
+        'template_alphas': template_alphas})
+    station_source = ColumnDataSource({
+        'station_lats': station_y,
+        'station_lons': station_x})
 
     trace_sources = {}
     # Allocate empty arrays
@@ -140,39 +178,60 @@ def define_plot(doc, rt_client, channels, catalog, inventory, map_options,
             {channel: ColumnDataSource({'time': times, 'data': data})})
 
     # Set up the map to go on the left side
-    # TODO: Set up map plotting - use googlemaps API?
-    map_plot = figure(title="Template map", **map_options)
+    map_plot = figure(
+        title="Template map", x_range=map_x_range, y_range=map_y_range,
+        x_axis_type="mercator", y_axis_type="mercator", **map_options)
+    url = 'http://a.basemaps.cartocdn.com/rastertiles/voyager/{Z}/{X}/{Y}.png'
+    attribution = "Tiles by Carto, under CC BY 3.0. Data by OSM, under ODbL"
+    map_plot.add_tile(WMTSTileSource(url=url, attribution=attribution))
     map_plot.circle(
-        x="template_lons", y="template_lats", source=map_source,
+        x="template_lons", y="template_lats", source=template_source,
         color="firebrick", fill_alpha="template_alphas")
     map_plot.triangle(
-        x="station_lons", y="station_lats", source=map_source, color="blue",
-        alpha=1.0)
+        x="station_lons", y="station_lats", source=station_source,
+        color="blue", alpha=1.0)
 
     # Set up the trace plots
     trace_plots = []
     now = dt.datetime.utcnow()
     p1 = figure(
-        y_axis_location="right",
+        y_axis_location="right", title="Streaming Data",
         x_range=[now - dt.timedelta(seconds=plot_length), now],
-        **plot_options)
+        plot_height=int(plot_options["plot_height"] * 1.2),
+        **{key: value for key, value in plot_options.items()
+           if key != "plot_height"})
     p1.yaxis.axis_label = None
     p1.xaxis.axis_label = None
     p1.min_border_bottom = 0
+    p1.min_border_top = 0
     if len(channels) != 1:
         p1.xaxis.major_label_text_font_size = '0pt'
     p1_line = p1.line(
-        x="time", y='data', source=trace_sources[channels[0]], color="black",
-        line_width=2)
+        x="time", y='data', source=trace_sources[channels[0]],
+        color=data_color, line_width=1)
     legend = Legend(items=[(channels[0], [p1_line])])
-    p1.add_layout(legend, 'left')
- 
+    p1.add_layout(legend, 'right')
+
     datetick_formatter = DatetimeTickFormatter(
         days=["%m/%d"], months=["%m/%d"],
-        hours=["%m/%d %H:%M:%S"], minutes=["%m/%d %H:%M:%S"], 
+        hours=["%m/%d %H:%M:%S"], minutes=["%m/%d %H:%M:%S"],
         seconds=["%m/%d %H:%M:%S"], hourmin=["%m/%d %H:%M:%S"],
         minsec=["%m/%d %H:%M:%S"])
     p1.xaxis.formatter = datetick_formatter
+
+    # Add detection lines
+    detection_source = _get_pick_times(detection_catalog, channels[0])
+    detection_source.update(
+        {"pick_values": [[
+            int(min(stream.select(id=channels[0])[0].data) * .9),
+            int(max(stream.select(id=channels[0])[0].data) * .9)]
+            for _ in detection_source['picks']]})
+    detection_sources = {channels[0]: ColumnDataSource(detection_source)}
+    detection_lines = MultiLine(
+        xs="picks", ys="pick_values", line_color="red", line_dash="dashed",
+        line_width=1)
+    p1.add_glyph(detection_sources[channels[0]], detection_lines)
+
     trace_plots.append(p1)
 
     if len(channels) > 1:
@@ -183,13 +242,28 @@ def define_plot(doc, rt_client, channels, catalog, inventory, map_options,
             p.yaxis.axis_label = None
             p.xaxis.axis_label = None
             p.min_border_bottom = 0
-            p.min_border_top = 0
+            # p.min_border_top = 0
             p_line = p.line(
                 x="time", y="data", source=trace_sources[channel],
-                color="black", line_width=2)
+                color=data_color, line_width=1)
             legend = Legend(items=[(channel, [p_line])])
-            p.add_layout(legend, 'left')
+            p.add_layout(legend, 'right')
             p.xaxis.formatter = datetick_formatter
+
+            # Add detection lines
+            detection_source = _get_pick_times(detection_catalog, channel)
+            detection_source.update(
+                {"pick_values": [[
+                    int(min(stream.select(id=channel)[0].data) * .9),
+                    int(max(stream.select(id=channel)[0].data) * .9)]
+                    for _ in detection_source['picks']]})
+            detection_sources.update({
+                channel: ColumnDataSource(detection_source)})
+            detection_lines = MultiLine(
+                xs="picks", ys="pick_values", line_color="red",
+                line_dash="dashed", line_width=1)
+            p.add_glyph(detection_sources[channel], detection_lines)
+
             trace_plots.append(p)
             if i != len(channels) - 2:
                 p.xaxis.major_label_text_font_size = '0pt'
@@ -202,7 +276,7 @@ def define_plot(doc, rt_client, channels, catalog, inventory, map_options,
     def update():
         Logger.debug("Plot updating")
         stream = rt_client.get_stream()
-        for channel in channels:
+        for i, channel in enumerate(channels):
             try:
                 tr = stream.select(id=channel)[0]
             except IndexError:
@@ -223,18 +297,41 @@ def define_plot(doc, rt_client, channels, catalog, inventory, map_options,
             trace_sources[channel].stream(
                 new_data=new_data,
                 rollover=int(plot_length * tr.stats.sampling_rate))
+            new_picks = _get_pick_times(detection_catalog, channel)
+            new_picks.update({
+                'pick_values': [
+                    [int(trace_plots[i].y_range.start * .9),
+                     int(trace_plots[i].y_range.end * .9)]
+                    for _ in new_picks['picks']]})
+            detection_sources[channel].stream(
+                new_data=new_picks,
+                rollover=int(plot_length * tr.stats.sampling_rate))
             previous_timestamps.update({channel: tr.stats.endtime})
             Logger.debug("New data plotted for {0}".format(channel))
         now = dt.datetime.utcnow()
         trace_plots[0].x_range.start = now - dt.timedelta(seconds=plot_length)
         trace_plots[0].x_range.end = now
         # TODO: Update the map - just alphas need to be changed. - streaming might not be the way.
-        # TODO: This should look for a detection csv file - where this is should be passed to the function
+        # TODO: This should look take the detection catalog as it is updated
         # self.map_source.stream(new_data=_new_detections)
 
     doc.add_periodic_callback(update, update_interval)
     doc.title = "EQcorrscan Real-time plotter"
     doc.add_root(plots)
+
+
+def _get_pick_times(catalog, seed_id):
+    picks = []
+    for event in catalog:
+        try:
+            pick = [p for p in event.picks
+                    if p.waveform_id.get_seed_string() == seed_id][0]
+        except IndexError:
+            pick = None
+            pass
+        if pick:
+            picks.append([pick.time.datetime, pick.time.datetime])
+    return {"picks": picks}
 
 
 if __name__ == "__main__":
