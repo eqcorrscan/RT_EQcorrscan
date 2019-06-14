@@ -12,11 +12,13 @@ import time
 import os
 import logging
 
-from obspy import Stream, UTCDateTime, Catalog
+from obspy import Stream, UTCDateTime
 from eqcorrscan import Tribe, Template, Party
 
 from rt_eqcorrscan.utils.seedlink import RealTimeClient
 from rt_eqcorrscan.plotting.plot_buffer import EQcorrscanPlot
+
+Logger = logging.getLogger(__name__)
 
 SLEEP_STEP = 1.0
 LOGGING_MAP = {
@@ -99,10 +101,10 @@ class RealTimeTribe(Tribe):
         wait_length = 0
         while len(self.client.buffer) < len(self.expected_channels):
             if wait_length >= self.detect_interval:
-                logging.warning("Starting plotting without the full dataset")
+                Logger.warning("Starting plotting without the full dataset")
                 break
             # Wait until we have some data
-            logging.debug(
+            Logger.debug(
                 "Waiting for data, currently have {0} channels of {1} "
                 "expected channels".format(
                     len(self.client.buffer), len(self.expected_channels)))
@@ -158,10 +160,10 @@ class RealTimeTribe(Tribe):
                     net=tr_id.split('.')[0], station=tr_id.split('.')[1],
                     selector=tr_id.split('.')[3])
             self.client.background_run()
-            logging.info("Started real-time streaming")
+            Logger.info("Started real-time streaming")
             time.sleep(self.client.buffer_capacity)
         else:
-            logging.warning("Client already in streaming mode,"
+            Logger.warning("Client already in streaming mode,"
                             " cannot add channels")
             if not self.client.buffer_full:
                 time.sleep(self.client.buffer_capacity -
@@ -169,14 +171,14 @@ class RealTimeTribe(Tribe):
         if self.plot:  # pragma: no cover
             # Set up plotting thread
             self._plot()
-            logging.info("Plotting thread started")
+            Logger.info("Plotting thread started")
         while running:
             start_time = UTCDateTime.now()
             st = self.client.get_stream()
             st.trim(starttime=max([tr.stats.starttime for tr in st]),
                     endtime=min([tr.stats.endtime for tr in st]))
             # I think I need to copy this to ensure it isn't worked on in place.
-            logging.info("Starting detection run")
+            Logger.info("Starting detection run")
             new_party = self.detect(
                 stream=st, plotvar=False, threshold=threshold,
                 threshold_type=threshold_type, trig_int=trig_int,
@@ -201,10 +203,10 @@ class RealTimeTribe(Tribe):
                         _family += detection
                     self.party += _family
             if len(self.party) > 0:
-                logging.info("Removing duplicate detections")
+                Logger.info("Removing duplicate detections")
                 self.party.decluster(trig_int=trig_int)
             run_time = UTCDateTime.now() - start_time
-            logging.info("Detection took {0}s".format(run_time))
+            Logger.info("Detection took {0}s".format(run_time))
             # Remove old detections here
             for family in self.party:
                 family.detections = [

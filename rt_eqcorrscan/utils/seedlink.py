@@ -8,16 +8,14 @@ Data handling for seedlink clients for real-time matched-filter detection.
     GNU Lesser General Public License, Version 3
     (https://www.gnu.org/copyleft/lesser.html)
 """
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
-from future.builtins import *  # NOQA
-
 import threading
 import logging
 
 from obspy.clients.seedlink.easyseedlink import EasySeedLinkClient
 from obspy import Stream
 
+
+Logger = logging.getLogger(__name__)
 
 LOGGING_MAP = {
     'info': logging.INFO, 'debug': logging.DEBUG, 'warning': logging.WARNING,
@@ -43,7 +41,7 @@ class RealTimeClient(EasySeedLinkClient):
         self.buffer = buffer
         self.buffer_capacity = buffer_capacity
         self.threads = []
-        logging.info("Instantiated RealTime client: {0}".format(self))
+        Logger.info("Instantiated RealTime client: {0}".format(self))
 
     def __repr__(self):
         """
@@ -99,7 +97,7 @@ class RealTimeClient(EasySeedLinkClient):
         streaming_thread.daemon = True
         streaming_thread.start()
         self.threads.append(streaming_thread)
-        logging.info("Started streaming")
+        Logger.info("Started streaming")
 
     def background_stop(self):
         """Stop the background thread."""
@@ -120,26 +118,26 @@ class RealTimeClient(EasySeedLinkClient):
         self.buffer.merge()
         _tr = self.buffer.select(id=trace.id)[0]
         if _tr.stats.npts * _tr.stats.delta > self.buffer_capacity:
-            logging.debug(
+            Logger.debug(
                 "Trimming trace to {0}-{1}".format(
                     _tr.stats.endtime - self.buffer_capacity,
                     _tr.stats.endtime))
             _tr.trim(_tr.stats.endtime - self.buffer_capacity)
         else:
-            logging.debug("Buffer contains {0}".format(self.buffer))
+            Logger.debug("Buffer contains {0}".format(self.buffer))
 
     def on_terminate(self):  # pragma: no cover
         """
         Handle termination gracefully
         """
-        logging.info("Termination of {0}".format(self.__repr__()))
+        Logger.info("Termination of {0}".format(self.__repr__()))
         return self.buffer
 
     def on_error(self):  # pragma: no cover
         """
         Handle errors gracefully.
         """
-        logging.error("SeedLink error")
+        Logger.error("SeedLink error")
         pass
 
     def on_seedlink_error(self):
