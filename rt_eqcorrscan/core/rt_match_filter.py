@@ -219,25 +219,6 @@ class RealTimeTribe(Tribe):
         return self.party
 
 
-def _event_time(event):
-    """
-    Get event time for an event: uses origin if available, else uses first pick
-
-    :type event: `obspy.core.event.Event`
-    :param event: event to get the time of
-    :return: UTCDateTime
-    """
-    try:
-        origin = event.preferred_origin() or event.origins[0]
-    except IndexError:
-        origin = None
-    if origin and origin.time is not None:
-        return origin.time
-    if len(event.picks) == 0:
-        return None
-    return min([p.time for p in event.picks])
-
-
 if __name__ == "__main__":
     import doctest
 
