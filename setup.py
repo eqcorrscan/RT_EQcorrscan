@@ -32,10 +32,10 @@ def setup_package():
     except ImportError:
         build_requires = ['numpy>=1.6, <2.0']
 
-    install_requires = ['matplotlib>=1.3.0', 'scipy>=0.18', 'LatLon',
-                        'bottleneck', 'obspy>=1.0.3', 'numpy>=1.12',
-                        'h5py', "eqcorrscan>=0.3.0", 'bokeh']
-    install_requires.extend(build_requires)
+    install_requires = [
+        'numpy>=1.12', 'matplotlib>=1.3.0', 'scipy>=0.18', 'LatLon',
+        'bottleneck', 'bokeh', 'obspy>=1.0.3', 'h5py', 'eqcorrscan>=0.3.0',
+        'obsplus']
 
     setup_args = {
         'name': 'RT-EQcorrscan',

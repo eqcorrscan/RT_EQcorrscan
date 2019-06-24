@@ -46,19 +46,11 @@ class RealTimeTribe(Tribe):
         Frequency to conduct detection. Must be less than buffer_capacity.
     """
     def __init__(self, tribe=None, inventory=None, server_url=None,
-                 buffer_capacity=600, detect_interval=60, log_level='warning',
+                 buffer_capacity=600, detect_interval=60,
                  plot=True, plot_length=300):
         assert (buffer_capacity >= max(
             [template.process_length for template in self.templates]))
         assert (buffer_capacity >= detect_interval)
-        try:
-            logging.basicConfig(
-                level=LOGGING_MAP[log_level],
-                format="%(asctime)s   %(threadName)s\t%(levelname)s \t"
-                       "%(message)s")
-        except KeyError:
-            print("log_level must be in {0}".format(LOGGING_MAP.keys()))
-        self.log_level = log_level
         super().__init__(templates=tribe.templates)
         self.buffer = Stream()
         self.inventory = inventory
@@ -119,7 +111,7 @@ class RealTimeTribe(Tribe):
 
     def run(self, threshold, threshold_type, trig_int,
             keep_detections=86400, detect_directory="detections",
-            max_run_length=None):
+            max_run_length=None, **kwargs):
         """
         Run the RealTimeTribe detection.
 
@@ -164,7 +156,7 @@ class RealTimeTribe(Tribe):
             time.sleep(self.client.buffer_capacity)
         else:
             Logger.warning("Client already in streaming mode,"
-                            " cannot add channels")
+                           " cannot add channels")
             if not self.client.buffer_full:
                 time.sleep(self.client.buffer_capacity -
                            self.client.buffer_length + 5)
@@ -181,8 +173,7 @@ class RealTimeTribe(Tribe):
             Logger.info("Starting detection run")
             new_party = self.detect(
                 stream=st, plotvar=False, threshold=threshold,
-                threshold_type=threshold_type, trig_int=trig_int,
-                debug=DEBUG_MAP[self.log_level])
+                threshold_type=threshold_type, trig_int=trig_int, **kwargs)
             for family in new_party:
                 _family = family.copy()
                 _family.detections = []
