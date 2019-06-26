@@ -243,7 +243,7 @@ def estimate_region(event: Event, min_length: float = 50.):
     length /= 2.
     return {
         "latitude": origin.latitude, "longitude": origin.longitude,
-        "radius": length}
+        "maxradius": length}
 
 
 def example_trigger_func(catalog, magnitude_threshold=5.5, rate_threshold=20.,
