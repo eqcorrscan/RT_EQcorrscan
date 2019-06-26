@@ -229,7 +229,7 @@ def estimate_region(event: Event, min_length: float = 50.):
                        "length or {0}".format(min_length))
         magnitude = None
     if magnitude:
-        length = 10 ** ((magnitude - 5.08) / 1.16)  # Wells and Coppersmith
+        length = 10 ** ((magnitude.mag - 5.08) / 1.16)  # Wells and Coppersmith
     else:
         length = min_length
 

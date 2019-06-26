@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 from obsplus import EventBank
-from obsplus.constants import EVENT_NAME_STRUCTURE
+from obsplus.constants import EVENT_NAME_STRUCTURE, get_events_parameters
 from obsplus.utils import compose_docstring
 from obsplus.bank.utils import _get_path
 
@@ -45,7 +45,7 @@ class TemplateBank(EventBank):
                EVENT_NAME_STRUCTURE)
         self.template_name_structure = wns
 
-    @compose_docstring
+    @compose_docstring(get_events_params=get_events_parameters)
     def get_templates(self, **kwargs) -> Tribe:
         """
         Get template waveforms from the database
