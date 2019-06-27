@@ -155,7 +155,7 @@ class Reactor(object):
 
 
 def get_inventory(client, tribe, triggering_event, max_distance=1000,
-                  n_stations=10, duration=10):
+                  n_stations=10, duration=10, level="channel"):
     """
     Get a suitable inventory for the tribe - selects the most used, closest
     stations.
@@ -175,7 +175,8 @@ def get_inventory(client, tribe, triggering_event, max_distance=1000,
                 endafter=origin.time + (duration * 86400),
                 channel=channel_str, latitude=origin.latitude,
                 longitude=origin.longitude,
-                maxradius=kilometer2degrees(max_distance))
+                maxradius=kilometer2degrees(max_distance),
+                level=level)
         except FDSNNoDataException:
             continue
     inv_len = 0

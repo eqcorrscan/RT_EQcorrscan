@@ -80,8 +80,18 @@ class RealTimeTribe(Tribe):
             self.__len__(), self.client)
 
     @property
-    def expected_channels(self):
+    def template_channels(self):
         return set(tr.id for template in self.templates for tr in template.st)
+
+    @property
+    def used_stations(self):
+        return set("{net}.{sta}.{loc}.{chan}".format(
+            net=net.code, sta=sta.code, loc=chan.location_code, chan=chan.code)
+                   for net in self.inventory for sta in net for chan in sta)
+
+    @property
+    def expected_channels(self):
+        return self.template_channels.intersection(self.used_stations)
 
     def _plot(self):
         """Plot the data as it comes in."""
