@@ -5,6 +5,7 @@ Tools for managing a "database" (in the loosest sense) of template information.
 """
 
 import logging
+import os
 
 from pathlib import Path
 
@@ -20,6 +21,17 @@ from obspy import Catalog
 from eqcorrscan.core.match_filter import Tribe, read_template, Template
 
 Logger = logging.getLogger(__name__)
+
+
+def _lazy_template_read(path):
+    if not os.path.isfile(path):
+        Logger.debug("{0} does not exist".format(path))
+        return None
+    try:
+        return read_template(path)
+    except Exception as e:
+        Logger.error(e)
+        return None
 
 
 class TemplateBank(EventBank):
@@ -50,12 +62,21 @@ class TemplateBank(EventBank):
         """
         Get template waveforms from the database
 
+        Supports passing an `concurrent.futures.Executor` using the `executor`
+        keyword argument for parallel reading.
+
         {get_event_params}
         """
-        paths = self.bank_path + self.read_index(columns="path", **kwargs).path
+        executor = kwargs.pop("executor", None)
+        paths = self.bank_path + self.read_index(
+            columns=["path", "latitude", "longitude"], **kwargs).path
         paths = [path.replace(self.ext, self.template_ext) for path in paths]
-        templates = [read_template(path) for path in paths]
-        return Tribe(templates)
+        if executor:
+            future = executor.map(_lazy_template_read, paths)
+            return Tribe([t for t in future if t is not None])
+        else:
+            templates = [_lazy_template_read(path) for path in paths]
+            return Tribe([t for t in templates if t is not None])
 
     def put_templates(self, templates: Union[list, Tribe], update_index=True):
         """

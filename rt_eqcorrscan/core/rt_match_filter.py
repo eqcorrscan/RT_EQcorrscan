@@ -20,14 +20,9 @@ from rt_eqcorrscan.plotting.plot_buffer import EQcorrscanPlot
 
 Logger = logging.getLogger(__name__)
 
-SLEEP_STEP = 1.0
-LOGGING_MAP = {
-    'info': logging.INFO, 'debug': logging.DEBUG, 'warning': logging.WARNING,
-    'error': logging.ERROR, 'critical': logging.CRITICAL}
-DEBUG_MAP = {'info': 5, 'debug': 4, 'warning': 3, 'error': 2, 'critical': 1}
-
 
 class RealTimeTribe(Tribe):
+    sleep_step = 1.0
     """
     Real-Time tribe.
 
@@ -48,10 +43,10 @@ class RealTimeTribe(Tribe):
     def __init__(self, tribe=None, inventory=None, server_url=None,
                  buffer_capacity=600, detect_interval=60,
                  plot=True, plot_length=300):
+        super().__init__(templates=tribe.templates)
         assert (buffer_capacity >= max(
             [template.process_length for template in self.templates]))
         assert (buffer_capacity >= detect_interval)
-        super().__init__(templates=tribe.templates)
         self.buffer = Stream()
         self.inventory = inventory
         self.party = Party()
@@ -100,8 +95,8 @@ class RealTimeTribe(Tribe):
                 "Waiting for data, currently have {0} channels of {1} "
                 "expected channels".format(
                     len(self.client.buffer), len(self.expected_channels)))
-            wait_length += SLEEP_STEP
-            time.sleep(SLEEP_STEP)
+            wait_length += self.sleep_step
+            time.sleep(self.sleep_step)
             pass
         plotter = EQcorrscanPlot(
             rt_client=self.client, plot_length=self.plot_length,

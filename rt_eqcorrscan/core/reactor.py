@@ -200,7 +200,7 @@ def get_inventory(client, tribe, triggering_event, max_distance=1000,
     inv_out = inv.select(station=sta_dist[0][0])
     for sta in sta_dist[1:n_stations]:
         inv_out += inv.select(station=sta[0])
-    return inv
+    return inv_out
 
 
 def estimate_region(event: Event, min_length: float = 50.):
