@@ -23,6 +23,7 @@ Logger = logging.getLogger(__name__)
 
 class RealTimeTribe(Tribe):
     sleep_step = 1.0
+    plotter = None
     """
     Real-Time tribe.
 
@@ -108,11 +109,16 @@ class RealTimeTribe(Tribe):
             wait_length += self.sleep_step
             time.sleep(self.sleep_step)
             pass
-        plotter = EQcorrscanPlot(
+        self.plotter = EQcorrscanPlot(
             rt_client=self.client, plot_length=self.plot_length,
             tribe=self, inventory=self.inventory,
             detections=self.detections)
-        plotter.background_run()
+        self.plotter.background_run()
+
+    def stop(self):
+        if self.plotter is not None:
+            self.plotter.background_stop()
+        self.client.background_stop()
 
     def run(self, threshold, threshold_type, trig_int,
             keep_detections=86400, detect_directory="detections",
@@ -158,17 +164,17 @@ class RealTimeTribe(Tribe):
                     selector=tr_id.split('.')[3])
             self.client.background_run()
             Logger.info("Started real-time streaming")
-            time.sleep(self.client.buffer_capacity)
         else:
             Logger.warning("Client already in streaming mode,"
                            " cannot add channels")
-            if not self.client.buffer_full:
-                time.sleep(self.client.buffer_capacity -
-                           self.client.buffer_length + 5)
         if self.plot:  # pragma: no cover
             # Set up plotting thread
             self._plot()
             Logger.info("Plotting thread started")
+        if not self.client.buffer_full:
+            Logger.info("Sleeping while accumulating data")
+            time.sleep(self.client.buffer_capacity -
+                       self.client.buffer_length + 5)
         while running:
             start_time = UTCDateTime.now()
             st = self.client.get_stream()
@@ -212,6 +218,7 @@ class RealTimeTribe(Tribe):
             time.sleep(self.detect_interval - run_time)
             if UTCDateTime.now() > run_start + max_run_length:
                 running = False
+        self.stop()
         return self.party
 
 
