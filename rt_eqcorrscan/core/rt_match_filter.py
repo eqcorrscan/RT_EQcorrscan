@@ -13,7 +13,7 @@ import os
 import logging
 
 from obspy import Stream, UTCDateTime
-from eqcorrscan import Tribe, Template, Party
+from eqcorrscan import Tribe, Template, Party, Family
 
 from rt_eqcorrscan.utils.seedlink import RealTimeClient
 from rt_eqcorrscan.plotting.plot_buffer import EQcorrscanPlot
@@ -24,6 +24,7 @@ Logger = logging.getLogger(__name__)
 class RealTimeTribe(Tribe):
     sleep_step = 1.0
     plotter = None
+    exclude_channels = ["EHE", "EHN", "EH1", "EH2", "HHE", "HHN", "HH1", "HH2"]
     """
     Real-Time tribe.
 
@@ -112,7 +113,7 @@ class RealTimeTribe(Tribe):
         self.plotter = EQcorrscanPlot(
             rt_client=self.client, plot_length=self.plot_length,
             tribe=self, inventory=self.inventory,
-            detections=self.detections)
+            detections=self.detections, exclude_channels=self.exclude_channels)
         self.plotter.background_run()
 
     def stop(self):
@@ -172,53 +173,84 @@ class RealTimeTribe(Tribe):
             self._plot()
             Logger.info("Plotting thread started")
         if not self.client.buffer_full:
-            Logger.info("Sleeping while accumulating data")
+            Logger.info("Sleeping for {0}s while accumulating data".format(
+                self.client.buffer_capacity - self.client.buffer_length + 5))
             time.sleep(self.client.buffer_capacity -
                        self.client.buffer_length + 5)
-        while running:
-            start_time = UTCDateTime.now()
-            st = self.client.get_stream()
-            st.trim(starttime=max([tr.stats.starttime for tr in st]),
-                    endtime=min([tr.stats.endtime for tr in st]))
-            # I think I need to copy this to ensure it isn't worked on in place.
-            Logger.info("Starting detection run")
-            new_party = self.detect(
-                stream=st, plotvar=False, threshold=threshold,
-                threshold_type=threshold_type, trig_int=trig_int, **kwargs)
-            for family in new_party:
-                _family = family.copy()
-                _family.detections = []
-                for detection in family:
-                    if detection.detect_time > last_possible_detection:
-                        # TODO use relative magnitude calculation in EQcorrscan
-                        year_dir = os.path.join(
-                            detect_directory, str(detection.detect_time.year))
-                        if not os.path.isdir(year_dir):
-                            os.makedirs(year_dir)
-                        day_dir = os.path.join(
-                            year_dir, str(detection.detect_time.julday))
-                        if not os.path.isdir(day_dir):
-                            os.makedirs(day_dir)
-                        detection.event.write(os.path.join(
-                            day_dir, detection.detect_time.strftime(
-                                "%Y%m%dT%H%M%S.xml")), format="QUAKEML")
-                        _family += detection
-                    self.party += _family
-            if len(self.party) > 0:
-                Logger.info("Removing duplicate detections")
-                self.party.decluster(trig_int=trig_int)
-            run_time = UTCDateTime.now() - start_time
-            Logger.info("Detection took {0}s".format(run_time))
-            # Remove old detections here
-            for family in self.party:
-                family.detections = [
-                    d for d in family.detections
-                    if d.detect_time >= UTCDateTime.now() - keep_detections]
-            self.detections = [d for f in self.party for d in f]
-            time.sleep(self.detect_interval - run_time)
-            if UTCDateTime.now() > run_start + max_run_length:
-                running = False
-        self.stop()
+        try:
+            while running:
+                start_time = UTCDateTime.now()
+                st = self.client.get_stream()
+                st = st.merge()
+                st.trim(starttime=max([tr.stats.starttime for tr in st]),
+                        endtime=min([tr.stats.endtime for tr in st]))
+                Logger.info("Starting detection run")
+                try:
+                    new_party = self.detect(
+                        stream=st, plotvar=False, threshold=threshold,
+                        threshold_type=threshold_type, trig_int=trig_int,
+                        **kwargs)
+                except Exception as e:
+                    Logger.error(e)
+                    Logger.info(
+                        "Waiting for {0}s and hoping this gets better".format(
+                            self.detect_interval))
+                    time.sleep(self.detect_interval)
+                    continue
+                for family in new_party:
+                    if family is None:
+                        continue
+                    _family = Family(
+                        template=family.template, detections=[])
+                    for detection in family:
+                        if detection.detect_time > last_possible_detection:
+                            # TODO use relative magnitude calculation in EQcorrscan
+                            year_dir = os.path.join(
+                                detect_directory,
+                                str(detection.detect_time.year))
+                            if not os.path.isdir(year_dir):
+                                os.makedirs(year_dir)
+                            day_dir = os.path.join(
+                                year_dir, str(detection.detect_time.julday))
+                            if not os.path.isdir(day_dir):
+                                os.makedirs(day_dir)
+                            detection.event.write(os.path.join(
+                                day_dir, detection.detect_time.strftime(
+                                    "%Y%m%dT%H%M%S.xml")), format="QUAKEML")
+                            _family += detection
+                        self.party += _family
+                if len(self.party) > 0:
+                    Logger.info("Removing duplicate detections")
+                    self.party.decluster(trig_int=trig_int)
+                # Remove old detections here
+                if len(self.party) > 0:
+                    for family in self.party:
+                        family.detections = [
+                            d for d in family.detections
+                            if d.detect_time >= UTCDateTime.now() - keep_detections]
+                    for f in self.party:
+                        for d in f:
+                            if d not in self.detections:
+                                # Need to append rather than create a new object
+                                self.detections.append(d)
+                Logger.info("Party now contains {0} detections".format(
+                    len(self.detections)))
+                run_time = UTCDateTime.now() - start_time
+                Logger.info("Detection took {0:.2f}s".format(run_time))
+                if self.detect_interval <= run_time:
+                    Logger.warning(
+                        "detect_interval {0} shorter than run-time {1}, "
+                        "increasing detect_interval to {2}".format(
+                            self.detect_interval, run_time, run_time + 10))
+                    self.detect_interval = run_time + 10
+                Logger.debug("This step took {0}s total".format(run_time))
+                Logger.info("Waiting {0}s until next run".format(
+                    self.detect_interval - run_time))
+                time.sleep(self.detect_interval - run_time)
+                if max_run_length and UTCDateTime.now() > run_start + max_run_length:
+                    running = False
+        finally:
+            self.stop()
         return self.party
 
 

@@ -48,8 +48,9 @@ class EQcorrscanPlot:
     """
     def __init__(self, rt_client, plot_length, tribe, inventory,
                  detections, update_interval=100, plot_height=800,
-                 plot_width=1500):
-        channels = [tr.id for tr in rt_client.buffer]
+                 plot_width=1500, exclude_channels=()):
+        channels = [tr.id for tr in rt_client.buffer
+                    if tr.stats.channel not in exclude_channels]
         self.channels = sorted(channels)
         self.plot_length = plot_length
         self.tribe = tribe
@@ -71,7 +72,7 @@ class EQcorrscanPlot:
         self.plot_options = {
             "plot_width": int(2 * (plot_width / 3)),
             "plot_height": int((plot_height - 20) / len(channels)),
-            "tools": [self.hover, self.tools], "x_axis_type": "datetime"}
+            "tools": [self.hover], "x_axis_type": "datetime"}
         self.map_options = {
             "plot_width": int(plot_width / 3), "plot_height": plot_height,
             "tools": [self.map_hover, self.tools]}
@@ -206,7 +207,8 @@ def define_plot(doc, rt_client, channels, tribe, inventory,
     attribution = "Tiles by Carto, under CC BY 3.0. Data by OSM, under ODbL"
     map_plot.add_tile(WMTSTileSource(url=url, attribution=attribution))
     map_plot.circle(
-        x="x", y="y", source=template_source, color="firebrick",
+        x="x", y="y", source=template_source, fill_color="firebrick",
+        line_color="grey", line_alpha=.2,
         fill_alpha="template_alphas", size=10)
     map_plot.triangle(
         x="x", y="y", size=10, source=station_source, color="blue", alpha=1.0)
@@ -341,7 +343,7 @@ def define_plot(doc, rt_client, channels, tribe, inventory,
         trace_plots[0].x_range.start = now - dt.timedelta(seconds=plot_length)
         trace_plots[0].x_range.end = now
         _update_template_alphas(
-            detections, tribe, decay=plot_length / 10, now=now,
+            detections, tribe, decay=plot_length, now=now,
             datastream=template_source)
 
     doc.add_periodic_callback(update, update_interval)
@@ -415,6 +417,7 @@ def _get_pick_times(detections, seed_id, datastream):
     :return: Dictionary with one key ("picks") of the pick-times.
     """
     picks = []
+    Logger.debug("Scanning {0} detections for new picks".format(len(detections)))
     for detection in detections:
         try:
             pick = [p for p in detection.event.picks
