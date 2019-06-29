@@ -77,7 +77,7 @@ def setup_package():
     else:
         setup_args['packages'] = [
             'rt_eqcorrscan', 'rt_eqcorrscan.utils', 'rt_eqcorrscan.core',
-            'rt_eqcorrscan.plotting']
+            'rt_eqcorrscan.plotting', 'rt_eqcorrscan.config']
     if os.path.isdir("build"):
         shutil.rmtree("build")
     setup(**setup_args)
