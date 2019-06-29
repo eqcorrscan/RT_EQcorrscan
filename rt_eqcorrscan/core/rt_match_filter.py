@@ -197,33 +197,32 @@ class RealTimeTribe(Tribe):
                             self.detect_interval))
                     time.sleep(self.detect_interval)
                     continue
-                for family in new_party:
-                    if family is None:
-                        continue
-                    _family = Family(
-                        template=family.template, detections=[])
-                    for detection in family:
-                        if detection.detect_time > last_possible_detection:
-                            # TODO use relative magnitude calculation in EQcorrscan
-                            year_dir = os.path.join(
-                                detect_directory,
-                                str(detection.detect_time.year))
-                            if not os.path.isdir(year_dir):
-                                os.makedirs(year_dir)
-                            day_dir = os.path.join(
-                                year_dir, str(detection.detect_time.julday))
-                            if not os.path.isdir(day_dir):
-                                os.makedirs(day_dir)
-                            detection.event.write(os.path.join(
-                                day_dir, detection.detect_time.strftime(
-                                    "%Y%m%dT%H%M%S.xml")), format="QUAKEML")
-                            _family += detection
-                        self.party += _family
-                if len(self.party) > 0:
+                if len(new_party) > 0:
+                    for family in new_party:
+                        if family is None:
+                            continue
+                        _family = Family(
+                            template=family.template, detections=[])
+                        for detection in family:
+                            if detection.detect_time > last_possible_detection:
+                                # TODO use relative magnitude calculation in EQcorrscan
+                                year_dir = os.path.join(
+                                    detect_directory,
+                                    str(detection.detect_time.year))
+                                if not os.path.isdir(year_dir):
+                                    os.makedirs(year_dir)
+                                day_dir = os.path.join(
+                                    year_dir, str(detection.detect_time.julday))
+                                if not os.path.isdir(day_dir):
+                                    os.makedirs(day_dir)
+                                detection.event.write(os.path.join(
+                                    day_dir, detection.detect_time.strftime(
+                                        "%Y%m%dT%H%M%S.xml")), format="QUAKEML")
+                                _family += detection
+                            self.party += _family
                     Logger.info("Removing duplicate detections")
                     self.party.decluster(trig_int=trig_int)
-                # Remove old detections here
-                if len(self.party) > 0:
+                    # Remove old detections here
                     for family in self.party:
                         family.detections = [
                             d for d in family.detections
