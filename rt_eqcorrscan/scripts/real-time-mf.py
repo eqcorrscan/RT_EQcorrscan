@@ -38,6 +38,7 @@ def run_real_time_matched_filter(**kwargs):
             "maxradius": kwargs.get("maxradius", None)}
     bank = TemplateBank(
         config.database_manager.event_path,
+        event_name_structure=config.database_manager.event_name_structure,
         event_format=config.database_manager.event_format,
         path_structure=config.database_manager.path_structure,
         event_ext=config.database_manager.event_ext)

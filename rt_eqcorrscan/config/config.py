@@ -89,7 +89,8 @@ class DatabaseManagerConfig(ConfigAttribDict):
     defaults = {
         "event_path": ".",
         "event_format": "QUAKEML",
-        "path_structure": "{year}/{month}/{event_id_short}",
+        "event_name_structure": "{event_id_end}",
+        "path_structure": "{year}/{month}/{event_id_end}",
         "event_ext": ".xml",
     }
     readonly = []
