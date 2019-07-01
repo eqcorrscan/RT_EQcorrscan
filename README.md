@@ -1,18 +1,18 @@
 # RT EQcorrscan
 ## Real-time implementation of EQcorrscan's matched-filter earthquake detection
 
-Holding ground for the project.
-
 *Work in progress*
 
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Build Status](https://travis-ci.org/eqcorrscan/RT_EQcorrscan.svg?branch=master)](https://travis-ci.org/eqcorrscan/RT_EQcorrscan)
 [![codecov](https://codecov.io/gh/eqcorrscan/RT_EQcorrscan/branch/master/graph/badge.svg)](https://codecov.io/gh/eqcorrscan/RT_EQcorrscan)
 [![CircleCI](https://circleci.com/gh/eqcorrscan/RT_EQcorrscan.svg?style=svg)](https://circleci.com/gh/eqcorrscan/RT_EQcorrscan)
 
 # Contributing
 
-At the moment the project is in its infancy, so any help on project direction is
-appreciated, but bear with me while I build the barebones.
+RT_EQcorrscan is ready to play with, but don't expect it to be stable yet. If
+you have any contributions they would be appreciated! Please fork the repository
+and create a pull-request on Master.
 
 # Funding
 

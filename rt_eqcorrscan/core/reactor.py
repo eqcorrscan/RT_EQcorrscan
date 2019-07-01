@@ -1,15 +1,20 @@
 """
 Overarching tool for listening to and triggering from FDSN earthquakes.
 
-TODO: Write this script: This should:
- - Use pre-computed Tribes covering patches of the country,
- - Listen to GeoNet earthquake feed
- - If an earthquake of interest happens, load the tribe for that region and
-   start the real-time matched-filter
- - Once the detection rate drops low enough, stop running it?
+    This file is part of rt_eqcorrscan.
 
- - Alongside this - check whether new detections made by GeoNet need to be
-   included in the database.
+    rt_eqcorrscan is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    rt_eqcorrscan is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with rt_eqcorrscan.  If not, see <https://www.gnu.org/licenses/>.
 """
 import logging
 import threading
