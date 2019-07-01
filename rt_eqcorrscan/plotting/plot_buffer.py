@@ -48,12 +48,12 @@ class EQcorrscanPlot:
     """
     def __init__(self, rt_client, plot_length, tribe, inventory,
                  detections, update_interval=100, plot_height=800,
-                 plot_width=1500, exclude_channels=()):
+                 plot_width=1500, exclude_channels=(), **plot_data_options):
         channels = [tr.id for tr in rt_client.buffer
                     if tr.stats.channel not in exclude_channels]
         self.channels = sorted(channels)
-        self.plot_length = plot_length
         self.tribe = tribe
+        self.plot_length = plot_length
         self.inventory = inventory
         self.detections = detections
 
@@ -83,7 +83,7 @@ class EQcorrscanPlot:
             tribe=self.tribe, inventory=self.inventory,
             detections=self.detections, map_options=self.map_options,
             plot_options=self.plot_options, plot_length=self.plot_length,
-            update_interval=update_interval)
+            update_interval=update_interval, **plot_data_options)
 
         apps = {'/RT_EQcorrscan': Application(FunctionHandler(make_doc))}
 
@@ -113,7 +113,7 @@ class EQcorrscanPlot:
 
 def define_plot(doc, rt_client, channels, tribe, inventory,
                 detections, map_options, plot_options, plot_length,
-                update_interval, data_color="grey", lowcut=1.0, highcut=20.0):
+                update_interval, data_color="grey", lowcut=1.0, highcut=10.0):
     """ Set up the plot. """
     # Set up the data source
     stream = rt_client.get_stream().copy().detrend()
@@ -299,36 +299,37 @@ def define_plot(doc, rt_client, channels, tribe, inventory,
     
     def update():
         Logger.debug("Plot updating")
-        stream = rt_client.get_stream().copy().detrend()
+        _stream = rt_client.get_stream().copy().detrend()
         if lowcut and highcut:
-            stream.filter("bandpass", freqmin=lowcut, freqmax=highcut)
+            _stream.filter("bandpass", freqmin=lowcut, freqmax=highcut)
         elif lowcut:
-            stream.filter("highpass", lowcut)
+            _stream.filter("highpass", lowcut)
         elif highcut:
-            stream.filter("lowpass", highcut)
-        for i, channel in enumerate(channels):
+            _stream.filter("lowpass", highcut)
+
+        for _i, _channel in enumerate(channels):
             try:
-                tr = stream.select(id=channel)[0]
+                _tr = _stream.select(id=_channel)[0]
             except IndexError:
-                Logger.debug("No channel for {0}".format(channel))
+                Logger.debug("No channel for {0}".format(_channel))
                 continue
-            new_samples = int(tr.stats.sampling_rate * (
-                    previous_timestamps[channel] - tr.stats.endtime))
+            new_samples = int(_tr.stats.sampling_rate * (
+                    previous_timestamps[_channel] - _tr.stats.endtime))
             if new_samples == 0:
-                Logger.debug("No new data for {0}".format(channel))
+                Logger.debug("No new data for {0}".format(_channel))
                 continue
             new_times = np.arange(
                 previous_timestamps[channel],
-                (tr.stats.endtime + tr.stats.delta).datetime,
-                step=dt.timedelta(seconds=tr.stats.delta))
-            _new_data = tr.slice(
-                starttime=previous_timestamps[channel]).data
+                (_tr.stats.endtime + _tr.stats.delta).datetime,
+                step=dt.timedelta(seconds=_tr.stats.delta))
+            _new_data = _tr.slice(
+                starttime=previous_timestamps[_channel]).data
             new_data = {'time': new_times[1:], 'data': _new_data[1:]}
-            trace_sources[channel].stream(
+            trace_sources[_channel].stream(
                 new_data=new_data,
-                rollover=int(plot_length * tr.stats.sampling_rate))
+                rollover=int(plot_length * _tr.stats.sampling_rate))
             new_picks = _get_pick_times(
-                detections, channel, datastream=detection_sources)
+                detections, _channel, datastream=detection_sources)
             new_picks.update({
                 'pick_values': [
                     [int(trace_plots[i].y_range.start * .9),
@@ -336,9 +337,9 @@ def define_plot(doc, rt_client, channels, tribe, inventory,
                     for _ in new_picks['picks']]})
             detection_sources[channel].stream(
                 new_data=new_picks,
-                rollover=int(plot_length * tr.stats.sampling_rate))
-            previous_timestamps.update({channel: tr.stats.endtime})
-            Logger.debug("New data plotted for {0}".format(channel))
+                rollover=int(plot_length * _tr.stats.sampling_rate))
+            previous_timestamps.update({_channel: tr.stats.endtime})
+            Logger.debug("New data plotted for {0}".format(_channel))
         now = dt.datetime.utcnow()
         trace_plots[0].x_range.start = now - dt.timedelta(seconds=plot_length)
         trace_plots[0].x_range.end = now

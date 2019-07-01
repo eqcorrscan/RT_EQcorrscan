@@ -71,6 +71,7 @@ class Reactor(object):
         trigger_func,
         template_database: TemplateBank,
         real_time_tribe_kwargs: dict,
+        plot_kwargs: dict,
     ):
         self.client = client
         self.seedlink_server_url = seedlink_server_url
@@ -78,6 +79,7 @@ class Reactor(object):
         self.trigger_func = trigger_func
         self.template_database = template_database
         self.real_time_tribe_kwargs = real_time_tribe_kwargs
+        self.plot_kwargs = plot_kwargs
 
     def run(self):
         self.listener.background_run()
@@ -98,7 +100,8 @@ class Reactor(object):
 
     def background_spin_up(self, triggering_event: Event):
         detecting_thread = threading.Thread(
-            target=self.run, args=(triggering_event, ), name="DetectingThread")
+            target=self.spin_up,
+            args=(triggering_event, ), name="DetectingThread")
         detecting_thread.daemon = True
         detecting_thread.start()
         self.detecting_threads.append(detecting_thread)
@@ -109,8 +112,7 @@ class Reactor(object):
             detecting_thread.join()
         self.listener.background_stop()
 
-    def spin_up(self, triggering_event: Event, threshold: float,
-                threshold_type: str, trig_int: float):
+    def spin_up(self, triggering_event: Event):
         """
         Run the reactors response function.
         """
@@ -137,21 +139,11 @@ class Reactor(object):
             server_url=self.seedlink_server_url,
             buffer_capacity=buffer_capacity,
             detect_interval=detect_interval, plot=plot,
-            plot_length=plot_length)
+            plot_length=plot_length, **self.plot_kwargs)
 
         self.running_templates_ids.append(
             [t.name for t in real_time_tribe.templates])
-        keep_detections = self.real_time_tribe_kwargs.get(
-            "keep_detections", 86400)
-        detect_directory = self.real_time_tribe_kwargs.get(
-            "detect_directory", "detections")
-        max_run_length = self.real_time_tribe_kwargs.get(
-            "max_run_length", None)
-        real_time_tribe.run(
-            threshold=threshold, threshold_type=threshold_type,
-            trig_int=trig_int, kepp_detection=keep_detections,
-            detect_directory=detect_directory, max_run_length=max_run_length,
-            **self.real_time_tribe_kwargs)
+        real_time_tribe.run(**self.real_time_tribe_kwargs)
 
 
 def get_inventory(client, tribe, triggering_event, max_distance=1000,

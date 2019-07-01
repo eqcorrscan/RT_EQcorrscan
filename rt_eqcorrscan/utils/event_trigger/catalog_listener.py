@@ -7,20 +7,26 @@ import logging
 from obspy import UTCDateTime, Catalog
 
 from rt_eqcorrscan.utils.event_trigger.listener import _Listener, event_time
+from rt_eqcorrscan.core.database_manager import TemplateBank
 
 Logger = logging.getLogger(__name__)
-
-
-#TODO: The listener should add to the template DB!
 
 
 class CatalogListener(_Listener):
     busy = False
 
-    def __init__(self, client, catalog, catalog_lookup_kwargs,
-                 interval=600, keep=86400):
+    def __init__(
+        self,
+        client,
+        catalog: Catalog,
+        catalog_lookup_kwargs: dict,
+        template_bank: TemplateBank,
+        interval: float = 600,
+        keep: float = 86400,
+    ):
         self.client = client
         self.catalog = catalog
+        self.template_bank = template_bank
         self.catalog_lookup_kwargs = catalog_lookup_kwargs
         self.interval = interval
         self.keep = keep
@@ -43,8 +49,9 @@ class CatalogListener(_Listener):
             now = UTCDateTime.now()
             self.catalog.events = [
                 e for e in self.catalog if event_time(e) >= now - self.keep]
+            new_events = None
             try:
-                self.catalog += self.client.get_events(
+                new_events += self.client.get_events(
                     starttime=self.previous_time, endtime=now,
                     **self.catalog_lookup_kwargs)
             except Exception as e:
@@ -52,9 +59,10 @@ class CatalogListener(_Listener):
                     "Could not download data between {0} and {1}".format(
                         self.previous_time, now))
                 Logger.error(e)
-                time.sleep(self.interval)
-                continue
-
+            if new_events is not None:
+                self.template_bank.put_events(new_events)
+                self.template_bank.make_templates(new_events)
+                self.catalog += new_events
             self.previous_time = now
             time.sleep(self.interval)
 

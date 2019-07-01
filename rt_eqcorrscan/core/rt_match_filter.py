@@ -44,7 +44,7 @@ class RealTimeTribe(Tribe):
     """
     def __init__(self, tribe=None, inventory=None, server_url=None,
                  buffer_capacity=600, detect_interval=60,
-                 plot=True, plot_length=300):
+                 plot=True, **plot_options):
         super().__init__(templates=tribe.templates)
         assert (buffer_capacity >= max(
             [template.process_length for template in self.templates]))
@@ -58,7 +58,10 @@ class RealTimeTribe(Tribe):
             server_url=server_url, autoconnect=True, buffer=self.buffer,
             buffer_capacity=buffer_capacity)
         self.plot = plot
-        self.plot_length = plot_length
+        self.plot_length = plot_options.get("plot_length", 300)
+        self.plot_options = {
+            key: value for key, value in plot_options.items()
+            if key != "plot_length"}
         self.detections = []
 
     def __repr__(self):
@@ -205,7 +208,7 @@ class RealTimeTribe(Tribe):
                             template=family.template, detections=[])
                         for detection in family:
                             if detection.detect_time > last_possible_detection:
-                                # TODO use relative magnitude calculation in EQcorrscan
+                                # TODO: lag-calc and relative magnitudes?
                                 year_dir = os.path.join(
                                     detect_directory,
                                     str(detection.detect_time.year))
@@ -219,7 +222,7 @@ class RealTimeTribe(Tribe):
                                     day_dir, detection.detect_time.strftime(
                                         "%Y%m%dT%H%M%S.xml")), format="QUAKEML")
                                 _family += detection
-                            self.party += _family
+                        self.party += _family
                     Logger.info("Removing duplicate detections")
                     self.party.decluster(trig_int=trig_int)
                     # Remove old detections here

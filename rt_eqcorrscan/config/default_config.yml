@@ -1,21 +1,26 @@
 # Default configuration file for RT_EQcorrscan
 reactor:
-  magnitude-threshold: 6.0
-  rate-threshold: 20.0 # Events per hour
-  rate-radius: 0.5 # Radius in degrees for rates to be calculated for
-rt_match_filter:
+  magnitude threshold: 6.0
+  rate threshold: 20.0 # Events per hour
+  rate radius: 0.5 # Radius in degrees for rates to be calculated for
+rt match filter:
   client: "GEONET"
-  client_type: "FDSN"
-  seed_link_server_url: "link.geonet.org.nz"
-  n_stations: 10
-  max_distance: 1000
-  buffer_capacity: 300
-  detect_interval: 120
+  client type: "FDSN"
+  seedlink server url: "link.geonet.org.nz"
+  n stations: 10
+  max distance: 1000
+  buffer capacity: 300
+  detect interval: 120
   plot: True
-plot_buffer:
-  plot_length: 600
-database_manager:
-  event_path: "/Volumes/GeoPhysics_09/users-data/chambeca/Cluster_Geonet/events"
-  event_format: "QUAKEML"
-  path_structure: "{year}/{month}/{event_id_short}"
-  event_ext: ".xml"
+  threshold: 0.5
+  threshold type: "av_chan_corr"
+  trig int: 2.0
+plot:
+  plot length: 600
+  low cut: 1.0
+  high cut: 10.0
+database manager:
+  event path: "/Volumes/GeoPhysics_09/users-data/chambeca/Cluster_Geonet/events"
+  event format: "QUAKEML"
+  path structure: "{year}/{month}/{event_id_short}"
+  event ext: ".xml"

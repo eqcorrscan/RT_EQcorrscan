@@ -11,6 +11,7 @@ pytest-cov
 pytest-pep8
 pytest-xdist
 pytest-rerunfailures
+pyyaml
 codecov
 eqcorrscan>=0.3.0
 obsplus

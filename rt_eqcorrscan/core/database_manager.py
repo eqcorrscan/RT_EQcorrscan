@@ -16,7 +16,7 @@ from obsplus.constants import EVENT_NAME_STRUCTURE, get_events_parameters
 from obsplus.utils import compose_docstring
 from obsplus.bank.utils import _get_path
 
-from obspy import Catalog
+from obspy import Catalog, Stream
 
 from eqcorrscan.core.match_filter import Tribe, read_template, Template
 
@@ -102,6 +102,55 @@ class TemplateBank(EventBank):
             ppath = (Path(self.bank_path) / path).absolute()
             ppath.parent.mkdir(parents=True, exist_ok=True)
             template.write(str(ppath))
+
+    def make_templates(
+        self,
+        catalog: Catalog,
+        stream: Stream = None,
+        client=None,
+        download_data_len: float = 600,
+        **kwargs,
+    ):
+        """ Make templates from data or client """
+        assert client or stream, "Needs either client or stream"
+        if stream is not None:
+            tribe = Tribe().construct(
+                method="from_metafile", meta_file=catalog, stream=stream,
+                **kwargs)
+            self.put_templates(tribe)
+            return
+        tribe = Tribe()
+        for event in catalog:
+            # Get raw data and save to disk
+            st = self._get_data_for_event(event, client, download_data_len)
+            # Make template add to tribe
+            template = Template().construct(
+                method="from_metafile", meta_file=event, stream=st,
+                **kwargs)
+            tribe += template
+        self.put_templates(tribe)
+        return
+
+    def _get_data_for_event(self, event, client, download_data_len):
+        if len(event.picks) == 0:
+            Logger.warning("Event has no picks, no template created")
+            return Stream()
+        bulk = list({
+            (p.waveform_id.network_code, p.waveform_id.station_code,
+             p.waveform_id.location_code, p.waveforms_id.channel_code,
+             p.time - (.45 * download_data_len),
+             p.time + (.55 * download_data_len)) for p in event.picks})
+        st = client.get_waveforms_bulk(bulk)
+        res_id = str(event.resource_id)
+        info = {"ext": "ms", "event_id": res_id,
+                "event_id_short": res_id.split("/")[-1]}
+        path = _get_path(
+            info, path_struct=self.path_structure,
+            name_struct=self.template_name_structure)["path"]
+        ppath = (Path(self.bank_path) / path).absolute()
+        ppath.parent.mkdir(parents=True, exist_ok=True)
+        st.write(str(ppath), format="MSEED")
+        return st
 
 
 if __name__ == "__main__":
