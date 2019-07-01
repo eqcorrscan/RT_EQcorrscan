@@ -13,5 +13,5 @@ pytest-xdist
 pytest-rerunfailures
 pyyaml
 codecov
-eqcorrscan>=0.3.0
+EQcorrscan>=0.3.0
 obsplus
