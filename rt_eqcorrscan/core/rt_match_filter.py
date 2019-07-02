@@ -24,7 +24,6 @@ from obspy import Stream, UTCDateTime, Inventory
 from eqcorrscan import Tribe, Template, Party, Family
 
 from rt_eqcorrscan.utils.seedlink import RealTimeClient
-from rt_eqcorrscan.plotting.plot_buffer import EQcorrscanPlot
 
 Logger = logging.getLogger(__name__)
 
@@ -127,6 +126,8 @@ class RealTimeTribe(Tribe):
 
     def _plot(self) -> None:
         """ Plot the data as it comes in. """
+        from rt_eqcorrscan.plotting.plot_buffer import EQcorrscanPlot
+
         wait_length = 0
         while len(self.client.buffer) < len(self.expected_channels):
             if wait_length >= self.detect_interval:
