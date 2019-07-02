@@ -23,6 +23,7 @@ import datetime as dt
 
 from pyproj import Proj, transform
 
+from bokeh.document import Document
 from bokeh.plotting import figure
 from bokeh.models import ColumnDataSource, HoverTool, Legend, WMTSTileSource
 from bokeh.models.glyphs import MultiLine
@@ -34,6 +35,10 @@ from bokeh.application.handlers.function import FunctionHandler
 
 from functools import partial
 
+from obspy import Inventory
+from rt_eqcorrscan import RealTimeTribe
+from rt_eqcorrscan.utils.seedlink import RealTimeClient
+
 Logger = logging.getLogger(__name__)
 
 
@@ -41,22 +46,40 @@ class EQcorrscanPlot:
     """
     Streaming bokeh plotting of waveforms.
 
-    :type rt_client:
-    :param rt_client: The real-time streaming client in use.
-    :type plot_length: float
-    :param plot_length: Plot length in seconds
-    :type tribe: `eqcorrscan.core.match_filter.Tribe`
-    :param tribe: Tribe of templates used in real-time detection
-    :type inventory: :class:`obspy.core.station.Inventory`
-    :param inventory: Inventory of stations used - will be plotted on the map.
-    :type detections: list
-    :param detections: List of `eqcorrscan.core.match_filter.Detection`
-    :type update_interval: int
-    :param update_interval: Update frequency of plot in ms
+    Parameters
+    ----------
+    rt_client
+        The real-time streaming client in use.
+    plot_length
+        Plot length in seconds
+    tribe
+        Tribe of templates used in real-time detection
+    inventory
+        Inventory of stations used - will be plotted on the map.
+    detections
+        List of `eqcorrscan.core.match_filter.Detection`
+    update_interval
+        Update frequency of plot in ms
+    plot_height
+        Plot height in screen units
+    plot_width
+        Plot width in screen units
+    exclude_channels
+        Iterable of channel codes to exclude from plotting
     """
-    def __init__(self, rt_client, plot_length, tribe, inventory,
-                 detections, update_interval=100, plot_height=800,
-                 plot_width=1500, exclude_channels=(), **plot_data_options):
+    def __init__(
+        self,
+        rt_client: RealTimeClient,
+        plot_length: float,
+        tribe: RealTimeTribe,
+        inventory: Inventory,
+        detections: list,
+        update_interval: float = 100.,
+        plot_height: int = 800,
+        plot_width: int = 1500,
+        exclude_channels: iter = (),
+        **plot_data_options,
+    ) -> None:
         channels = [tr.id for tr in rt_client.buffer
                     if tr.stats.channel not in exclude_channels]
         self.channels = sorted(channels)
@@ -101,6 +124,7 @@ class EQcorrscanPlot:
         self.threads = []
     
     def background_run(self):
+        """ run the plotting in a daemon thread. """
         plotting_thread = threading.Thread(
             target=self._bg_run, name="PlottingThread")
         plotting_thread.daemon = True
@@ -114,15 +138,61 @@ class EQcorrscanPlot:
         self.server.io_loop.start()
 
     def background_stop(self):
+        """ Stop the background plotting thread. """
         self.server.io_loop.stop()
         for thread in self.threads:
             thread.join()
 
 
-def define_plot(doc, rt_client, channels, tribe, inventory,
-                detections, map_options, plot_options, plot_length,
-                update_interval, data_color="grey", lowcut=1.0, highcut=10.0):
-    """ Set up the plot. """
+def define_plot(
+    doc: Document,
+    rt_client: RealTimeClient,
+    channels: list,
+    tribe: RealTimeTribe,
+    inventory: Inventory,
+    detections: list,
+    map_options: dict,
+    plot_options: dict,
+    plot_length: float,
+    update_interval: float,
+    data_color: str = "grey",
+    lowcut: float = 1.0,
+    highcut: float = 10.0,
+):
+    """
+    Set up a bokeh plot for real-time plotting.
+
+    Defines a moving data stream and a map.
+
+    Parameters
+    ----------
+    doc
+        Bokeh document to edit - usually called as a partial
+    rt_client
+        RealTimeClient streaming data
+    channels
+        Channels to plot
+    tribe
+        Tribe to plot
+    inventory
+        Inventory to plot
+    detections
+        Detections to plot - should be a list that is updated in place.
+    map_options
+        Dictionary of options for the map
+    plot_options
+        Dictionary of options for plotting in general
+    plot_length
+        Length of data plot
+    update_interval
+        Update frequency in seconds
+    data_color
+        Colour to data stream
+    lowcut
+        Lowcut for filtering data stream
+    highcut
+        Highcut for filtering data stream
+    """
     # Set up the data source
     stream = rt_client.get_stream().copy().detrend()
     if lowcut and highcut:
@@ -360,20 +430,26 @@ def define_plot(doc, rt_client, channels, tribe, inventory,
     doc.add_root(plots)
 
 
-def _update_template_alphas(detections, tribe, decay, now, datastream):
+def _update_template_alphas(
+    detections: list,
+    tribe: RealTimeTribe,
+    decay: float,
+    now, datastream) -> None:
     """
     Update the template location datastream.
 
-    :type detections: list of `eqcorrscan.core.match_filter.Detection`
-    :param detections: Detections to use to update the datastream
-    :type tribe: `eqcorrscan.core.match_filter.Tribe`
-    :param tribe: Templates used
-    :type decay: float
-    :param decay: Colour decay length in seconds
-    :type now: `datetime.datetime`
-    :param now: Reference time-stamp
-    :type datastream: `bokeh.models.DataStream`
-    :param datastream: Data stream to update
+    Parameters
+    ----------
+    detections
+        Detections to use to update the datastream
+    tribe
+        Templates used
+    decay
+        Colour decay length in seconds
+    now
+        Reference time-stamp
+    datastream
+        Data stream to update
     """
     wgs_84 = Proj(init='epsg:4326')
     wm = Proj(init='epsg:3857')
@@ -409,21 +485,23 @@ def _update_template_alphas(detections, tribe, decay, now, datastream):
     return
 
 
-def _get_pick_times(detections, seed_id, datastream):
+def _get_pick_times(detections: list, seed_id: str, datastream) -> dict:
     """
     Get new pick times from catalog for a given channel.
 
-    :type detections: list of `eqcorrscan.core.match_filter.Detection
-    :param detections: List of detections
-    :type seed_id: str
-    :param seed_id: The full Seed-id (net.sta.loc.chan) for extract picks for
-    :type datastream: dict
-    :param datastream:
+    Parameters
+    ----------
+    detections
+        List of detections
+    seed_id
+        The full Seed-id (net.sta.loc.chan) for extract picks for
+    datastream
         Dictionary keyed by seed-id containing the DataStreams used for
         plotting the picks. Will compare against this to find new picks.
 
-    :rtype: dict
-    :return: Dictionary with one key ("picks") of the pick-times.
+    Returns
+    -------
+    Dictionary with one key ("picks") of the pick-times.
     """
     picks = []
     Logger.debug("Scanning {0} detections for new picks".format(len(detections)))

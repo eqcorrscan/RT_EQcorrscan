@@ -20,7 +20,7 @@ import time
 import os
 import logging
 
-from obspy import Stream, UTCDateTime
+from obspy import Stream, UTCDateTime, Inventory
 from eqcorrscan import Tribe, Template, Party, Family
 
 from rt_eqcorrscan.utils.seedlink import RealTimeClient
@@ -34,25 +34,41 @@ class RealTimeTribe(Tribe):
     plotter = None
     exclude_channels = ["EHE", "EHN", "EH1", "EH2", "HHE", "HHN", "HH1", "HH2"]
     """
-    Real-Time tribe.
+    Real-Time tribe for real-time matched-filter detection.
 
-    :type tribe: `eqcorrscan.core.match_filter.Tribe
-    :param tribe: Tribe of templates to use for detection.
-    :type inventory: :class: `obspy.core.station.Inventory`
-    :param inventory: Inventory of stations used for detection.
-    :type server_url: str
-    :param server_url: Address of seedlink client.
-    :type buffer_capacity: float
-    :param buffer_capacity:
+    Parameters
+    ----------
+    tribe
+        Tribe of templates to use for detection.
+    inventory
+        Inventory of stations used for detection.
+    server_url
+        Address of seedlink client.
+    buffer_capacity
         Length of data buffer in memory in seconds. Must be longer than the
         process_len of the Tribe.
-    :type detect_interval: float
-    :param detect_interval:
+    detect_interval
         Frequency to conduct detection. Must be less than buffer_capacity.
+    plot
+        Whether to generate the real-time bokeh plot
+    plot_options
+        Plotting options parsed to `rt_eqcorrscan.plotting.plot_buffer`
+    
+    sleep_step
+        Default sleep-step in seconds while waiting for data. Defaults to 1.0
+    exclude_channels
+        Channels to exclude from plotting
     """
-    def __init__(self, tribe=None, inventory=None, server_url=None,
-                 buffer_capacity=600, detect_interval=60,
-                 plot=True, **plot_options):
+    def __init__(
+        self,
+        tribe: Tribe = None,
+        inventory: Inventory = None,
+        server_url: str = None,
+        buffer_capacity: float = 600.,
+        detect_interval: float = 60.,
+        plot: bool = True,
+        **plot_options,
+    ) -> None:
         super().__init__(templates=tribe.templates)
         assert (buffer_capacity >= max(
             [template.process_length for template in self.templates]))
@@ -93,21 +109,24 @@ class RealTimeTribe(Tribe):
             self.__len__(), self.client)
 
     @property
-    def template_channels(self):
+    def template_channels(self) -> set:
+        """ Channel-ids used in the templates. """
         return set(tr.id for template in self.templates for tr in template.st)
 
     @property
-    def used_stations(self):
+    def used_stations(self) -> set:
+        """ Channel-ids in the inventory. """
         return set("{net}.{sta}.{loc}.{chan}".format(
             net=net.code, sta=sta.code, loc=chan.location_code, chan=chan.code)
                    for net in self.inventory for sta in net for chan in sta)
 
     @property
-    def expected_channels(self):
+    def expected_channels(self) -> set:
+        """ ids of channels to be used for detection. """
         return self.template_channels.intersection(self.used_stations)
 
-    def _plot(self):
-        """Plot the data as it comes in."""
+    def _plot(self) -> None:
+        """ Plot the data as it comes in. """
         wait_length = 0
         while len(self.client.buffer) < len(self.expected_channels):
             if wait_length >= self.detect_interval:
@@ -127,14 +146,22 @@ class RealTimeTribe(Tribe):
             detections=self.detections, exclude_channels=self.exclude_channels)
         self.plotter.background_run()
 
-    def stop(self):
+    def stop(self) -> None:
+        """ Stop the real-time system. """
         if self.plotter is not None:
             self.plotter.background_stop()
         self.client.background_stop()
 
-    def run(self, threshold, threshold_type, trig_int,
-            keep_detections=86400, detect_directory="detections",
-            max_run_length=None, **kwargs):
+    def run(
+        self,
+        threshold: float,
+        threshold_type: str,
+        trig_int: float,
+        keep_detections: float = 86400,
+        detect_directory: str = "detections",
+        max_run_length: float = None,
+        **kwargs
+    ) -> Party:
         """
         Run the RealTimeTribe detection.
 
@@ -143,25 +170,28 @@ class RealTimeTribe(Tribe):
         seconds.  Detections will also be written to individual files in the
         `detect_directory`.
 
-        :type threshold: float
-        :param threshold: Threshold for detection
-        :type threshold_type: str
-        :param threshold_type:
+        Parameters
+        ----------
+        threshold
+            Threshold for detection
+        threshold_type
             Type of threshold to use. See
             `eqcorrscan.core.match_filter.Tribe.detect` for options.
-        :type trig_int: float
-        :param trig_int: Minimum inter-detection time in seconds.
-        :type keep_detections: float
-        :param keep_detections:
+        trig_int
+            Minimum inter-detection time in seconds.
+        keep_detections
             Duration to store detection in memory for in seconds.
-        :type detect_directory: str
-        :param detect_directory:
+        detect_directory
             Relative path to directory for detections. This directory will be
             created if it doesn't exist.
-        :type max_run_length: float
-        :param max_run_length:
+        max_run_length
             Maximum detection run time in seconds. Default is to run
             indefinitely.
+
+        Returns
+        -------
+        The party created - will not contain detections expired by
+        `keep_detections` threshold.
         """
         run_start = UTCDateTime.now()
         running = True

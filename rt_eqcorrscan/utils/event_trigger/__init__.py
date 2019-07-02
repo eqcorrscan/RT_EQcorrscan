@@ -14,3 +14,5 @@
     You should have received a copy of the GNU General Public License
     along with rt_eqcorrscan.  If not, see <https://www.gnu.org/licenses/>.
 """
+
+from rt_eqcorrscan.utils.event_trigger.triggers import magnitude_rate_trigger_func

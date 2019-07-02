@@ -21,6 +21,7 @@ import threading
 import logging
 
 from obspy import Catalog, UTCDateTime
+from obspy.core.event import Event
 from abc import ABC, abstractmethod
 
 
@@ -57,12 +58,18 @@ class _Listener(ABC):
             thread.join()
 
 
-def event_time(event):
+def event_time(event: Event) -> UTCDateTime:
     """
     Get the origin or first pick time of an event.
 
-    :param event:
-    :return:
+    Parameters
+    ----------
+    event:
+        Event to get a time for
+
+    Returns
+    -------
+    Reference time for event.
     """
     try:
         origin = event.preferred_origin() or event.origins[0]

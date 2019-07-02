@@ -30,13 +30,26 @@ from obsplus.utils import compose_docstring
 from obsplus.bank.utils import _get_path
 
 from obspy import Catalog, Stream
+from obspy.core.event import Event
 
 from eqcorrscan.core.match_filter import Tribe, read_template, Template
 
 Logger = logging.getLogger(__name__)
 
 
-def _lazy_template_read(path):
+def _lazy_template_read(path) -> Template:
+    """
+    Handle exceptions in template reading.
+
+    Parameters
+    ----------
+    path
+        Path to template file
+
+    Returns
+    -------
+    Template.
+    """
     if not os.path.isfile(path):
         Logger.debug("{0} does not exist".format(path))
         return None
@@ -48,6 +61,46 @@ def _lazy_template_read(path):
 
 
 class TemplateBank(EventBank):
+    """
+    A database manager for templates. Based on obsplus EventBank.
+
+    Parameters
+    ----------
+    base_path
+        The path to the directory containing event files. If it does not
+        exist an empty directory will be created.
+    path_structure
+        Define the directory structure used by the event bank. Characters are
+        separated by /, regardless of operating system. The following
+        words can be used in curly braces as data specific variables:
+            year, month, day, julday, hour, minute, second, event_id,
+            event_id_short
+        If no structure is provided it will be read from the index, if no
+        index exists the default is {year}/{month}/{day}
+    event_name_structure : str
+        The same as path structure but for the event file name. Supports the
+        same variables and a slash cannot be used in a file name on most
+        operating systems. The default extension (.xml) will be added.
+        The default is {time}_{event_id_short}.
+    template_name_structure
+        The same as path structure but for the template file name. Supports the
+        same variables and a slash cannot be used in a file name on most
+        operating systems. The default extension (.tgz) will be added.
+        The default is to use the same naming as event_name_structure.
+    event_format
+        The anticipated format of the event files. Any format supported by the
+        obspy.read_events function is permitted.
+    event_ext
+        The extension on the event files. Can be used to avoid parsing
+        non-event files.
+    template_ext
+        The extension on the template files. Can be used to avoid parsing
+        non-template files.
+    cache_size : int
+        The number of queries to store. Avoids having to read the index of
+        the database multiple times for queries involving the same start and
+        end times.
+    """
     def __init__(
         self,
         base_path: Union[str, Path, "EventBank"] = ".",
@@ -91,12 +144,19 @@ class TemplateBank(EventBank):
             templates = [_lazy_template_read(path) for path in paths]
             return Tribe([t for t in templates if t is not None])
 
-    def put_templates(self, templates: Union[list, Tribe], update_index=True):
+    def put_templates(
+        self,
+        templates: Union[list, Tribe],
+        update_index=True
+    ) -> None:
         """
         Save templates to the database.
 
-        :param templates: Templates to put into the database
-        :param update_index:
+        Parameters
+        ----------
+        templates
+            Templates to put into the database
+        update_index
             Flag to indicate whether or not to update the event index after
             writing the new events. Default is True.
         """
@@ -122,29 +182,87 @@ class TemplateBank(EventBank):
         stream: Stream = None,
         client=None,
         download_data_len: float = 600,
+        save_raw: bool = True,
         **kwargs,
-    ):
-        """ Make templates from data or client """
+    ) -> Tribe:
+        """
+        Make templates from data or client based on a given catalog.
+
+        Templates will be put in the database. Requires either a stream or
+        a suitable client with a get_waveforms method.
+
+        Parameters
+        ----------
+        catalog
+            Catalog of events to generate templates from.
+        stream
+            Optional: Stream encompassing the events in the catalog
+        client
+            Optional: Client with at-least a `get_waveforms` method, ideally
+            the client should make the data for the events in catalog
+            available.
+        download_data_len
+            If client is given this is the length of data to download. The
+            raw continuous data will also be saved to disk to allow later
+            processing if save_raw=True
+        save_raw
+            Whether to store raw data on disk as well - defaults to True.
+        kwargs
+            Keyword arguments supported by EQcorrscan's `Tribe.construct`
+            method.
+
+        Returns
+        -------
+        Tribe of templates
+        """
         assert client or stream, "Needs either client or stream"
         if stream is not None:
             tribe = Tribe().construct(
                 method="from_metafile", meta_file=catalog, stream=stream,
                 **kwargs)
             self.put_templates(tribe)
-            return
+            return tribe
         tribe = Tribe()
         for event in catalog:
             # Get raw data and save to disk
-            st = self._get_data_for_event(event, client, download_data_len)
+            st = self._get_data_for_event(
+                event, client, download_data_len, save_raw)
             # Make template add to tribe
             template = Template().construct(
                 method="from_metafile", meta_file=event, stream=st,
                 **kwargs)
             tribe += template
         self.put_templates(tribe)
-        return
+        return tribe
 
-    def _get_data_for_event(self, event, client, download_data_len):
+    def _get_data_for_event(
+        self,
+        event: Event,
+        client,
+        download_data_len: float,
+        save_raw: bool = True,
+    ) -> Stream:
+        """
+
+        Parameters
+        ----------
+        event
+            Event to download data for.
+        client
+            Optional: Client with at-least a `get_waveforms` method, ideally
+            the client should make the data for the events in catalog
+            available.
+        download_data_len
+            If client is given this is the length of data to download. The
+            raw continuous data will also be saved to disk to allow later
+            processing if save_raw=True
+        save_raw
+            Whether to store raw data on disk as well - defaults to True.
+
+        Returns
+        -------
+        Stream as downloaded for the given event.
+        """
         if len(event.picks) == 0:
             Logger.warning("Event has no picks, no template created")
             return Stream()
@@ -154,16 +272,34 @@ class TemplateBank(EventBank):
              p.time - (.45 * download_data_len),
              p.time + (.55 * download_data_len)) for p in event.picks})
         st = client.get_waveforms_bulk(bulk)
-        res_id = str(event.resource_id)
-        info = {"ext": "ms", "event_id": res_id,
-                "event_id_short": res_id.split("/")[-1]}
-        path = _get_path(
-            info, path_struct=self.path_structure,
-            name_struct=self.template_name_structure)["path"]
-        ppath = (Path(self.bank_path) / path).absolute()
-        ppath.parent.mkdir(parents=True, exist_ok=True)
-        st.write(str(ppath), format="MSEED")
+        if save_raw:
+            res_id = str(event.resource_id)
+            info = {"ext": "ms", "event_id": res_id,
+                    "event_id_short": res_id.split("/")[-1]}
+            path = _get_path(
+                info, path_struct=self.path_structure,
+                name_struct=self.template_name_structure)["path"]
+            ppath = (Path(self.bank_path) / path).absolute()
+            ppath.parent.mkdir(parents=True, exist_ok=True)
+            st.write(str(ppath), format="MSEED")
+            Logger.debug("Saved raw data to {0}".format(ppath))
         return st
+
+
+def _test_template_bank(base_path: str) -> TemplateBank:
+    """
+    Generate a test template bank.
+
+    Parameters
+    ----------
+    base_path:
+        The path to the test database.
+
+    Returns
+    -------
+    A test template bank for testing porpoises only.
+    """
+    return TemplateBank(base_path=base_path)
 
 
 if __name__ == "__main__":

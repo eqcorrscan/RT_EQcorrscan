@@ -20,33 +20,41 @@ import threading
 import logging
 
 from obspy.clients.seedlink.easyseedlink import EasySeedLinkClient
-from obspy import Stream
+from obspy import Stream, Trace
 
 
 Logger = logging.getLogger(__name__)
-
-LOGGING_MAP = {
-    'info': logging.INFO, 'debug': logging.DEBUG, 'warning': logging.WARNING,
-    'error': logging.ERROR, 'critical': logging.CRITICAL}
 
 
 class RealTimeClient(EasySeedLinkClient):
     """
     SeedLink client link for Real-Time Matched-Filtering.
+
+    Parameters
+    ----------
+    server_url
+        URL for seedlink server
+    autoconnect
+        Whether to start connection automatically or wait
+    buffer
+        Stream to buffer data into
+    buffer_capacity
+        Length of buffer in seconds. Old data are removed in a LIFO style.
     """
     busy = False
 
-    def __init__(self, server_url, autoconnect=True, buffer=Stream(),
-                 buffer_capacity=600, log_level='warning'):
-        try:
-            logging.basicConfig(
-                level=LOGGING_MAP[log_level],
-                format="%(asctime)s   %(threadName)s\t%(levelname)s \t"
-                       "%(message)s")
-        except KeyError:
-            print("log_level must be in {0}".format(LOGGING_MAP.keys()))
+    def __init__(
+        self,
+        server_url: str,
+        autoconnect: bool = True,
+        buffer: Stream = None,
+        buffer_capacity: float = 600.
+    ) -> None:
         super().__init__(server_url=server_url, autoconnect=autoconnect)
-        self.buffer = buffer
+        if buffer is None:
+            self.buffer = Stream()
+        else:
+            self.buffer = buffer
         self.buffer_capacity = buffer_capacity
         self.threads = []
         Logger.info("Instantiated RealTime client: {0}".format(self))
@@ -74,7 +82,7 @@ class RealTimeClient(EasySeedLinkClient):
         return print_str
 
     @property
-    def buffer_full(self):
+    def buffer_full(self) -> bool:
         if len(self.buffer) == 0:
             return False
         for tr in self.buffer:
@@ -83,14 +91,15 @@ class RealTimeClient(EasySeedLinkClient):
         return True
 
     @property
-    def buffer_length(self):
+    def buffer_length(self) -> float:
         """
         Return the maximum length of the buffer
         """
         return (max([tr.stats.endtime for tr in self.buffer]) -
                 min([tr.stats.starttime for tr in self.buffer]))
 
-    def get_stream(self):
+    def get_stream(self) -> Stream:
+        """ Get a copy of the current data in buffer. """
         return self.buffer.copy()
 
     def _bg_run(self):
@@ -115,10 +124,14 @@ class RealTimeClient(EasySeedLinkClient):
         for thread in self.threads:
             thread.join()
 
-    def on_data(self, trace):
+    def on_data(self, trace: Trace):
         """
         Handle incoming data
-        :param trace:
+
+        Parameters
+        ----------
+        trace
+            New data.
         """
         logging.debug("Packet of {0} samples for {1}".format(
             trace.stats.npts, trace.id))
@@ -134,7 +147,7 @@ class RealTimeClient(EasySeedLinkClient):
         else:
             Logger.debug("Buffer contains {0}".format(self.buffer))
 
-    def on_terminate(self):  # pragma: no cover
+    def on_terminate(self) -> Stream:  # pragma: no cover
         """
         Handle termination gracefully
         """
