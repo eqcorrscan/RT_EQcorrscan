@@ -36,7 +36,7 @@ from bokeh.application.handlers.function import FunctionHandler
 from functools import partial
 
 from obspy import Inventory
-from rt_eqcorrscan import RealTimeTribe
+from rt_eqcorrscan.core.rt_match_filter import RealTimeTribe
 from rt_eqcorrscan.utils.seedlink import RealTimeClient
 
 Logger = logging.getLogger(__name__)
