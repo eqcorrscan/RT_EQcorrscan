@@ -22,7 +22,7 @@ import logging
 
 from concurrent.futures import ProcessPoolExecutor
 
-from obspy import Stream
+from obspy import Stream, UTCDateTime
 
 from rt_eqcorrscan.config.config import read_config
 from rt_eqcorrscan.core.reactor import estimate_region, get_inventory
@@ -51,6 +51,12 @@ def run_real_time_matched_filter(**kwargs):
             "latitude": kwargs.get("latitude", None),
             "longitude": kwargs.get("longitude", None),
             "maxradius": kwargs.get("maxradius", None)}
+    starttime = kwargs.get("starttime", None)
+    endtime = kwargs.get("endtime", None)
+    if starttime is not None:
+        region.update({"starttime": starttime})
+    if endtime is not None:
+        region.update({"endtime": endtime})
     bank = TemplateBank(
         config.database_manager.event_path,
         event_name_structure=config.database_manager.event_name_structure,
@@ -128,6 +134,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config", "-c", type=str, help="Path to configuration file",
         required=False)
+    parser.add_argument(
+        "--starttime", type=str, required=False,
+        help="Start-time as UTCDateTime parable string to collect templates "
+             "from")
+    parser.add_argument(
+        "--endtime", type=str, required=False,
+        help="End-time as UTCDateTime parable string to collect templates "
+             "up to.")
 
     args = parser.parse_args()
     if args.eventid is not None:
@@ -140,6 +154,10 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError(
             "Needs either an event id or a geographic search")
+    if args.starttime is not None:
+        kwargs.update({"starttime": UTCDateTime(args.starttime)})
+    if args.endtime is not None:
+        kwargs.update({"endtime": UTCDateTime(args.endtime)})
 
     kwargs.update({"config_file": args.config})
 

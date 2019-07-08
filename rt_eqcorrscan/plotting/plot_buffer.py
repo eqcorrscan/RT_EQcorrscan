@@ -397,7 +397,7 @@ def define_plot(
                 Logger.debug("No new data for {0}".format(_channel))
                 continue
             new_times = np.arange(
-                previous_timestamps[channel],
+                previous_timestamps[_channel],
                 (_tr.stats.endtime + _tr.stats.delta).datetime,
                 step=dt.timedelta(seconds=_tr.stats.delta))
             _new_data = _tr.slice(
@@ -410,13 +410,13 @@ def define_plot(
                 detections, _channel, datastream=detection_sources)
             new_picks.update({
                 'pick_values': [
-                    [int(trace_plots[i].y_range.start * .9),
-                     int(trace_plots[i].y_range.end * .9)]
+                    [int(trace_plots[_i].y_range.start * .9),
+                     int(trace_plots[_i].y_range.end * .9)]
                     for _ in new_picks['picks']]})
-            detection_sources[channel].stream(
+            detection_sources[_channel].stream(
                 new_data=new_picks,
                 rollover=int(plot_length * _tr.stats.sampling_rate))
-            previous_timestamps.update({_channel: tr.stats.endtime})
+            previous_timestamps.update({_channel: _tr.stats.endtime})
             Logger.debug("New data plotted for {0}".format(_channel))
         now = dt.datetime.utcnow()
         trace_plots[0].x_range.start = now - dt.timedelta(seconds=plot_length)
