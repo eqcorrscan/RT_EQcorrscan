@@ -21,6 +21,7 @@ import logging
 import os
 
 from pathlib import Path
+from collections import Counter
 
 from typing import Optional, Union
 
@@ -284,6 +285,66 @@ class TemplateBank(EventBank):
             st.write(str(ppath), format="MSEED")
             Logger.debug("Saved raw data to {0}".format(ppath))
         return st
+
+
+def check_tribe_quality(
+    tribe: Tribe,
+    seed_ids: set = None,
+    min_stations: int = None,
+) -> Tribe:
+    """
+    Check that templates in the tribe have channels all the same length.
+
+    Parameters
+    ----------
+    tribe
+        A Tribe to check the quality of.
+    seed_ids
+        seed-ids of channels to be included in the templates - if None,
+        then all channels will be included
+    min_stations
+        Minimum number of stations for a template to be included.
+
+    Returns
+    -------
+    A filtered tribe.
+    """
+    _templates = []
+    # Perform length check
+    for template in tribe:
+        counted_lengths = Counter([tr.stats.npts for tr in template.st])
+        if len(counted_lengths) > 1:
+            Logger.warning(
+                "Multiple lengths found in template, using most common"
+                " ({0})".format(counted_lengths.most_common(1)[0][0]))
+            _template = template.copy()
+            _template.st = Stream()
+            for tr in template.st:
+                if tr.stats.npts == counted_lengths.most_common(1)[0][0]:
+                    _template.st += tr
+            _templates.append(_template)
+        else:
+            _templates.append(template)
+    templates = _templates
+
+    # Perform station check
+    if seed_ids is not None:
+        _templates = []
+        for template in templates:
+            _template = template.copy()
+            _st = Stream()
+            for tr in _template.st:
+                if tr.id in seed_ids:
+                    _st += tr
+            _template.st = _st
+            if min_stations is not None:
+                n_sta = len({tr.stats.station for tr in _template.st})
+                if n_sta < min_stations:
+                    continue
+            _templates.append(_template)
+        templates = _templates
+
+    return Tribe(templates)
 
 
 def _test_template_bank(base_path: str) -> TemplateBank:

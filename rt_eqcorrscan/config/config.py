@@ -140,6 +140,7 @@ class DatabaseManagerConfig(_ConfigAttribDict):
         "event_name_structure": "{event_id_end}",
         "path_structure": "{year}/{month}/{event_id_end}",
         "event_ext": ".xml",
+        "min_stations": 5,
     }
     readonly = []
 

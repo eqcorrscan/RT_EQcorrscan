@@ -24,3 +24,4 @@ database manager:
   event format: "QUAKEML"
   path structure: "{year}/{month}/{event_id_short}"
   event ext: ".xml"
+  min stations: 5

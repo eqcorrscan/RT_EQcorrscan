@@ -22,11 +22,12 @@ import logging
 
 from concurrent.futures import ProcessPoolExecutor
 
-from obspy import Stream, UTCDateTime
+from obspy import UTCDateTime
 
 from rt_eqcorrscan.config.config import read_config
 from rt_eqcorrscan.core.reactor import estimate_region, get_inventory
-from rt_eqcorrscan.core.database_manager import TemplateBank
+from rt_eqcorrscan.core.database_manager import (
+    TemplateBank, check_tribe_quality)
 from rt_eqcorrscan.core.rt_match_filter import RealTimeTribe
 
 
@@ -70,8 +71,10 @@ def run_real_time_matched_filter(**kwargs):
 
     Logger.info("Read in tribe of {0} templates".format(len(tribe)))
 
+    _detection_starttime = UTCDateTime.now()
     inventory = get_inventory(
         client, tribe, triggering_event=triggering_event,
+        location=region, starttime=_detection_starttime,
         max_distance=1000, n_stations=10)
 
     used_channels = {
@@ -79,17 +82,12 @@ def run_real_time_matched_filter(**kwargs):
             net=net.code, sta=sta.code, loc=chan.location_code, chan=chan.code)
         for net in inventory for sta in net for chan in sta}
 
-    _templates = []
-    for template in tribe:
-        _st = Stream()
-        for tr in template.st:
-            if tr.id in used_channels:
-                _st += tr
-        template.st = _st
-        t_stations = {tr.stats.station for tr in template.st}
-        if len(t_stations) >= 5:
-            _templates.append(template)
-    tribe.templates = _templates
+    tribe = check_tribe_quality(
+        tribe=tribe, seed_ids=used_channels,
+        min_stations=config.database_manager.min_stations)
+
+    Logger.info("After some QC there are {0} templates in the Tribe".format(
+        len(tribe)))
 
     for t in tribe:
         t.process_length = config.rt_match_filter.buffer_capacity

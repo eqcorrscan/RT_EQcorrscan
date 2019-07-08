@@ -281,8 +281,7 @@ def get_inventory(
     for net in inv:
         for sta in net:
             dist = locations2degrees(
-                lat1=origin.latitude, long1=origin.longitude,
-                lat2=sta.latitude, long2=sta.longitude)
+                lat1=lat, long1=lon, lat2=sta.latitude, long2=sta.longitude)
             sta_dist.append((sta.code, dist, station_count[sta.code]))
     sta_dist.sort(key=lambda _: (-_[2], _[1]))
     inv_out = inv.select(station=sta_dist[0][0])
