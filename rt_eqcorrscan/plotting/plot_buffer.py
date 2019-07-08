@@ -1,20 +1,10 @@
 """
 Plotting for real-time seismic data.
 
-    This file is part of rt_eqcorrscan.
-
-    rt_eqcorrscan is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    rt_eqcorrscan is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with rt_eqcorrscan.  If not, see <https://www.gnu.org/licenses/>.
+Author
+    Calum J Chamberlain
+License
+    GPL v3.0
 """
 import numpy as np
 import logging
@@ -36,8 +26,8 @@ from bokeh.application.handlers.function import FunctionHandler
 from functools import partial
 
 from obspy import Inventory
-from rt_eqcorrscan.core.rt_match_filter import RealTimeTribe
-from rt_eqcorrscan.utils.seedlink import RealTimeClient
+from rt_eqcorrscan.rt_match_filter import RealTimeTribe
+from rt_eqcorrscan.streaming.seedlink import RealTimeClient
 
 Logger = logging.getLogger(__name__)
 

@@ -1,4 +1,0 @@
-EQcorrscan-tutorials
-====================
-
-Coming soon.

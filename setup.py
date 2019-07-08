@@ -20,7 +20,7 @@ Real-time EQcorrscan: Real-time wrappers for EQcorrscan's earthquake detection
 methods.
 '''
 
-scriptfiles = glob.glob("rt_eqcorrscan/scripts/*.py")
+scriptfiles = glob.glob("scripts/*.py")
 
 
 def setup_package():
@@ -76,8 +76,9 @@ def setup_package():
         pass
     else:
         setup_args['packages'] = [
-            'rt_eqcorrscan', 'rt_eqcorrscan.utils', 'rt_eqcorrscan.core',
-            'rt_eqcorrscan.plotting', 'rt_eqcorrscan.config']
+            'rt_eqcorrscan', 'rt_eqcorrscan.config', 'rt_eqcorrscan.database',
+            'rt_eqcorrscan.event_trigger', 'rt_eqcorrscan.plotting',
+            'rt_eqcorrscan.reactor', 'rt_eqcorrscan.streaming']
     if os.path.isdir("build"):
         shutil.rmtree("build")
     setup(**setup_args)

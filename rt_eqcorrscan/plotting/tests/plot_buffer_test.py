@@ -16,7 +16,7 @@ from obspy.clients.fdsn import Client
 
 from eqcorrscan.core.match_filter import Tribe, Detection, Template
 
-from rt_eqcorrscan.utils.seedlink import RealTimeClient
+from rt_eqcorrscan.streaming.seedlink import RealTimeClient
 from rt_eqcorrscan.plotting.plot_buffer import EQcorrscanPlot
 
 
