@@ -48,6 +48,8 @@ class RealTimeTribe(Tribe):
     exclude_channels
         Channels to exclude from plotting
     """
+    _running = False
+
     def __init__(
         self,
         tribe: Tribe = None,
@@ -65,7 +67,6 @@ class RealTimeTribe(Tribe):
         self.buffer = Stream()
         self.inventory = inventory
         self.party = Party()
-        self.busy = True
         self.detect_interval = detect_interval
         self.client = RealTimeClient(
             server_url=server_url, autoconnect=True, buffer=self.buffer,
@@ -89,7 +90,7 @@ class RealTimeTribe(Tribe):
         >>> print(tribe) # doctest: +NORMALIZE_WHITESPACE
         Real-Time Tribe of 1 templates on client:
         Seed-link client at geofon.gfz-potsdam.de, status: Stopped, \
-        buffer capacity: 600s
+        buffer capacity: 600.0s
             Current Buffer:
         0 Trace(s) in Stream:
         <BLANKLINE>
@@ -105,6 +106,8 @@ class RealTimeTribe(Tribe):
     @property
     def used_stations(self) -> set:
         """ Channel-ids in the inventory. """
+        if self.inventory is None:
+            return set()
         return set("{net}.{sta}.{loc}.{chan}".format(
             net=net.code, sta=sta.code, loc=chan.location_code, chan=chan.code)
                    for net in self.inventory for sta in net for chan in sta)
@@ -112,7 +115,10 @@ class RealTimeTribe(Tribe):
     @property
     def expected_channels(self) -> set:
         """ ids of channels to be used for detection. """
-        return self.template_channels.intersection(self.used_stations)
+        if self.inventory is not None:
+            return self.template_channels.intersection(self.used_stations)
+        else:
+            return self.template_channels
 
     def _plot(self) -> None:
         """ Plot the data as it comes in. """
@@ -142,6 +148,7 @@ class RealTimeTribe(Tribe):
         if self.plotter is not None:
             self.plotter.background_stop()
         self.client.background_stop()
+        self._running = False
 
     def run(
         self,
@@ -185,7 +192,7 @@ class RealTimeTribe(Tribe):
         `keep_detections` threshold.
         """
         run_start = UTCDateTime.now()
-        running = True
+        self._running = True
 
         last_possible_detection = UTCDateTime(0)
         if not os.path.isdir(detect_directory):
@@ -210,7 +217,7 @@ class RealTimeTribe(Tribe):
             time.sleep(self.client.buffer_capacity -
                        self.client.buffer_length + 5)
         try:
-            while running:
+            while self._running:
                 start_time = UTCDateTime.now()
                 st = self.client.get_stream()
                 st = st.merge()
@@ -279,7 +286,7 @@ class RealTimeTribe(Tribe):
                     self.detect_interval - run_time))
                 time.sleep(self.detect_interval - run_time)
                 if max_run_length and UTCDateTime.now() > run_start + max_run_length:
-                    running = False
+                    self.stop()
         finally:
             self.stop()
         return self.party

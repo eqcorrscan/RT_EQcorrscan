@@ -24,11 +24,10 @@ from concurrent.futures import ProcessPoolExecutor
 
 from obspy import UTCDateTime
 
-from rt_eqcorrscan.config.config import read_config
-from rt_eqcorrscan.core.reactor import estimate_region, get_inventory
-from rt_eqcorrscan.core.database_manager import (
-    TemplateBank, check_tribe_quality)
-from rt_eqcorrscan.core.rt_match_filter import RealTimeTribe
+from rt_eqcorrscan.config import read_config
+from rt_eqcorrscan.reactor import estimate_region, get_inventory
+from rt_eqcorrscan.database import TemplateBank, check_tribe_quality
+from rt_eqcorrscan.rt_match_filter import RealTimeTribe
 
 
 Logger = logging.getLogger("real-time-mf")

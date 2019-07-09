@@ -58,14 +58,14 @@ class RealTimeClient(EasySeedLinkClient):
         >>> client = RealTimeClient(server_url="geofon.gfz-potsdam.de")
         >>> print(client) # doctest: +NORMALIZE_WHITESPACE
         Seed-link client at geofon.gfz-potsdam.de, status: Stopped, buffer \
-        capacity: 600s
+        capacity: 600.0s
             Current Buffer:
         0 Trace(s) in Stream:
         <BLANKLINE>
         """
         status_map = {True: "Running", False: "Stopped"}
         print_str = (
-            "Seed-link client at {0}, status: {1}, buffer capacity: {2}s\n"
+            "Seed-link client at {0}, status: {1}, buffer capacity: {2:.1f}s\n"
             "\tCurrent Buffer:\n{3}".format(
                 self.server_hostname, status_map[self.busy],
                 self.buffer_capacity, self.buffer))
@@ -85,6 +85,8 @@ class RealTimeClient(EasySeedLinkClient):
         """
         Return the maximum length of the buffer
         """
+        if len(self.buffer) == 0:
+            return 0
         return (max([tr.stats.endtime for tr in self.buffer]) -
                 min([tr.stats.starttime for tr in self.buffer]))
 

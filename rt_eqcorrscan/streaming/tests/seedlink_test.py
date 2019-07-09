@@ -7,7 +7,7 @@ import time
 
 from obspy import Stream
 
-from rt_eqcorrscan.streaming.seedlink import RealTimeClient
+from rt_eqcorrscan.streaming import RealTimeClient
 
 
 class SeedLinkTest(unittest.TestCase):
@@ -28,10 +28,7 @@ class SeedLinkTest(unittest.TestCase):
         self.rt_client.buffer = Stream()
         self.rt_client.background_run()
         self.assertFalse(self.rt_client.buffer_full)
-        time.sleep(4)
-        print(self.rt_client.buffer)
-        self.assertFalse(self.rt_client.buffer_full)
-        time.sleep(8)
+        time.sleep(12)
         self.rt_client.background_stop()
         self.assertTrue(self.rt_client.buffer_full)
 

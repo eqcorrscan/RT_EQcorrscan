@@ -5,7 +5,9 @@ Test for the configuration of RT_EQcorrscan
 import unittest
 import os
 
-from rt_eqcorrscan.config.config import Config, read_config
+from obspy.clients.fdsn import Client
+
+from rt_eqcorrscan.config.config import Config, read_config, PlotConfig
 
 
 class TestConfig(unittest.TestCase):
@@ -50,6 +52,49 @@ class TestConfig(unittest.TestCase):
 
         config_back = read_config(tmp_file)
         self.assertEqual(config, config_back)
+
+    def test_logging_setup(self):
+        """ Just check that no error is raised """
+        config = Config()
+        config.setup_logging()
+
+    def test_get_client(self):
+        config = read_config(
+            os.path.join(self.test_path, "default_config.yml"))
+        client = config.rt_match_filter.get_client()
+        self.assertIsInstance(client, Client)
+        config.rt_match_filter.client = "WaLrOuS"
+        client = config.rt_match_filter.get_client()
+        self.assertEqual(client, None)
+        config.rt_match_filter.client_type = "aLbATrOsS"
+        client = config.rt_match_filter.get_client()
+        self.assertEqual(client, None)
+
+    def test_bad_init(self):
+        with self.assertRaises(NotImplementedError):
+            Config(wilf="bob")
+
+    def test_init_with_dict(self):
+        config = Config(plot={"walrous": True})
+        self.assertEqual(config.plot.walrous, True)
+        self.assertEqual(config.plot.plot_length, 600.)
+
+    def test_init_with_object(self):
+        plot = PlotConfig(walrous=True, plot_length=500.)
+        config = Config(plot=plot)
+        self.assertEqual(config.plot.walrous, True)
+        self.assertEqual(config.plot.plot_length, 500.)
+
+    def test_equality(self):
+        config = Config()
+        self.assertEqual(config, config)
+        self.assertNotEqual(config, "walrous")
+        altered_config = Config(plot={"plot_length": 500.})
+        self.assertNotEqual(config, altered_config)
+
+        plot = PlotConfig()
+        plot_extras = PlotConfig(animal="albatross")
+        self.assertNotEqual(plot, plot_extras)
 
     @classmethod
     def tearDownClass(cls):

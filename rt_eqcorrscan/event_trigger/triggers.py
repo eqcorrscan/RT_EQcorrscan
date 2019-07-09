@@ -80,8 +80,8 @@ def magnitude_rate_trigger_func(
                 if _event not in trigger_events:
                     trigger_events.events.append(_event)
     if len(trigger_events) > 0:
-        return trigger_events
-    return []
+        return Catalog(trigger_events)
+    return Catalog()
 
 
 def inter_event_distance(
@@ -120,9 +120,10 @@ def average_rate(catalog: Catalog) -> float:
     """
     if len(catalog) <= 1:
         return 0.
-    event_times = [event_time(e) for e in catalog]
-    rates = [event_times[i] - event_times[i - 1]
-             for i in range(len(event_times) - 1)]
+    event_times = sorted([event_time(e) for e in catalog])
+    rates = [
+        86400. / (event_times[i + 1] - event_times[i])
+        for i in range(len(event_times) - 1)]
     return sum(rates) / len(rates)
 
 

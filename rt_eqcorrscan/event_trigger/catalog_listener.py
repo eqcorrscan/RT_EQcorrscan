@@ -112,6 +112,7 @@ def _qc_event(
     return event, True
 
 
+# TODO: back-fill method - cope with updates to events.
 class CatalogListener(_Listener):
     """
     Client query class for obspy clients with a `get_events` service.
@@ -201,7 +202,7 @@ class CatalogListener(_Listener):
             done **before** counting the number of stations.
         filter_kwargs:
             If the `filter_func` has changed then this should be the
-            additional kwargs for the user-defined filteR_func.
+            additional kwargs for the user-defined filter_func.
         """
         if not self.busy:
             self.busy = True

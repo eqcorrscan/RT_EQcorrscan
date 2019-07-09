@@ -2,18 +2,14 @@
 branch = True
 source = rt_eqcorrscan
 omit =
-  rt_eqcorrscan/__init__.py
-  rt_eqcorrscan/core/__init__.py
-  rt_eqcorrscan/utils/__init__.py
-  rt_eqcorrscan/core/tests/*.py
-  rt_eqcorrscan/utils/tests/*.py
   rt_eqcorrscan/examples/*.py
   rt_eqcorrscan/plotting/*.py
   rt_eqcorrscan/plotting/tests/*.py
+  rt_eqcorrscan/tests/*.py
+  rt_eqcorrscan/*/tests/*.py
 [report]
 exclude_lines =
    pragma: no cover
-   if self\.debug
    raise AssertionError
    raise NotImplementedError
    if __name__ == .__main__.:

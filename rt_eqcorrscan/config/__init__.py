@@ -9,4 +9,4 @@ License
 
 from .config import (
     ReactorConfig, RTMatchFilterConfig, DatabaseManagerConfig, PlotConfig,
-    Config)
+    Config, read_config)

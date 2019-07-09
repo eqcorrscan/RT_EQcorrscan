@@ -50,6 +50,7 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.todo",
     "sphinx.ext.viewcode",
+    "sphinx.ext.napoleon",
     "sphinx_autodoc_typehints",
     "numpydoc",
 ]

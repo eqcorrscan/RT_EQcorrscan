@@ -32,9 +32,9 @@ class _ConfigAttribDict(AttribDict):
             for key, value in self.__dict__.items()}
 
     def __eq__(self, other):
+        if set(self.__dict__.keys()) != set(other.__dict__.keys()):
+            return False
         for key in self.__dict__.keys():
-            if not hasattr(other, key):
-                return False
             if self[key] != other[key]:
                 return False
         return True
@@ -157,7 +157,7 @@ class Config(object):
     log_formatter
         Any parsable string formatter for logging.basicConfig
     rt_match_filter
-        Config values for real-time matchec-filtering
+        Config values for real-time matched-filtering
     reactor
         Config values for the Reactor
     plot
@@ -167,16 +167,17 @@ class Config(object):
     """
     log_level = "INFO"
     log_formatter = "%(asctime)s\t%(name)s\t%(levelname)s\t%(message)s"
-    rt_match_filter = RTMatchFilterConfig()
-    reactor = ReactorConfig()
-    plot = PlotConfig()
-    database_manager = DatabaseManagerConfig()
 
     def __init__(self, **kwargs):
+        self.rt_match_filter = RTMatchFilterConfig()
+        self.reactor = ReactorConfig()
+        self.plot = PlotConfig()
+        self.database_manager = DatabaseManagerConfig()
+
         for key, value in kwargs.items():
             if key not in KEY_MAPPER.keys():
-                raise NotImplementedError(
-                    "Unsupported argument type: {0}".format(key))
+                raise NotImplementedError("Unsupported argument "
+                                          "type: {0}".format(key))
             if isinstance(value, dict):
                 self.__dict__[key] = KEY_MAPPER[key](value)
             else:
@@ -184,15 +185,17 @@ class Config(object):
                 self.__dict__[key] = value
 
     def __repr__(self):
-        return ("Config(rt_match_filter=..., reactor=..., plot=..., "
-                "database_manager=...)")
+        return ("Config(\n\trt_match_filter={0},\n\treactor={1},\n\tplot={2},"
+                "\n\tdatabase_manager={3}\n)".format(
+                    self.rt_match_filter.__repr__(), self.reactor.__repr__(),
+                    self.plot.__repr__(), self.database_manager.__repr__()))
 
     def __eq__(self, other):
         if not isinstance(other, Config):
             return False
+        if set(self.__dict__.keys()) != set(other.__dict__.keys()):
+            return False
         for key in self.__dict__.keys():
-            if not hasattr(other, key):
-                return False
             if not self.__dict__[key] == other.__dict__[key]:
                 return False
         return True

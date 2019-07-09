@@ -13,12 +13,17 @@ import os
 from pathlib import Path
 from collections import Counter
 
-from typing import Optional, Union
+from typing import Optional, Union, Callable, Iterable
+from concurrent.futures import Executor
+from functools import partial
 
 from obsplus import EventBank
-from obsplus.constants import EVENT_NAME_STRUCTURE, get_events_parameters
+from obsplus.constants import (
+    EVENT_NAME_STRUCTURE, EVENT_PATH_STRUCTURE, get_events_parameters)
 from obsplus.utils import compose_docstring
-from obsplus.bank.utils import _get_path
+from obsplus.bank.utils import (
+    _get_path, _get_event_origin_time, _get_time_values, _summarize_event,
+    EVENT_EXT)
 
 from obspy import Catalog, Stream
 from obspy.core.event import Event
@@ -26,6 +31,8 @@ from obspy.core.event import Event
 from eqcorrscan.core.match_filter import Tribe, read_template, Template
 
 Logger = logging.getLogger(__name__)
+
+TEMPLATE_EXT = ".tgz"
 
 
 def _lazy_template_read(path) -> Template:
@@ -49,6 +56,107 @@ def _lazy_template_read(path) -> Template:
     except Exception as e:
         Logger.error(e)
         return None
+
+
+def _summarize_template(
+    template: Template,
+    path: Optional[str] = None,
+    name: Optional[str] = None,
+    path_struct: Optional[str] = None,
+    name_struct: Optional[str] = None,
+) -> dict:
+    """
+    Function to extract info from templates for indexing.
+
+    Parameters
+    ----------
+    template
+        The template object
+    path
+        Other Parameters to the file
+    name
+        Name of the file
+    path_struct
+        directory structure to create
+    name_struct
+    """
+    res_id = str(template.event.resource_id)
+    out = {
+        "ext": TEMPLATE_EXT, "event_id": res_id, "event_id_short": res_id[-5:],
+        "event_id_end": res_id.split('/')[-1]}
+    t1 = _get_event_origin_time(template.event)
+    out.update(_get_time_values(t1))
+    path_struct = path_struct or EVENT_PATH_STRUCTURE
+    name_struct = name_struct or EVENT_NAME_STRUCTURE
+
+    out.update(_get_path(out, path, name, path_struct, name_struct))
+    return out
+
+
+class _Result(object):
+    """ Thin imitation of concurrent.futures.Future """
+    def __init__(self, result):
+        self._result = result
+
+    def __repr__(self):
+        return "_Result({0})".format(self._result)
+
+    def result(self):
+        return self._result
+
+
+class _SerialExecutor(Executor):
+    """
+    Simple interface to mirror concurrent.futures.Executor in serial.
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def map(
+        self,
+        fn: Callable,
+        *iterables: Iterable,
+        timeout=None,
+        chunk_size=1,
+    ):
+        """
+        Map iterables to a function
+
+        Parameters
+        ----------
+        fn
+            callable
+        iterables
+            iterable of arguments for `fn`
+        timeout
+            Throw-away variable
+        chunk_size
+            Throw-away variable
+
+        Returns
+        -------
+        The result of mapping `fn` across `*iterables`
+        """
+        return map(fn, *iterables)
+
+    def submit(self, fn: Callable, *args, **kwargs) -> _Result:
+        """
+        Run a single function.
+
+        Parameters
+        ----------
+        fn
+            Function to apply
+        args
+            Arguments for `fn`
+        kwargs
+            Key word arguments for `fn`
+
+        Returns
+        -------
+        result with the result in the .result attribute
+        """
+        return _Result(fn(*args, **kwargs))
 
 
 class TemplateBank(EventBank):
@@ -91,6 +199,12 @@ class TemplateBank(EventBank):
         The number of queries to store. Avoids having to read the index of
         the database multiple times for queries involving the same start and
         end times.
+
+    Notes
+    -----
+        Supports parallel execution of most methods using `concurrent.futures`
+        executors. Set the `TemplateBank.executor` attribute to your required
+        executor.
     """
     def __init__(
         self,
@@ -102,6 +216,7 @@ class TemplateBank(EventBank):
         event_format="quakeml",
         event_ext=".xml",
         template_ext=".tgz",
+        executor=None
     ):
         """Initialize the bank."""
         super().__init__(
@@ -113,6 +228,7 @@ class TemplateBank(EventBank):
         wns = (template_name_structure or self._name_structure or
                EVENT_NAME_STRUCTURE)
         self.template_name_structure = wns
+        self.executor = executor or _SerialExecutor()
 
     @compose_docstring(get_events_params=get_events_parameters)
     def get_templates(self, **kwargs) -> Tribe:
@@ -124,16 +240,11 @@ class TemplateBank(EventBank):
 
         {get_event_params}
         """
-        executor = kwargs.pop("executor", None)
         paths = self.bank_path + self.read_index(
             columns=["path", "latitude", "longitude"], **kwargs).path
         paths = [path.replace(self.ext, self.template_ext) for path in paths]
-        if executor:
-            future = executor.map(_lazy_template_read, paths)
-            return Tribe([t for t in future if t is not None])
-        else:
-            templates = [_lazy_template_read(path) for path in paths]
-            return Tribe([t for t in templates if t is not None])
+        future = self.executor.map(_lazy_template_read, paths)
+        return Tribe([t for t in future if t is not None])
 
     def put_templates(
         self,
@@ -155,17 +266,12 @@ class TemplateBank(EventBank):
             assert(isinstance(t, Template))
         catalog = Catalog([t.event for t in templates])
         self.put_events(catalog, update_index=update_index)
-        for template in templates:
-            # Get path for template and write it
-            res_id = str(template.event.resource_id)
-            info = {"ext": self.template_ext, "event_id": res_id,
-                    "event_id_short": res_id.split("/")[-1]}
-            path = _get_path(
-                info, path_struct=self.path_structure,
-                name_struct=self.template_name_structure)["path"]
-            ppath = (Path(self.bank_path) / path).absolute()
-            ppath.parent.mkdir(parents=True, exist_ok=True)
-            template.write(str(ppath))
+        inner_put_template = partial(
+            _put_template, template_ext=self.template_ext,
+            path_structure=self.path_structure,
+            template_name_structure=self.template_name_structure,
+            bank_path=self.bank_path)
+        self.executor.map(inner_put_template, templates)
 
     def make_templates(
         self,
@@ -199,7 +305,7 @@ class TemplateBank(EventBank):
         save_raw
             Whether to store raw data on disk as well - defaults to True.
         kwargs
-            Keyword arguments supported by EQcorrscan's `Tribe.construct`
+            Keyword arguments supported by EQcorrscan's `Template.construct`
             method.
 
         Returns
@@ -211,70 +317,114 @@ class TemplateBank(EventBank):
             tribe = Tribe().construct(
                 method="from_metafile", meta_file=catalog, stream=stream,
                 **kwargs)
-            self.put_templates(tribe)
-            return tribe
-        tribe = Tribe()
-        for event in catalog:
-            # Get raw data and save to disk
-            st = self._get_data_for_event(
-                event, client, download_data_len, save_raw)
-            # Make template add to tribe
-            template = Template().construct(
-                method="from_metafile", meta_file=event, stream=st,
-                **kwargs)
-            tribe += template
+        else:
+            inner_download_and_make_template = partial(
+                _download_and_make_template, client=client,
+                download_data_len=download_data_len,
+                path_structure=self.path_structure,
+                bank_path=self.bank_path,
+                template_name_structure=self.template_name_structure,
+                save_raw=save_raw, **kwargs)
+            template_iterable = self.executor.map(
+                inner_download_and_make_template, catalog)
+            tribe = Tribe([t for t in template_iterable])
         self.put_templates(tribe)
         return tribe
 
-    def _get_data_for_event(
-        self,
-        event: Event,
-        client,
-        download_data_len: float,
-        save_raw: bool = True,
-    ) -> Stream:
-        """
 
-        Parameters
-        ----------
-        event
-            Event to download data for.
-        client
-            Optional: Client with at-least a `get_waveforms` method, ideally
-            the client should make the data for the events in catalog
-            available.
-        download_data_len
-            If client is given this is the length of data to download. The
-            raw continuous data will also be saved to disk to allow later
-            processing if save_raw=True
-        save_raw
-            Whether to store raw data on disk as well - defaults to True.
+def _put_template(
+    template: Template,
+    path_structure: str,
+    template_name_structure: str,
+    bank_path: str,
+) -> None:
+    """ Get path for template and write it. """
+    path = _summarize_template(
+        template=template, path_struct=path_structure,
+        name_struct=template_name_structure)["path"]
+    ppath = (Path(bank_path) / path).absolute()
+    ppath.parent.mkdir(parents=True, exist_ok=True)
+    template.write(str(ppath))
+    return
 
-        Returns
-        -------
-        Stream as downloaded for the given event.
-        """
-        if len(event.picks) == 0:
-            Logger.warning("Event has no picks, no template created")
-            return Stream()
-        bulk = list({
-            (p.waveform_id.network_code, p.waveform_id.station_code,
-             p.waveform_id.location_code, p.waveforms_id.channel_code,
-             p.time - (.45 * download_data_len),
-             p.time + (.55 * download_data_len)) for p in event.picks})
-        st = client.get_waveforms_bulk(bulk)
-        if save_raw:
-            res_id = str(event.resource_id)
-            info = {"ext": "ms", "event_id": res_id,
-                    "event_id_short": res_id.split("/")[-1]}
-            path = _get_path(
-                info, path_struct=self.path_structure,
-                name_struct=self.template_name_structure)["path"]
-            ppath = (Path(self.bank_path) / path).absolute()
-            ppath.parent.mkdir(parents=True, exist_ok=True)
-            st.write(str(ppath), format="MSEED")
-            Logger.debug("Saved raw data to {0}".format(ppath))
-        return st
+
+def _download_and_make_template(
+    event: Event,
+    client,
+    download_data_len: float,
+    path_structure: str,
+    bank_path: str,
+    template_name_structure: str,
+    save_raw: bool,
+    **kwargs,
+) -> Template:
+    """ Make the template using downloaded data"""
+    st = _get_data_for_event(
+        event=event, client=client,
+        download_data_len=download_data_len, path_structure=path_structure,
+        bank_path=bank_path, template_name_structure=template_name_structure,
+        save_raw=save_raw)
+    return Template().construct(
+        method="from_meta_file", meta_file=event, stream=st,
+        name=event.resource_id.id.split('/')[-1], **kwargs)
+
+
+def _get_data_for_event(
+    event: Event,
+    client,
+    download_data_len: float,
+    path_structure: str,
+    bank_path: str,
+    template_name_structure: str,
+    save_raw: bool = True,
+) -> Stream:
+    """
+    Get data for a given event.
+
+    Parameters
+    ----------
+    event
+        Event to download data for.
+    client
+        Optional: Client with at-least a `get_waveforms` method, ideally
+        the client should make the data for the events in catalog
+        available.
+    download_data_len
+        If client is given this is the length of data to download. The
+        raw continuous data will also be saved to disk to allow later
+        processing if save_raw=True
+    path_structure
+        Bank path structure for writing data
+    bank_path
+        Location of bank to write data to
+    template_name_structure
+        Naming structure for template files.
+    save_raw
+        Whether to store raw data on disk as well - defaults to True.
+
+    Returns
+    -------
+    Stream as downloaded for the given event.
+    """
+    if len(event.picks) == 0:
+        Logger.warning("Event has no picks, no template created")
+        return Stream()
+    bulk = [
+        (p.waveform_id.network_code, p.waveform_id.station_code,
+         p.waveform_id.location_code, p.waveform_id.channel_code,
+         p.time - (.45 * download_data_len),
+         p.time + (.55 * download_data_len)) for p in event.picks]
+    st = client.get_waveforms_bulk(bulk)
+    if save_raw:
+        path = _summarize_event(
+            event=event, path_struct=path_structure,
+            name_struct=template_name_structure)["path"]
+        path.replace(EVENT_EXT, ".ms")
+        ppath = (Path(bank_path) / path).absolute()
+        ppath.parent.mkdir(parents=True, exist_ok=True)
+        st.write(str(ppath), format="MSEED")
+        Logger.debug("Saved raw data to {0}".format(ppath))
+    return st
 
 
 def check_tribe_quality(
@@ -335,22 +485,6 @@ def check_tribe_quality(
         templates = _templates
 
     return Tribe(templates)
-
-
-def _test_template_bank(base_path: str) -> TemplateBank:
-    """
-    Generate a test template bank.
-
-    Parameters
-    ----------
-    base_path:
-        The path to the test database.
-
-    Returns
-    -------
-    A test template bank for testing porpoises only.
-    """
-    return TemplateBank(base_path=base_path)
 
 
 if __name__ == "__main__":
