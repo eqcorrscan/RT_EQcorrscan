@@ -10,7 +10,7 @@ from obspy import Catalog
 from obspy.clients.fdsn import Client
 
 from rt_eqcorrscan.event_trigger.catalog_listener import CatalogListener
-from rt_eqcorrscan.database.database_manager import _test_template_bank
+from rt_eqcorrscan.database import TemplateBank
 
 
 class ListeningTest(unittest.TestCase):
@@ -21,7 +21,7 @@ class ListeningTest(unittest.TestCase):
     def test_listener(self):
         listener = CatalogListener(
             client=Client("GEONET"), catalog=Catalog(),
-            interval=20, template_bank=_test_template_bank(self.test_path),
+            interval=20, template_bank=TemplateBank(base_path=self.test_path),
             catalog_lookup_kwargs=dict(
                 latitude=-42.0, longitude=175.2, maxradius=3.), keep=600,
         )

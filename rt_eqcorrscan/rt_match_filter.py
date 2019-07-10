@@ -49,6 +49,7 @@ class RealTimeTribe(Tribe):
         Channels to exclude from plotting
     """
     _running = False
+    client = None  # Will be overloaded on init
 
     def __init__(
         self,
@@ -68,9 +69,8 @@ class RealTimeTribe(Tribe):
         self.inventory = inventory
         self.party = Party()
         self.detect_interval = detect_interval
-        self.client = RealTimeClient(
-            server_url=server_url, autoconnect=True, buffer=self.buffer,
-            buffer_capacity=buffer_capacity)
+        self.set_up_client(
+            server_url=server_url, buffer_capacity=buffer_capacity)
         self.plot = plot
         self.plot_length = plot_options.get("plot_length", 300)
         self.plot_options = {
@@ -143,6 +143,12 @@ class RealTimeTribe(Tribe):
             detections=self.detections, exclude_channels=self.exclude_channels)
         self.plotter.background_run()
 
+    def set_up_client(self, server_url: str, buffer_capacity: float) -> None:
+        """ Set-up the streaming client. """
+        self.client = RealTimeClient(
+            server_url=server_url, autoconnect=True, buffer=self.buffer,
+            buffer_capacity=buffer_capacity)
+
     def stop(self) -> None:
         """ Stop the real-time system. """
         if self.plotter is not None:
@@ -197,7 +203,7 @@ class RealTimeTribe(Tribe):
         last_possible_detection = UTCDateTime(0)
         if not os.path.isdir(detect_directory):
             os.makedirs(detect_directory)
-        if not self.client.busy:
+        if not self.client.streaming_started:
             for tr_id in self.expected_channels:
                 self.client.select_stream(
                     net=tr_id.split('.')[0], station=tr_id.split('.')[1],

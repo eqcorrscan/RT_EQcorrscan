@@ -327,7 +327,7 @@ class TemplateBank(EventBank):
                 save_raw=save_raw, **kwargs)
             template_iterable = self.executor.map(
                 inner_download_and_make_template, catalog)
-            tribe = Tribe([t for t in template_iterable])
+            tribe = Tribe([t for t in template_iterable if t is not None])
         self.put_templates(tribe)
         return tribe
 
@@ -364,9 +364,15 @@ def _download_and_make_template(
         download_data_len=download_data_len, path_structure=path_structure,
         bank_path=bank_path, template_name_structure=template_name_structure,
         save_raw=save_raw)
-    return Template().construct(
-        method="from_meta_file", meta_file=event, stream=st,
-        name=event.resource_id.id.split('/')[-1], **kwargs)
+    tribe = Tribe().construct(
+        method="from_meta_file", meta_file=Catalog(event), stream=st, **kwargs)
+    try:
+        template = tribe[0]
+    except IndexError as e:
+        Logger.error(e)
+        return None
+    template.name = event.resource_id.id.split('/')[-1]
+    return template
 
 
 def _get_data_for_event(
@@ -414,7 +420,15 @@ def _get_data_for_event(
          p.waveform_id.location_code, p.waveform_id.channel_code,
          p.time - (.45 * download_data_len),
          p.time + (.55 * download_data_len)) for p in event.picks]
-    st = client.get_waveforms_bulk(bulk)
+    try:
+        st = client.get_waveforms_bulk(bulk)
+    except Exception as e:
+        Logger.error(e)
+        st = Stream()
+        for channel in bulk:
+            st += client.get_waveforms(
+                network=channel[0], station=channel[1], location=channel[2],
+                channel=channel[3], starttime=channel[4], endtime=channel[5])
     if save_raw:
         path = _summarize_event(
             event=event, path_struct=path_structure,

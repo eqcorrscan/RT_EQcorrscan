@@ -72,6 +72,10 @@ class RealTimeClient(EasySeedLinkClient):
         return print_str
 
     @property
+    def streaming_started(self) -> bool:
+        return self._EasySeedLinkClient__streaming_started
+
+    @property
     def buffer_full(self) -> bool:
         if len(self.buffer) == 0:
             return False
