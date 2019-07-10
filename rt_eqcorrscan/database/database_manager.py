@@ -117,7 +117,7 @@ class _SerialExecutor(Executor):
         fn: Callable,
         *iterables: Iterable,
         timeout=None,
-        chunk_size=1,
+        chunksize=1,
     ):
         """
         Map iterables to a function
@@ -130,7 +130,7 @@ class _SerialExecutor(Executor):
             iterable of arguments for `fn`
         timeout
             Throw-away variable
-        chunk_size
+        chunksize
             Throw-away variable
 
         Returns
@@ -318,6 +318,7 @@ class TemplateBank(EventBank):
                 method="from_metafile", meta_file=catalog, stream=stream,
                 **kwargs)
         else:
+            Logger.debug("Making templates")
             inner_download_and_make_template = partial(
                 _download_and_make_template, client=client,
                 download_data_len=download_data_len,
@@ -359,15 +360,24 @@ def _download_and_make_template(
     **kwargs,
 ) -> Template:
     """ Make the template using downloaded data"""
+    Logger.debug("Making template for event {0}".format(event.resource_id))
     st = _get_data_for_event(
         event=event, client=client,
         download_data_len=download_data_len, path_structure=path_structure,
         bank_path=bank_path, template_name_structure=template_name_structure,
         save_raw=save_raw)
+    Logger.debug("Downloaded {0} traces for event {1}".format(
+        len(st), event.resource_id))
+    _process_len = kwargs.pop("process_len", None)
+    if _process_len:
+        Logger.warning("Setting process len to download_data_len ({0})".format(
+            download_data_len))
     tribe = Tribe().construct(
-        method="from_meta_file", meta_file=Catalog(event), stream=st, **kwargs)
+        method="from_meta_file", meta_file=Catalog(event), stream=st,
+        process_len=download_data_len, **kwargs)
     try:
         template = tribe[0]
+        Logger.debug("Made template: {0}".format(template))
     except IndexError as e:
         Logger.error(e)
         return None
@@ -420,6 +430,7 @@ def _get_data_for_event(
          p.waveform_id.location_code, p.waveform_id.channel_code,
          p.time - (.45 * download_data_len),
          p.time + (.55 * download_data_len)) for p in event.picks]
+    Logger.debug(bulk)
     try:
         st = client.get_waveforms_bulk(bulk)
     except Exception as e:
@@ -433,7 +444,8 @@ def _get_data_for_event(
         path = _summarize_event(
             event=event, path_struct=path_structure,
             name_struct=template_name_structure)["path"]
-        path.replace(EVENT_EXT, ".ms")
+        path, _ = os.path.splitext(path)
+        path += ".ms"
         ppath = (Path(bank_path) / path).absolute()
         ppath.parent.mkdir(parents=True, exist_ok=True)
         st.write(str(ppath), format="MSEED")
@@ -499,6 +511,39 @@ def check_tribe_quality(
         templates = _templates
 
     return Tribe(templates)
+
+
+def remove_unreferenced(catalog: Union[Catalog, Event]) -> Catalog:
+    """ Remove un-referenced arrivals, amplitudes and station_magnitudes. """
+    if isinstance(catalog, Event):
+        catalog = Catalog(catalog)
+    catalog_out = Catalog()
+    for _event in catalog:
+        event = _event.copy()
+        pick_ids = {p.resource_id for p in event.picks}
+        # Remove unreferenced arrivals
+        for origin in event.origins:
+            origin.arrivals = [
+                arr for arr in origin.arrivals if arr.pick_id in pick_ids]
+        # Remove unreferenced amplitudes
+        event.amplitudes = [
+            amp for amp in event.amplitudes if amp.pick_id in pick_ids]
+        amplitude_ids = {a.resource_id for a in event.amplitudes}
+        # Remove now unreferenced station magnitudes
+        event.station_magnitudes = [
+            sta_mag for sta_mag in event.station_magnitudes
+            if sta_mag.amplitude_id in amplitude_ids]
+        station_magnitude_ids = {
+            sta_mag.resource_id for sta_mag in event.station_magnitudes}
+        # Remove unreferenced station_magnitude_contributions
+        for magnitude in event.magnitudes:
+            magnitude.station_magnitude_contributions = [
+                sta_mag_contrib
+                for sta_mag_contrib in magnitude.station_magnitude_contributions
+                if sta_mag_contrib.station_magnitude_id in station_magnitude_ids]
+        catalog_out.append(event)
+
+    return catalog_out
 
 
 if __name__ == "__main__":

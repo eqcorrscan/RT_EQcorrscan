@@ -50,7 +50,7 @@ jobs:
             python setup.py develop
       # run streaming_tests!
       - run:
-          name: run streaming_tests
+          name: run tests
           command: |
             . venv/bin/activate
             py.test -n 2 -v
