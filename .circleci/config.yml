@@ -47,7 +47,7 @@ jobs:
           name: install RT_EQcorrscan
           command: |
             . venv/bin/activate
-            python setup.py build
+            python setup.py develop
       # run streaming_tests!
       - run:
           name: run streaming_tests

@@ -48,7 +48,7 @@ install:
   - conda list
   # done installing dependencies
   - git version
-  - python setup.py build
+  - python setup.py develop
 
 script:
    - py.test -n 2 -v

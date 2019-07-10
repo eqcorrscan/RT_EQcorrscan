@@ -16,14 +16,14 @@ class RealTimeTribeTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         client = Client('GEONET')
-        cls.t1 = UTCDateTime(2016, 9, 4)
-        cls.t2 = cls.t1 + 86400
+        cls.t1 = UTCDateTime(2016, 9, 4, 18)
+        cls.t2 = UTCDateTime(2016, 9, 5)
         catalog = client.get_events(
             starttime=cls.t1, endtime=cls.t2, minmagnitude=4,
             minlatitude=-49, maxlatitude=-35,
             minlongitude=175.0, maxlongitude=180.0)
         catalog = catalog_utils.filter_picks(
-            catalog, channels=['EHZ'], top_n_picks=5)
+            catalog, channels=['EHZ'], top_n_picks=2)
         cls.tribe = Tribe().construct(
             method='from_client', catalog=catalog, client_id='GEONET',
             lowcut=2.0, highcut=9.0, samp_rate=100.0, filt_order=4,
