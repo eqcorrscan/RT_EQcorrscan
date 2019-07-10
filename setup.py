@@ -52,8 +52,8 @@ def setup_package():
             'Topic :: Scientific/Engineering',
             'License :: OSI Approved :: GNU Library or Lesser General Public '
             'License (LGPL)',
-            'Programming Language :: Python :: 3.5',
             'Programming Language :: Python :: 3.6',
+            'Programming Language :: Python :: 3.7',
         ],
         'keywords': 'real-time earthquake correlation detection match-filter',
         'scripts': scriptfiles,
