@@ -12,7 +12,7 @@ jobs:
   build:
     docker:
       # specify the version you desire here
-      # use `-browsers` prefix for selenium tests, e.g. `3.6.1-browsers`
+      # use `-browsers` prefix for selenium streaming_tests, e.g. `3.6.1-browsers`
       - image: circleci/python:3.7
 
       # Specify service dependencies here if necessary
@@ -48,12 +48,12 @@ jobs:
           command: |
             . venv/bin/activate
             python setup.py build
-      # run tests!
+      # run streaming_tests!
       - run:
-          name: run tests
+          name: run streaming_tests
           command: |
             . venv/bin/activate
-            py.test
+            py.test -n 2 -v
 
       - run:
           name: Upload to codecov

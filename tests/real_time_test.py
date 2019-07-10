@@ -26,7 +26,7 @@ class RealTimeTribeTest(unittest.TestCase):
             catalog, channels=['EHZ'], top_n_picks=5)
         cls.tribe = Tribe().construct(
             method='from_client', catalog=catalog, client_id='GEONET',
-            lowcut=2.0, highcut=9.0, samp_rate=50.0, filt_order=4,
+            lowcut=2.0, highcut=9.0, samp_rate=100.0, filt_order=4,
             length=3.0, prepick=0.15, swin='all', process_len=300)
         cls.client = "GEONET"
 

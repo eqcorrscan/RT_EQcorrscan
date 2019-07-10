@@ -51,7 +51,7 @@ install:
   - python setup.py build
 
 script:
-   - py.test
+   - py.test -n 2 -v
 
 after_success:
   # Check how much code is actually tested and send this report to codecov
