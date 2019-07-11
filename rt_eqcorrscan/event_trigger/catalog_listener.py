@@ -16,17 +16,18 @@ from obspy import UTCDateTime, Catalog
 from obspy.core.event import Event
 
 from rt_eqcorrscan.event_trigger.listener import _Listener, event_time
-from rt_eqcorrscan.database.database_manager import TemplateBank
+from rt_eqcorrscan.database.database_manager import (
+    TemplateBank, remove_unreferenced)
 
 Logger = logging.getLogger(__name__)
 
 
 def filter_events(
     events: Union[list, Catalog],
-    min_stations: int,
-    auto_picks: bool,
-    auto_event: bool,
-    event_type: Union[list, str],
+    min_stations: int = None,
+    auto_picks: bool = True,
+    auto_event: bool = True,
+    event_type: Union[list, str] = None,
     **kwargs,
 ) -> list:
     """
@@ -53,21 +54,24 @@ def filter_events(
         events_out = copy.deepcopy(events.events)
     else:
         events_out = copy.deepcopy(events)
-    filt = np.ones(len(events_out)).astype(bool)
+
+    _events_out = []
     for i, ev in enumerate(events_out):
-        ev, filt[i] = _qc_event(
+        ev, keep = _qc_event(
             ev, min_stations=min_stations, auto_picks=auto_picks,
             auto_event=auto_event, event_type=event_type
         )
-    return events_out[filt]
+        if keep:
+            _events_out.append(ev)
+    return _events_out
 
 
 def _qc_event(
     event: Event,
-    min_stations: int,
-    auto_picks: bool,
-    auto_event: bool,
-    event_type: Union[list, str],
+    min_stations: int = None,
+    auto_picks: bool = True,
+    auto_event: bool = True,
+    event_type: Union[list, str] = None,
 ) -> tuple:
     """
     QC an individual event - removes picks in place.
@@ -89,23 +93,10 @@ def _qc_event(
             if p.evaluation_mode == "automatic"
         ]
         # remove arrivals and amplitudes and station_magnitudes
-        for origin in event.origins:
-            origin.arrivals = [
-                arr for arr in origin.arrivals
-                if arr.pick_id not in pick_ids_to_remove
-            ]
-        event.amplitudes = [
-            amp for amp in event.amplitudes
-            if amp.pick_id not in pick_ids_to_remove
-        ]
-        event_amp_ids = [amp.resource_id for amp in event.amplitudes]
-        event.station_magnitudes = [
-            sta_mag for sta_mag in event.station_magnitudes
-            if sta_mag.amplitude_id in event_amp_ids
-        ]
         event.picks = [
             p for p in event.picks if p.resource_id not in pick_ids_to_remove
         ]
+        event = remove_unreferenced(event)[0]
     stations = {p.waveform_id.station_code for p in event.picks}
     if len(stations) < min_stations:
         return event, False
