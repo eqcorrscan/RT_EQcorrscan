@@ -38,11 +38,12 @@ class ListeningTest(unittest.TestCase):
             filter_func=filter_events,
             template_kwargs=dict(lowcut=2., highcut=15., samp_rate=50.,
                                  filt_order=4, prepick=0.5, length=3,
-                                 swin="all"))
+                                 swin="P"))
         self.assertTrue(listener.busy)
-        time.sleep(60)
+        time.sleep(120)
         listener.background_stop()
         self.assertFalse(listener.busy)
+        self.assertEqual(len(listener.catalog), 1)
 
     @classmethod
     def tearDownClass(cls) -> None:

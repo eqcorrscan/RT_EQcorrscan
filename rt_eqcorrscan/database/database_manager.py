@@ -473,6 +473,7 @@ def _get_data_for_event(
         Logger.error(e)
         st = Stream()
         for channel in bulk:
+            Logger.debug("Downloading individual channel {0}".format(channel))
             st += client.get_waveforms(
                 network=channel[0], station=channel[1], location=channel[2],
                 channel=channel[3], starttime=channel[4], endtime=channel[5])
