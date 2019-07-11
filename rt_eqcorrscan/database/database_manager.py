@@ -327,7 +327,14 @@ class TemplateBank(EventBank):
             Whether to store raw data on disk as well - defaults to True.
         kwargs
             Keyword arguments supported by EQcorrscan's `Template.construct`
-            method.
+            method. Requires at least:
+              - lowcut
+              - highcut
+              - samp_rate
+              - filt_order
+              - prepick
+              - length
+              - swin
 
         Returns
         -------

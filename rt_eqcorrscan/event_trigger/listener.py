@@ -30,13 +30,13 @@ class _Listener(ABC):
     catalog = Catalog()
 
     @abstractmethod
-    def run(self, **kwargs):
+    def run(self, *args, **kwargs):
         """ Run the listener """
 
-    def background_run(self):
+    def background_run(self, *args, **kwargs):
         self.busy = True
         listening_thread = threading.Thread(
-            target=self.run, name="ListeningThread")
+            target=self.run, args=args, kwargs=kwargs, name="ListeningThread")
         listening_thread.daemon = True
         listening_thread.start()
         self.threads.append(listening_thread)

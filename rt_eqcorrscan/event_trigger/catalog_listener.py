@@ -11,7 +11,7 @@ import logging
 import numpy as np
 import copy
 
-from typing import Union
+from typing import Union, Callable
 from obspy import UTCDateTime, Catalog
 from obspy.core.event import Event
 
@@ -24,10 +24,10 @@ Logger = logging.getLogger(__name__)
 
 def filter_events(
     events: Union[list, Catalog],
-    min_stations: int = None,
-    auto_picks: bool = True,
-    auto_event: bool = True,
-    event_type: Union[list, str] = None,
+    min_stations: int,
+    auto_picks: bool,
+    auto_event: bool,
+    event_type: Union[list, str],
     **kwargs,
 ) -> list:
     """
@@ -127,11 +127,9 @@ class CatalogListener(_Listener):
     keep:
         Time in seconds to keep events for in the catalog in memory. Will not
         remove old events on disk. Use to reduce memory consumption.
-    filter_func:
-        Function for filtering out events based on user-defined criteria.
     """
     busy = False
-    filter_func = filter_events
+    _test_start_step = 0  # Number of seconds prior to `now` used for testing.
 
     def __init__(
         self,
@@ -171,9 +169,13 @@ class CatalogListener(_Listener):
 
     def run(
         self,
+        make_templates: bool = True,
+        template_kwargs: dict = None,
         min_stations: int = 0,
         auto_event: bool = True,
         auto_picks: bool = True,
+        event_type: Union[list, str] = None,
+        filter_func: Callable = None,
         **filter_kwargs,
     ) -> None:
         """
@@ -181,6 +183,18 @@ class CatalogListener(_Listener):
 
         Parameters
         ----------
+        make_templates:
+            Whether to add new templates to the database (True) or not.
+        template_kwargs:
+            Dictionary of keyword arguments for making templates, requires
+            at-least:
+              - lowcut
+              - highcut
+              - samp_rate
+              - filt_order
+              - prepick
+              - length
+              - swin
         min_stations:
             Minimum number of stations for an event to be added to the
             TemplateBank
@@ -191,38 +205,56 @@ class CatalogListener(_Listener):
             If True, both automatic and manual picks will be included. If False
             only manually reviewed picks will be included. Note that this is
             done **before** counting the number of stations.
+        event_type
+            List of event types to keep.
+        filter_func
+            Function used for filtering. If left as none, this will use the
+            `catalog_listener.filter_events` function.
         filter_kwargs:
             If the `filter_func` has changed then this should be the
             additional kwargs for the user-defined filter_func.
         """
         if not self.busy:
             self.busy = True
+        self.previous_time -= self._test_start_step
         while self.busy:
-            now = UTCDateTime.now()
+            now = UTCDateTime.now() - self._test_start_step
             # Remove old events from dict
             self._remove_old_events(now)
-            new_events = None
+            Logger.debug("Checking for new events between {0} and {1}".format(
+                self.previous_time, now))
             try:
                 new_events = self.client.get_events(
                     starttime=self.previous_time, endtime=now,
                     **self.catalog_lookup_kwargs)
             except Exception as e:
-                Logger.error(
-                    "Could not download data between {0} and {1}".format(
-                        self.previous_time, now))
-                Logger.error(e)
+                if "No data available for request" in e.args[0]:
+                    Logger.debug("No new data")
+                else:
+                    Logger.error(
+                        "Could not download data between {0} and {1}".format(
+                            self.previous_time, now))
+                    Logger.error(e)
+                time.sleep(self.interval)
+                continue
             if new_events is not None:
-                self.filter_func(
+                Logger.info("{0} new events between {1} and {2}".format(
+                    len(new_events), self.previous_time, now))
+                filter_func(
                     new_events, min_stations=min_stations,
                     auto_picks=auto_picks, auto_event=auto_event,
-                    **filter_kwargs)
+                    event_type=event_type, **filter_kwargs)
                 old_event_ids = [tup[0] for tup in self.old_events]
                 new_events = Catalog(
                     [ev for ev in new_events if ev.resource_id
                      not in old_event_ids])
                 if len(new_events) > 0:
+                    Logger.info("Adding {0} new events to the database".format(
+                        len(new_events)))
                     self.template_bank.put_events(new_events)
-                    self.template_bank.make_templates(new_events)
+                    if make_templates:
+                        self.template_bank.make_templates(
+                            new_events, client=self.client, **template_kwargs)
                     self.old_events.extend([
                         (ev.resource_id.id, event_time(ev))
                         for ev in new_events])
