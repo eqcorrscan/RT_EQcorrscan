@@ -267,11 +267,10 @@ class TemplateBank(EventBank):
         catalog = Catalog([t.event for t in templates])
         self.put_events(catalog, update_index=update_index)
         inner_put_template = partial(
-            _put_template, template_ext=self.template_ext,
-            path_structure=self.path_structure,
+            _put_template, path_structure=self.path_structure,
             template_name_structure=self.template_name_structure,
             bank_path=self.bank_path)
-        self.executor.map(inner_put_template, templates)
+        _ = [_ for _ in self.executor.map(inner_put_template, templates)]
 
     def make_templates(
         self,
@@ -338,15 +337,19 @@ def _put_template(
     path_structure: str,
     template_name_structure: str,
     bank_path: str,
-) -> None:
+) -> str:
     """ Get path for template and write it. """
     path = _summarize_template(
         template=template, path_struct=path_structure,
         name_struct=template_name_structure)["path"]
     ppath = (Path(bank_path) / path).absolute()
     ppath.parent.mkdir(parents=True, exist_ok=True)
-    template.write(str(ppath))
-    return
+    output_path = str(ppath)
+    template.write(output_path)
+    # Issue with older EQcorrscan doubling up extension
+    if os.path.isfile(output_path + TEMPLATE_EXT):
+        os.rename(output_path + TEMPLATE_EXT, output_path)
+    return output_path
 
 
 def _download_and_make_template(
@@ -373,15 +376,19 @@ def _download_and_make_template(
         Logger.warning("Setting process len to download_data_len ({0})".format(
             download_data_len))
     tribe = Tribe().construct(
-        method="from_meta_file", meta_file=Catalog(event), stream=st,
+        method="from_meta_file", meta_file=Catalog([event]), st=st,
         process_len=download_data_len, **kwargs)
     try:
         template = tribe[0]
-        Logger.debug("Made template: {0}".format(template))
+        Logger.info("Made template: {0}".format(template))
     except IndexError as e:
         Logger.error(e)
         return None
     template.name = event.resource_id.id.split('/')[-1]
+    # Edit comment to reflect new template_name
+    for comment in template.event.comments:
+        if comment.text.startswith("eqcorrscan_template_"):
+            comment.text = "eqcorrscan_template_{0}".format(template.name)
     return template
 
 
@@ -516,7 +523,7 @@ def check_tribe_quality(
 def remove_unreferenced(catalog: Union[Catalog, Event]) -> Catalog:
     """ Remove un-referenced arrivals, amplitudes and station_magnitudes. """
     if isinstance(catalog, Event):
-        catalog = Catalog(catalog)
+        catalog = Catalog([catalog])
     catalog_out = Catalog()
     for _event in catalog:
         event = _event.copy()

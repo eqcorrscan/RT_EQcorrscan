@@ -30,19 +30,20 @@ class TestTemplateBank(unittest.TestCase):
         client = Client("GEONET")
         logging.debug("Downloading the catalog")
         catalog = client.get_events(
-            starttime=UTCDateTime(2019, 6, 20),
-            endtime=UTCDateTime(2019, 6, 24),
+            starttime=UTCDateTime(2019, 6, 21),
+            endtime=UTCDateTime(2019, 6, 23),
             latitude=-38.8, longitude=175.8, maxradius=0.2)
         cls.catalog = remove_unreferenced(
             filter_picks(catalog=catalog, top_n_picks=5))
         cls.bank.put_events(cls.catalog)
         logging.debug("Making templates")
-        cls.bank.make_templates(
+        cls.tribe = cls.bank.make_templates(
             catalog=cls.catalog, client=client, lowcut=2., highcut=15.,
             samp_rate=50., filt_order=4, prepick=0.5, length=3, swin="all")
 
     def test_build_db(self):
         cat_back = self.bank.get_events()
+        cat_back.events.sort(key=lambda e: e.origins[0].time)
         self.assertEqual(self.catalog, cat_back)
         tribe = self.bank.get_templates()
         self.assertEqual(len(tribe), len(self.catalog))
