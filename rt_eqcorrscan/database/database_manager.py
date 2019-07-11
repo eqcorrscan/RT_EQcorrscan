@@ -94,7 +94,16 @@ def _summarize_template(
 
 
 class _Result(object):
-    """ Thin imitation of concurrent.futures.Future """
+    """
+     Thin imitation of concurrent.futures.Future
+
+     .. rubric:: example
+     >>> result = _Result(12)
+     >>> print(result)
+     _Result(12)
+     >>> print(result.result())
+     12
+     """
     def __init__(self, result):
         self._result = result
 
@@ -108,6 +117,19 @@ class _Result(object):
 class _SerialExecutor(Executor):
     """
     Simple interface to mirror concurrent.futures.Executor in serial.
+
+    .. rubric:: Example
+    >>> with _SerialExecutor() as executor:
+    ...     result = executor.submit(pow, 2, 12)
+    >>> print(result.result())
+    4096
+    >>> def square(a):
+    ...     return a * a
+    >>> with _SerialExecutor() as executor:
+    ...     futures = executor.map(square, range(5))
+    >>> results = list(futures)
+    >>> print(results)
+    [0, 1, 4, 9, 16]
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -501,21 +523,22 @@ def check_tribe_quality(
     templates = _templates
 
     # Perform station check
-    if seed_ids is not None:
-        _templates = []
-        for template in templates:
-            _template = template.copy()
-            _st = Stream()
-            for tr in _template.st:
-                if tr.id in seed_ids:
-                    _st += tr
-            _template.st = _st
-            if min_stations is not None:
-                n_sta = len({tr.stats.station for tr in _template.st})
-                if n_sta < min_stations:
-                    continue
-            _templates.append(_template)
-        templates = _templates
+    if seed_ids is None:
+        seed_ids = {tr.id for template in tribe for tr in template.st}
+    _templates = []
+    for template in templates:
+        _template = template.copy()
+        _st = Stream()
+        for tr in _template.st:
+            if tr.id in seed_ids:
+                _st += tr
+        _template.st = _st
+        if min_stations is not None:
+            n_sta = len({tr.stats.station for tr in _template.st})
+            if n_sta < min_stations:
+                continue
+        _templates.append(_template)
+    templates = _templates
 
     return Tribe(templates)
 

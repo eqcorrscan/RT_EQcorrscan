@@ -48,6 +48,37 @@ class TestTemplateBank(unittest.TestCase):
         tribe = self.bank.get_templates()
         self.assertEqual(len(tribe), len(self.catalog))
 
+    def test_good_tribe_quality(self):
+        checked_tribe = check_tribe_quality(self.tribe)
+        for template in checked_tribe:
+            for tr in template.st:
+                self.assertEqual(tr.stats.npts, 150)
+
+    def test_too_short_chans(self):
+        tribe = self.tribe.copy()
+        tribe[0].st[0].data = tribe[0].st[0].data[0:-10]
+        checked_tribe = check_tribe_quality(tribe)
+        for template in checked_tribe:
+            for tr in template.st:
+                self.assertEqual(tr.stats.npts, 150)
+
+    def test_removing_channels(self):
+        chans = {tr.id for template in self.tribe for tr in template.st}
+        removed_chan = chans.pop()
+        checked_tribe = check_tribe_quality(self.tribe, seed_ids=chans)
+        for template in checked_tribe:
+            template_ids = {tr.id for tr in template.st}
+            self.assertNotIn(removed_chan, template_ids)
+
+    def test_removing_short_templates(self):
+        checked_tribe = check_tribe_quality(self.tribe, min_stations=5)
+        self.assertLess(len(checked_tribe), len(self.tribe))
+        for template in checked_tribe:
+            stas = {tr.stats.station for tr in template.st}
+            self.assertGreaterEqual(len(stas), 5)
+
+
+
     @classmethod
     def tearDownClass(cls) -> None:
         shutil.rmtree(cls.test_path)
