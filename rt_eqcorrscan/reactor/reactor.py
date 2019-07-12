@@ -8,9 +8,10 @@ License
 """
 import logging
 import threading
+import time
 
 from collections import Counter
-from typing import Union
+from typing import Union, Callable
 
 from obspy import Inventory, UTCDateTime
 from obspy.core.event import Event
@@ -54,6 +55,8 @@ class Reactor(object):
     template_database
         A template database to be used to generate tribes for real-time
         matched-filter detection.
+    listener_kwargs
+        Dictionary of keyword arguments to be passed to listener.run
     real_time_tribe_kwargs
         Dictionary of keyword arguments for the real-time tribe. Any keys not
         included will be set to default values.
@@ -68,7 +71,7 @@ class Reactor(object):
     function. For example, using the provided rate-and-magnitude triggering
     function:
     ```
-        from rt_eqcorrscan.utils.event_trigger import magnitude_rate_trigger_func
+        from rt_eqcorrscan.event_trigger import magnitude_rate_trigger_func
         from functools import partial
 
         trigger_func = partial(
@@ -80,6 +83,7 @@ class Reactor(object):
     running_templates_ids = []  # A list of currently running templates
     max_station_distance = 1000
     n_stations = 10
+    sleep_step = 10
 
     # The threads that are detecting away!
     detecting_threads = []
@@ -89,8 +93,9 @@ class Reactor(object):
         client,
         seedlink_server_url: str,
         listener: CatalogListener,
-        trigger_func,
+        trigger_func: Callable,
         template_database: TemplateBank,
+        listener_kwargs: dict,
         real_time_tribe_kwargs: dict,
         plot_kwargs: dict,
     ):
@@ -101,15 +106,34 @@ class Reactor(object):
         self.template_database = template_database
         self.real_time_tribe_kwargs = real_time_tribe_kwargs
         self.plot_kwargs = plot_kwargs
+        self.listener_kwargs = listener_kwargs
+        # Time-keepers
+        self._run_start = None
+        self.up_time = 0
 
-    def run(self) -> None:
+    def get_up_time(self):
+        return self._up_time
+
+    def set_up_time(self, now):
+        if self._run_start is not None:
+            self._up_time = now - self._run_start
+        else:
+            self._up_time = 0
+
+    up_time = property(get_up_time, set_up_time)
+
+    def run(self, max_run_length: float = None) -> None:
         """Run all the processes."""
-        self.listener.background_run()
+        self.listener.background_run(**self.listener_kwargs)
+        self._run_start = UTCDateTime.now()
         # Query the catalog in the listener every so often and check
         while True:
-            working_ids = list(zip(*self.listener.old_events))[0]
-            working_cat = self.template_database.get_events(
-                eventid=working_ids)
+            if len(self.listener.old_events) > 0:
+                working_ids = list(zip(*self.listener.old_events))[0]
+                working_cat = self.template_database.get_events(
+                    eventid=working_ids)
+            else:
+                working_cat = []
             Logger.debug("Currently analysing a catalog of {0} events".format(
                 len(working_cat)))
 
@@ -121,6 +145,12 @@ class Reactor(object):
                             trigger_event))
                     self.triggered_events.append(trigger_event)
                     self.background_spin_up(trigger_event)
+            self.set_up_time(UTCDateTime.now())
+            if max_run_length and self.up_time >= max_run_length:
+                Logger.info("Times up: Stopping")
+                self.stop()
+                break
+            time.sleep(self.sleep_step)
 
     def background_spin_up(self, triggering_event: Event) -> None:
         """
@@ -317,14 +347,13 @@ def estimate_region(event: Event, min_length: float = 50.) -> dict:
         magnitude = None
     if magnitude:
         length = 10 ** ((magnitude.mag - 5.08) / 1.16)  # Wells and Coppersmith
+        # Scale up a bit - for Darfield this gave 0.6 deg, but the aftershock
+        # region is more like 1.2 deg radius
+        length *= 1.25
     else:
         length = min_length
 
-    # Scale up a bit - for Darfield this gave 0.6 deg, but the aftershock
-    # region is more like 1.2 deg radius
-    length *= 1.25
-
-    if length < min_length:
+    if length <= min_length:
         length = min_length
     length = kilometer2degrees(length)
     length /= 2.
