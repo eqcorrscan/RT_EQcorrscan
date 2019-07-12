@@ -27,7 +27,6 @@ class _Listener(ABC):
 
     threads = []
     client = None
-    catalog = Catalog()
 
     @abstractmethod
     def run(self, *args, **kwargs):

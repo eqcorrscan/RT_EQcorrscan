@@ -299,7 +299,7 @@ class TemplateBank(EventBank):
         catalog: Catalog,
         stream: Stream = None,
         client=None,
-        download_data_len: float = 600,
+        download_data_len: float = 90,
         save_raw: bool = True,
         **kwargs,
     ) -> Tribe:

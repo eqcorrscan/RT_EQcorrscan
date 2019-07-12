@@ -153,19 +153,42 @@ class CatalogListener(_Listener):
         self.previous_time = UTCDateTime.now()
 
     def __repr__(self):
+        """
+        ..rubric:: Example
+        >>> from obspy.clients.fdsn import Client
+        >>> listener = CatalogListener(
+        ...     client=Client("GEONET"), catalog=Catalog(),
+        ...     catalog_lookup_kwargs=dict(
+        ...         latitude=-45, longitude=175, maxradius=2),
+        ...     template_bank=TemplateBank('.'))
+        >>> print(listener) # doctest: +NORMALIZE_WHITESPACE
+        CatalogListener(client=Client(http://service.geonet.org.nz),\
+        catalog=Catalog(0 events), interval=600, **kwargs)
+        """
         print_str = (
             "CatalogListener(client=Client({0}), catalog=Catalog({1} events), "
             "interval={2}, **kwargs)".format(
-                self.client.base_url, len(self.catalog), self.interval))
+                self.client.base_url, len(self.old_events), self.interval))
         return print_str
 
     def _remove_old_events(self, endtime: UTCDateTime) -> None:
-        """ Expire old events from the cache. """
+        """
+        Expire old events from the cache.
+
+        Parameters
+        ----------
+        endtime
+            The time to calculate time-difference relative to. Any events
+            older than endtime - self.keep will be removed.
+        """
         if len(self.old_events) == 0:
             return
         time_diffs = np.array([endtime - tup[1] for tup in self.old_events])
         filt = time_diffs <= self.keep
-        self.old_events = self.old_events[filt]
+        # Need to remove in-place, without creating a new list
+        for i, old_event in enumerate(list(self.old_events)):
+            if not filt[i]:
+                self.old_events.remove(old_event)
 
     def run(
         self,
@@ -214,8 +237,7 @@ class CatalogListener(_Listener):
             If the `filter_func` has changed then this should be the
             additional kwargs for the user-defined filter_func.
         """
-        if not self.busy:
-            self.busy = True
+        self.busy = True
         self.previous_time -= self._test_start_step
         while self.busy:
             now = UTCDateTime.now() - self._test_start_step
@@ -230,7 +252,7 @@ class CatalogListener(_Listener):
             except Exception as e:
                 if "No data available for request" in e.args[0]:
                     Logger.debug("No new data")
-                else:
+                else:  # pragma: no cover
                     Logger.error(
                         "Could not download data between {0} and {1}".format(
                             self.previous_time, now))
@@ -252,12 +274,12 @@ class CatalogListener(_Listener):
                     Logger.info("Adding {0} new events to the database".format(
                         len(new_events)))
                     self.template_bank.put_events(new_events)
-                    if make_templates:
-                        self.template_bank.make_templates(
-                            new_events, client=self.client, **template_kwargs)
                     self.old_events.extend([
                         (ev.resource_id.id, event_time(ev))
                         for ev in new_events])
+                    if make_templates:
+                        self.template_bank.make_templates(
+                            new_events, client=self.client, **template_kwargs)
             self.previous_time = now
             time.sleep(self.interval)
 

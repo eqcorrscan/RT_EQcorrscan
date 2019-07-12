@@ -107,7 +107,9 @@ class Reactor(object):
         self.listener.background_run()
         # Query the catalog in the listener every so often and check
         while True:
-            working_cat = self.listener.catalog
+            working_ids = list(zip(*self.listener.old_events))[0]
+            working_cat = self.template_database.get_events(
+                eventid=working_ids)
             Logger.debug("Currently analysing a catalog of {0} events".format(
                 len(working_cat)))
 
