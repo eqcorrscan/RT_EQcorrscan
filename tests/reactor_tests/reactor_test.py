@@ -5,6 +5,7 @@ import os
 import unittest
 import shutil
 import time
+import copy
 
 from functools import partial
 
@@ -151,13 +152,13 @@ class RegionTests(unittest.TestCase):
             region["maxradius"], kilometer2degrees(50) / 2)
 
     def test_estimate_region_no_origin(self):
-        event = self.event.copy()
+        event = copy.deepcopy(self.event)
         event.preferred_origin_id = None
         event.origins = []
         self.assertIsNone(estimate_region(event))
 
     def test_estimate_region_no_magnitude(self):
-        event = self.event.copy()
+        event = copy.deepcopy(self.event)
         event.magnitudes = []
         region = estimate_region(event)
         self.assertEqual(
