@@ -221,9 +221,13 @@ class Config(object):
 
     def to_yaml_dict(self) -> dict:
         """ Make a more human readable yaml format """
-        return {
-            key.replace("_", " "): value.to_yaml_dict()
-            for key, value in self.__dict__.items()}
+        _dict = {}
+        for key, value in self.__dict__.items():
+            if hasattr(value, "to_yaml_dict"):
+                _dict.update({key: value.to_yaml_dict()})
+            else:
+                _dict.update({key: value})
+        return _dict
 
     def setup_logging(self, **kwargs):
         """Set up logging using the logging parameters."""
@@ -253,10 +257,13 @@ def read_config(config_file=None) -> Config:
         configuration = load(f, Loader=Loader)
     config_dict = {}
     for key, value in configuration.items():
-        config_dict.update(
-            {key.replace(" ", "_"):
-                 {_key.replace(" ", "_"): _value
-                  for _key, _value in value.items()}})
+        if key.replace(" ", "_") in KEY_MAPPER.keys():
+            config_dict.update(
+                {key.replace(" ", "_"):
+                     {_key.replace(" ", "_"): _value
+                      for _key, _value in value.items()}})
+        else:
+            config_dict.update({key: value})
     return Config(**config_dict)
 
 
