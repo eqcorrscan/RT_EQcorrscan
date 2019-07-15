@@ -19,7 +19,8 @@ from rt_eqcorrscan.reactor import get_inventory
 class RealTimeTribeTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.detect_dir = ".test_detections"
+        cls.detect_dir = os.path.join(
+            os.path.abspath(os.path.dirname(__file__)), ".test_detections")
         client = Client('GEONET')
         cls.t1 = UTCDateTime(2016, 9, 4, 18)
         cls.t2 = UTCDateTime(2016, 9, 5)
@@ -88,13 +89,13 @@ class RealTimeTribeTest(unittest.TestCase):
         self.assertTrue(isinstance(party, Party))
         self.assertTrue(os.path.isdir(self.detect_dir))
         detect_files = glob.glob(os.path.join(
-            self.detect_dir, "????", "??", "*.xml"))
+            self.detect_dir, "????", "???", "*.xml"))
         self.assertGreater(len(detect_files), 0)
 
-    @classmethod
-    def tearDownClass(cls) -> None:
-        if os.path.isdir(cls.detect_dir):
-            shutil.rmtree(cls.detect_dir)
+    # @classmethod
+    # def tearDownClass(cls) -> None:
+    #     if os.path.isdir(cls.detect_dir):
+    #         shutil.rmtree(cls.detect_dir)
 
 
 if __name__ == "__main__":

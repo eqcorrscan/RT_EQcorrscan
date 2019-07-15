@@ -145,9 +145,9 @@ class RegionTests(unittest.TestCase):
     def test_good_estimate_region(self):
         region = estimate_region(self.event, min_length=50.)
         self.assertEqual(
-            self.event.preferred_origin().latitude, region["latitude"])
+            self.event.origins[0].latitude, region["latitude"])
         self.assertEqual(
-            self.event.preferred_origin().longitude, region["longitude"])
+            self.event.origins[0].longitude, region["longitude"])
         self.assertGreater(
             region["maxradius"], kilometer2degrees(50) / 2)
 
@@ -162,9 +162,9 @@ class RegionTests(unittest.TestCase):
         event.magnitudes = []
         region = estimate_region(event)
         self.assertEqual(
-            self.event.preferred_origin().latitude, region["latitude"])
+            self.event.origins[0].latitude, region["latitude"])
         self.assertEqual(
-            self.event.preferred_origin().longitude, region["longitude"])
+            self.event.origins[0].longitude, region["longitude"])
         self.assertEqual(
             region["maxradius"], kilometer2degrees(50) / 2)
 
