@@ -2,25 +2,9 @@
 """
 Script to run the real-time matched filter for a given region or earthquake.
 
-    This file is part of rt_eqcorrscan.
-
-    rt_eqcorrscan is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    rt_eqcorrscan is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with rt_eqcorrscan.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import logging
-
-from concurrent.futures import ProcessPoolExecutor
 
 from obspy import UTCDateTime
 
@@ -35,7 +19,12 @@ Logger = logging.getLogger("real-time-mf")
 
 def run_real_time_matched_filter(**kwargs):
     config = read_config(config_file=kwargs.get("config_file", None))
+    debug = kwargs.get("debug", False)
+    if debug:
+        config.log_level = "DEBUG"
+        print("Using the following configuration:\n{0}".format(config))
     config.setup_logging()
+    Logger.debug("Running in debug mode - expect lots of output!")
 
     client = config.rt_match_filter.get_client()
 
@@ -63,10 +52,12 @@ def run_real_time_matched_filter(**kwargs):
         event_format=config.database_manager.event_format,
         path_structure=config.database_manager.path_structure,
         event_ext=config.database_manager.event_ext)
-    Logger.info("Reading in tribe")
+    df = bank.get_event_summary(**region)
+    Logger.info("{0} events within region".format(len(df)))
+    Logger.debug("Region: {0}".format(region))
+    Logger.info("Reading in Tribe")
 
-    with ProcessPoolExecutor(max_workers=8) as executor:
-        tribe = bank.get_templates(executor=executor, **region)
+    tribe = bank.get_templates(**region)
 
     Logger.info("Read in tribe of {0} templates".format(len(tribe)))
 
@@ -139,6 +130,8 @@ if __name__ == "__main__":
         "--endtime", type=str, required=False,
         help="End-time as UTCDateTime parable string to collect templates "
              "up to.")
+    parser.add_argument(
+        "--debug", action="store_true", help="Flag to set log level to debug")
 
     args = parser.parse_args()
     if args.eventid is not None:
@@ -156,6 +149,6 @@ if __name__ == "__main__":
     if args.endtime is not None:
         kwargs.update({"endtime": UTCDateTime(args.endtime)})
 
-    kwargs.update({"config_file": args.config})
+    kwargs.update({"config_file": args.config, "debug": args.debug})
 
     run_real_time_matched_filter(**kwargs)

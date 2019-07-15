@@ -165,14 +165,18 @@ class Config(object):
     database_manager
         Config values for the database manager.
     """
-    log_level = "INFO"
-    log_formatter = "%(asctime)s\t%(name)s\t%(levelname)s\t%(message)s"
-
-    def __init__(self, **kwargs):
+    def __init__(
+        self,
+        log_level: str = "INFO",
+        log_formatter: str = "%(asctime)s\t%(name)s\t%(levelname)s\t%(message)s",
+        **kwargs
+    ):
         self.rt_match_filter = RTMatchFilterConfig()
         self.reactor = ReactorConfig()
         self.plot = PlotConfig()
         self.database_manager = DatabaseManagerConfig()
+        self.log_level = log_level
+        self.log_formatter = log_formatter
 
         for key, value in kwargs.items():
             if key not in KEY_MAPPER.keys():
