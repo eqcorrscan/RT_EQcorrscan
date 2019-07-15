@@ -120,7 +120,7 @@ class RealTimeTribe(Tribe):
         else:
             return self.template_channels
 
-    def _plot(self) -> None:
+    def _plot(self) -> None:  # pragma: no cover
         """ Plot the data as it comes in. """
         from rt_eqcorrscan.plotting.plot_buffer import EQcorrscanPlot
 
@@ -151,7 +151,7 @@ class RealTimeTribe(Tribe):
 
     def stop(self) -> None:
         """ Stop the real-time system. """
-        if self.plotter is not None:
+        if self.plotter is not None:  # pragma: no cover
             self.plotter.background_stop()
         self.client.background_stop()
         self._running = False
@@ -235,7 +235,7 @@ class RealTimeTribe(Tribe):
                         stream=st, plotvar=False, threshold=threshold,
                         threshold_type=threshold_type, trig_int=trig_int,
                         **kwargs)
-                except Exception as e:
+                except Exception as e:  # pragma: no cover
                     Logger.error(e)
                     Logger.info(
                         "Waiting for {0}s and hoping this gets better".format(
