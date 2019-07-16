@@ -7,11 +7,13 @@ Script to run the real-time matched filter for a given region or earthquake.
 import logging
 
 from obspy import UTCDateTime
+from obsplus import WaveBank
 from eqcorrscan import Party
 
 from rt_eqcorrscan.config import read_config
 from rt_eqcorrscan.reactor import estimate_region, get_inventory
 from rt_eqcorrscan.database import TemplateBank, check_tribe_quality
+from rt_eqcorrscan.database.client_emulation import ClientBank
 from rt_eqcorrscan.rt_match_filter import RealTimeTribe
 from rt_eqcorrscan.streaming import RealTimeClient
 from rt_eqcorrscan.streaming.simulate import SimulateRealTimeClient
@@ -30,6 +32,12 @@ def run_real_time_matched_filter(**kwargs):
     Logger.debug("Running in debug mode - expect lots of output!")
 
     client = config.rt_match_filter.get_client()
+    if kwargs.get("local_archive"):
+        local_wave_bank = WaveBank(
+            base_path=config.rt_match_filter.local_wave_bank)
+        client = ClientBank(
+            wave_bank=local_wave_bank, event_bank=client,
+            station_bank=client)
 
     triggering_eventid = kwargs.get("eventid", None)
 
@@ -153,10 +161,14 @@ if __name__ == "__main__":
         "--starttime", type=str, required=False,
         help="Start-time for real-time simulation for past data")
     parser.add_argument(
-        "--speed-up", type=float, required=False,
+        "--speed-up", type=float, required=False, default=1.0,
         help="Speed-up factor for past data - unused for real-time")
     parser.add_argument(
         "--debug", action="store_true", help="Flag to set log level to debug")
+    parser.add_argument(
+        "--local-archive", action="store_true",
+        help="Flag to use a local archive for waveform data, defined in this "
+             "script")
 
     args = parser.parse_args()
     if args.eventid is not None:
@@ -176,6 +188,8 @@ if __name__ == "__main__":
     if args.starttime is not None:
         kwargs.update({"rt_client_starttime": UTCDateTime(args.starttime)})
 
-    kwargs.update({"config_file": args.config, "debug": args.debug})
+    kwargs.update({"config_file": args.config, "debug": args.debug,
+                   "local_archive": args.local_archive,
+                   "speed_up": args.speed_up})
 
     run_real_time_matched_filter(**kwargs)

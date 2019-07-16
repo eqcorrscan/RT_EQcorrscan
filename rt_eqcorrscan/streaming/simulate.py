@@ -87,30 +87,31 @@ class SimulateRealTimeClient(_StreamingClient):
         last_query_start = now - self.query_interval
         while self.streaming:
             _query_start = UTCDateTime.now()
+            st = Stream()
             for _bulk in self.bulk:
                 jitter = randint(int(self.query_interval))
                 _bulk.update({
                     "starttime": last_query_start,
                     "endtime": now - jitter})
                 Logger.debug("Querying client for {0}".format(_bulk))
-            bulk = [
-                (_bulk["network"], _bulk["station"], _bulk["location"],
-                 _bulk["channel"], _bulk["starttime"], _bulk["endtime"])
-                for _bulk in self.bulk]
-            try:
-                st = self.client.get_waveforms_bulk(bulk)
-            except Exception as e:
-                Logger.error("Failed (bulk={0})".format(bulk))
-                Logger.error(e)
-                continue
+                try:
+                    st += self.client.get_waveforms(**_bulk)
+                except Exception as e:
+                    Logger.error("Failed (bulk={0})".format(_bulk))
+                    Logger.error(e)
+                    continue
             for tr in st:
                 self.on_data(tr)
             _query_duration = UTCDateTime.now() - _query_start
+            Logger.debug(
+                "It took {0:.2f}s to query the database and sort data".format(
+                    _query_duration))
             sleep_step = (
                 self.query_interval - _query_duration) / self.speed_up
             if sleep_step > 0:
+                Logger.debug("Waiting {0:.2f}s before next query".format(sleep_step))
                 time.sleep(sleep_step)
-            now += self.query_interval
+            now += max(self.query_interval, _query_duration)
             last_query_start = min([_bulk["endtime"] for _bulk in self.bulk])
 
     def stop(self) -> None:

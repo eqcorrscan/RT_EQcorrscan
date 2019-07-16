@@ -221,10 +221,12 @@ class RealTimeTribe(Tribe):
             self._plot()
             Logger.info("Plotting thread started")
         if not self.rt_client.buffer_full:
-            Logger.info("Sleeping for {0}s while accumulating data".format(
-                self.rt_client.buffer_capacity - self.rt_client.buffer_length + 5))
-            time.sleep(self.rt_client.buffer_capacity -
-                       self.rt_client.buffer_length + 5)
+            sleep_step = (
+                self.rt_client.buffer_capacity -
+                self.rt_client.buffer_length + 5) / self._speed_up
+            Logger.info("Sleeping for {0:.2f}s while accumulating data".format(
+                sleep_step))
+            time.sleep(sleep_step)
         try:
             while self._running:
                 start_time = UTCDateTime.now()
@@ -241,7 +243,7 @@ class RealTimeTribe(Tribe):
                 except Exception as e:  # pragma: no cover
                     Logger.error(e)
                     Logger.info(
-                        "Waiting for {0}s and hoping this gets better".format(
+                        "Waiting for {0:.2f}s and hoping this gets better".format(
                             self.detect_interval))
                     time.sleep(self.detect_interval)
                     continue
@@ -291,7 +293,7 @@ class RealTimeTribe(Tribe):
                             self.detect_interval, run_time, run_time + 10))
                     self.detect_interval = run_time + 10
                 Logger.debug("This step took {0}s total".format(run_time))
-                Logger.info("Waiting {0}s until next run".format(
+                Logger.info("Waiting {0:.2f}s until next run".format(
                     self.detect_interval - run_time))
                 time.sleep((self.detect_interval - run_time) / self._speed_up)
                 if max_run_length and UTCDateTime.now() > run_start + max_run_length:
