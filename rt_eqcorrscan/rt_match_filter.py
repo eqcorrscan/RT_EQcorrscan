@@ -69,9 +69,9 @@ class RealTimeTribe(Tribe):
         self.party = Party()
         self.detect_interval = detect_interval
         self.plot = plot
-        self.plot_length = plot_options.get("plot_length", 300)
         self.plot_options = {}
         if plot_options is not None:
+            self.plot_length = plot_options.get("plot_length", 300)
             self.plot_options.update({
                 key: value for key, value in plot_options.items()
                 if key != "plot_length"})

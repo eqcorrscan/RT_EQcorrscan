@@ -27,7 +27,7 @@ class TestConfig(unittest.TestCase):
 
         self.assertIsInstance(config.reactor.magnitude_threshold, float)
 
-        self.assertIsInstance(config.plot.low_cut, float)
+        self.assertIsInstance(config.plot.lowcut, float)
 
         self.assertIsInstance(config.database_manager.event_path, str)
 
