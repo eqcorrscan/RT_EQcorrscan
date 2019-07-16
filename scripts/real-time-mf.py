@@ -12,6 +12,7 @@ from rt_eqcorrscan.config import read_config
 from rt_eqcorrscan.reactor import estimate_region, get_inventory
 from rt_eqcorrscan.database import TemplateBank, check_tribe_quality
 from rt_eqcorrscan.rt_match_filter import RealTimeTribe
+from rt_eqcorrscan.streaming import RealTimeClient
 
 
 Logger = logging.getLogger("real-time-mf")
@@ -82,10 +83,11 @@ def run_real_time_matched_filter(**kwargs):
     for t in tribe:
         t.process_length = config.rt_match_filter.buffer_capacity
 
-    real_time_tribe = RealTimeTribe(
-        tribe=tribe, inventory=inventory,
+    rt_client = RealTimeClient(
         server_url=config.rt_match_filter.seedlink_server_url,
-        buffer_capacity=config.rt_match_filter.buffer_capacity,
+        buffer_capacity=config.rt_match_filter.buffer_capacity)
+    real_time_tribe = RealTimeTribe(
+        tribe=tribe, inventory=inventory, client=rt_client,
         detect_interval=config.rt_match_filter.detect_interval,
         plot=config.rt_match_filter.plot,
         plot_options=config.plot)

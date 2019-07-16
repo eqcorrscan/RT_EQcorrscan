@@ -13,6 +13,7 @@ from obspy import UTCDateTime
 from obspy.clients.fdsn import Client
 
 from rt_eqcorrscan.rt_match_filter import RealTimeTribe
+from rt_eqcorrscan.streaming import RealTimeClient
 from rt_eqcorrscan.reactor import get_inventory
 
 
@@ -40,25 +41,27 @@ class RealTimeTribeTest(unittest.TestCase):
             location=dict(latitude=-42, longitude=177.5), starttime=cls.t1)
 
     def test_init_with_tribe(self):
-        rt_tribe = RealTimeTribe(
-            tribe=self.tribe, server_url="link.geonet.org.nz",
-            buffer_capacity=1200)
+        rt_client = RealTimeClient(
+            server_url="link.geonet.org.nz", buffer_capacity=1200)
+        rt_tribe = RealTimeTribe(tribe=self.tribe, rt_client=rt_client)
         self.assertEqual(rt_tribe.templates, self.tribe.templates)
-        self.assertEqual(rt_tribe.client.server_hostname,
+        self.assertEqual(rt_tribe.rt_client.server_hostname,
                          "link.geonet.org.nz")
 
     def test_buffer_too_short(self):
+        rt_client = RealTimeClient(
+            server_url="link.geonet.org.nz",  buffer_capacity=20)
         with self.assertRaises(AssertionError):
-            RealTimeTribe(tribe=self.tribe, server_url="link.geonet.org.nz",
-                          buffer_capacity=20)
+            RealTimeTribe(tribe=self.tribe, rt_client=rt_client)
 
     def test_run(self):
         tribe = self.tribe.copy()
         for template in tribe:
             template.process_length = 60
+        rt_client = RealTimeClient(
+            server_url="link.geonet.org.nz", buffer_capacity=90,)
         rt_tribe = RealTimeTribe(
-            tribe=tribe, server_url="link.geonet.org.nz",
-            buffer_capacity=90, detect_interval=5, plot=False)
+            tribe=tribe, rt_client=rt_client, detect_interval=5, plot=False)
         party = rt_tribe.run(
             threshold=6, threshold_type="MAD", trig_int=3, max_run_length=100,
             detect_directory=self.detect_dir)
@@ -69,9 +72,10 @@ class RealTimeTribeTest(unittest.TestCase):
             max_run_length=20, detect_directory=self.detect_dir)
 
     def test_station_overlap(self):
+        rt_client = RealTimeClient(
+            server_url="link.geonet.org.nz", buffer_capacity=1200)
         rt_tribe = RealTimeTribe(
-            tribe=self.tribe, server_url="link.geonet.org.nz",
-            buffer_capacity=1200, inventory=self.inventory)
+            tribe=self.tribe, rt_client=rt_client, inventory=self.inventory)
         self.assertGreaterEqual(
             len(rt_tribe.used_stations), len(self.inventory))
 
@@ -80,9 +84,10 @@ class RealTimeTribeTest(unittest.TestCase):
         tribe = self.tribe.copy()
         for template in tribe:
             template.process_length = 60
+        rt_client = RealTimeClient(
+            server_url="link.geonet.org.nz", buffer_capacity=90)
         rt_tribe = RealTimeTribe(
-            tribe=tribe, server_url="link.geonet.org.nz",
-            buffer_capacity=90, detect_interval=5, plot=False)
+            tribe=tribe, rt_client=rt_client, detect_interval=5, plot=False)
         party = rt_tribe.run(
             threshold=0.9, threshold_type="MAD", trig_int=3,
             max_run_length=100, detect_directory=self.detect_dir)
@@ -92,10 +97,10 @@ class RealTimeTribeTest(unittest.TestCase):
             self.detect_dir, "????", "???", "*.xml"))
         self.assertGreater(len(detect_files), 0)
 
-    # @classmethod
-    # def tearDownClass(cls) -> None:
-    #     if os.path.isdir(cls.detect_dir):
-    #         shutil.rmtree(cls.detect_dir)
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if os.path.isdir(cls.detect_dir):
+            shutil.rmtree(cls.detect_dir)
 
 
 if __name__ == "__main__":

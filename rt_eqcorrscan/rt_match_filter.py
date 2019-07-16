@@ -13,7 +13,7 @@ import logging
 from obspy import Stream, UTCDateTime, Inventory
 from eqcorrscan import Tribe, Template, Party, Family
 
-from rt_eqcorrscan.streaming.seedlink import RealTimeClient
+from rt_eqcorrscan.streaming.streaming import _StreamingClient
 
 Logger = logging.getLogger(__name__)
 
@@ -31,11 +31,8 @@ class RealTimeTribe(Tribe):
         Tribe of templates to use for detection.
     inventory
         Inventory of stations used for detection.
-    server_url
-        Address of seedlink client.
-    buffer_capacity
-        Length of data buffer in memory in seconds. Must be longer than the
-        process_len of the Tribe.
+    rt_client
+        Real-Time Client for streaming data.
     detect_interval
         Frequency to conduct detection. Must be less than buffer_capacity.
     plot
@@ -49,28 +46,27 @@ class RealTimeTribe(Tribe):
         Channels to exclude from plotting
     """
     _running = False
-    client = None  # Will be overloaded on init
+    _speed_up = 1.0
+    # Speed-up for simulated runs - do not change for real-time!
 
     def __init__(
         self,
         tribe: Tribe = None,
         inventory: Inventory = None,
-        server_url: str = None,
-        buffer_capacity: float = 600.,
+        rt_client: _StreamingClient = None,
         detect_interval: float = 60.,
         plot: bool = True,
         **plot_options,
     ) -> None:
         super().__init__(templates=tribe.templates)
-        assert (buffer_capacity >= max(
+        self.rt_client = rt_client
+        assert (self.rt_client.buffer_capacity >= max(
             [template.process_length for template in self.templates]))
-        assert (buffer_capacity >= detect_interval)
+        assert (self.rt_client.buffer_capacity >= detect_interval)
         self.buffer = Stream()
         self.inventory = inventory
         self.party = Party()
         self.detect_interval = detect_interval
-        self.set_up_client(
-            server_url=server_url, buffer_capacity=buffer_capacity)
         self.plot = plot
         self.plot_length = plot_options.get("plot_length", 300)
         self.plot_options = {
@@ -84,9 +80,11 @@ class RealTimeTribe(Tribe):
 
         .. rubric:: Example
 
+        >>> from rt_eqcorrscan.streaming import RealTimeClient
+        >>> rt_client = RealTimeClient(server_url="geofon.gfz-potsdam.de")
         >>> tribe = RealTimeTribe(
         ...     tribe=Tribe([Template(name='a', process_length=60)]),
-        ...     server_url="geofon.gfz-potsdam.de")
+        ...     rt_client=rt_client)
         >>> print(tribe) # doctest: +NORMALIZE_WHITESPACE
         Real-Time Tribe of 1 templates on client:
         Seed-link client at geofon.gfz-potsdam.de, status: Stopped, \
@@ -96,7 +94,7 @@ class RealTimeTribe(Tribe):
         <BLANKLINE>
         """
         return 'Real-Time Tribe of {0} templates on client:\n{1}'.format(
-            self.__len__(), self.client)
+            self.__len__(), self.rt_client)
 
     @property
     def template_channels(self) -> set:
@@ -125,7 +123,7 @@ class RealTimeTribe(Tribe):
         from rt_eqcorrscan.plotting.plot_buffer import EQcorrscanPlot
 
         wait_length = 0
-        while len(self.client.buffer) < len(self.expected_channels):
+        while len(self.rt_client.buffer) < len(self.expected_channels):
             if wait_length >= self.detect_interval:
                 Logger.warning("Starting plotting without the full dataset")
                 break
@@ -133,27 +131,21 @@ class RealTimeTribe(Tribe):
             Logger.debug(
                 "Waiting for data, currently have {0} channels of {1} "
                 "expected channels".format(
-                    len(self.client.buffer), len(self.expected_channels)))
+                    len(self.rt_client.buffer), len(self.expected_channels)))
             wait_length += self.sleep_step
             time.sleep(self.sleep_step)
             pass
         self.plotter = EQcorrscanPlot(
-            rt_client=self.client, plot_length=self.plot_length,
+            rt_client=self.rt_client, plot_length=self.plot_length,
             tribe=self, inventory=self.inventory,
             detections=self.detections, exclude_channels=self.exclude_channels)
         self.plotter.background_run()
-
-    def set_up_client(self, server_url: str, buffer_capacity: float) -> None:
-        """ Set-up the streaming client. """
-        self.client = RealTimeClient(
-            server_url=server_url, autoconnect=True, buffer=self.buffer,
-            buffer_capacity=buffer_capacity)
 
     def stop(self) -> None:
         """ Stop the real-time system. """
         if self.plotter is not None:  # pragma: no cover
             self.plotter.background_stop()
-        self.client.background_stop()
+        self.rt_client.background_stop()
         self._running = False
 
     def run(
@@ -203,12 +195,12 @@ class RealTimeTribe(Tribe):
         last_possible_detection = UTCDateTime(0)
         if not os.path.isdir(detect_directory):
             os.makedirs(detect_directory)
-        if not self.client.streaming_started:
+        if self.rt_client.can_add_streams:
             for tr_id in self.expected_channels:
-                self.client.select_stream(
+                self.rt_client.select_stream(
                     net=tr_id.split('.')[0], station=tr_id.split('.')[1],
                     selector=tr_id.split('.')[3])
-            self.client.background_run()
+            self.rt_client.background_run()
             Logger.info("Started real-time streaming")
         else:
             Logger.warning("Client already in streaming mode,"
@@ -217,15 +209,15 @@ class RealTimeTribe(Tribe):
             # Set up plotting thread
             self._plot()
             Logger.info("Plotting thread started")
-        if not self.client.buffer_full:
+        if not self.rt_client.buffer_full:
             Logger.info("Sleeping for {0}s while accumulating data".format(
-                self.client.buffer_capacity - self.client.buffer_length + 5))
-            time.sleep(self.client.buffer_capacity -
-                       self.client.buffer_length + 5)
+                self.rt_client.buffer_capacity - self.rt_client.buffer_length + 5))
+            time.sleep(self.rt_client.buffer_capacity -
+                       self.rt_client.buffer_length + 5)
         try:
             while self._running:
                 start_time = UTCDateTime.now()
-                st = self.client.get_stream()
+                st = self.rt_client.get_stream()
                 st = st.merge()
                 st.trim(starttime=max([tr.stats.starttime for tr in st]),
                         endtime=min([tr.stats.endtime for tr in st]))
@@ -290,7 +282,7 @@ class RealTimeTribe(Tribe):
                 Logger.debug("This step took {0}s total".format(run_time))
                 Logger.info("Waiting {0}s until next run".format(
                     self.detect_interval - run_time))
-                time.sleep(self.detect_interval - run_time)
+                time.sleep((self.detect_interval - run_time) / self._speed_up)
                 if max_run_length and UTCDateTime.now() > run_start + max_run_length:
                     self.stop()
         finally:

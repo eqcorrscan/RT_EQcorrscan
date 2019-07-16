@@ -20,6 +20,7 @@ from rt_eqcorrscan.reactor import get_inventory, estimate_region, Reactor
 from rt_eqcorrscan.event_trigger import CatalogListener
 from rt_eqcorrscan.database import TemplateBank
 from rt_eqcorrscan.event_trigger import magnitude_rate_trigger_func
+from rt_eqcorrscan.streaming import RealTimeClient
 
 
 class ReactorTests(unittest.TestCase):
@@ -38,9 +39,9 @@ class ReactorTests(unittest.TestCase):
             rate_threshold=20, rate_bin=0.5)
 
     def test_up_time(self):
+        rt_client = RealTimeClient(server_url="link.geonet.org.nz")
         reactor = Reactor(
-            client=Client("GEONET"),
-            seedlink_server_url="link.geonet.org.nz",
+            client=Client("GEONET"), rt_client=rt_client,
             listener=self.listener, trigger_func=self.trigger_func,
             template_database=self.template_bank,
             real_time_tribe_kwargs=dict(),
@@ -52,9 +53,9 @@ class ReactorTests(unittest.TestCase):
         self.assertEqual(reactor.up_time, 86400)
 
     def test_run(self):
+        rt_client = RealTimeClient(server_url="link.geonet.org.nz")
         reactor = Reactor(
-            client=Client("GEONET"),
-            seedlink_server_url="link.geonet.org.nz",
+            client=Client("GEONET"), rt_client=rt_client,
             listener=self.listener, trigger_func=self.trigger_func,
             template_database=self.template_bank,
             real_time_tribe_kwargs=dict(),
@@ -64,9 +65,9 @@ class ReactorTests(unittest.TestCase):
         self.assertGreaterEqual(reactor.up_time, 30)
 
     def test_reactor_spin_up(self):
+        rt_client = RealTimeClient(server_url="link.geonet.org.nz")
         reactor = Reactor(
-            client=Client("GEONET"),
-            seedlink_server_url="link.geonet.org.nz",
+            client=Client("GEONET"), rt_client=rt_client,
             listener=self.listener, trigger_func=self.trigger_func,
             template_database=self.template_bank,
             real_time_tribe_kwargs=dict(),

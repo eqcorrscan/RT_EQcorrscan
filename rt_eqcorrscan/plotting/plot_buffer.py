@@ -27,7 +27,7 @@ from functools import partial
 
 from obspy import Inventory
 from rt_eqcorrscan.rt_match_filter import RealTimeTribe
-from rt_eqcorrscan.streaming.seedlink import RealTimeClient
+from rt_eqcorrscan.streaming.streaming import _StreamingClient
 
 Logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ class EQcorrscanPlot:
     """
     def __init__(
         self,
-        rt_client: RealTimeClient,
+        rt_client: _StreamingClient,
         plot_length: float,
         tribe: RealTimeTribe,
         inventory: Inventory,

@@ -23,6 +23,7 @@ from eqcorrscan import Tribe, Party
 from rt_eqcorrscan.database.database_manager import TemplateBank
 from rt_eqcorrscan.rt_match_filter import RealTimeTribe
 from rt_eqcorrscan.event_trigger.catalog_listener import CatalogListener
+from rt_eqcorrscan.streaming.streaming import _StreamingClient
 
 
 Logger = logging.getLogger(__name__)
@@ -44,9 +45,8 @@ class Reactor(object):
     ----------
     client
         An obspy or obsplus client that supports event and station queries.
-    seedlink_server_url
-        The url to a seedlink server that will be used to real-time
-        matched-filtering
+    rt_client
+        A client that supports real-time data streaming.
     listener
         Listener for checking current earthquake activity
     trigger_func:
@@ -91,7 +91,7 @@ class Reactor(object):
     def __init__(
         self,
         client,
-        seedlink_server_url: str,
+        rt_client: _StreamingClient,
         listener: CatalogListener,
         trigger_func: Callable,
         template_database: TemplateBank,
@@ -100,7 +100,7 @@ class Reactor(object):
         plot_kwargs: dict,
     ):
         self.client = client
-        self.seedlink_server_url = seedlink_server_url
+        self.rt_client = rt_client
         self.listener = listener
         self.trigger_func = trigger_func
         self.template_database = template_database
@@ -194,18 +194,13 @@ class Reactor(object):
             self.client, tribe, triggering_event=triggering_event,
             max_distance=self.max_station_distance,
             n_stations=self.n_stations)
-        buffer_capacity = self.real_time_tribe_kwargs.get(
-            "buffer_capacity", 600)
         detect_interval = self.real_time_tribe_kwargs.get(
             "detect_interval", 60)
         plot = self.real_time_tribe_kwargs.get("plot", False)
         plot_length = self.real_time_tribe_kwargs.get(
             "plot_length", 300)
-
         real_time_tribe = RealTimeTribe(
-            tribe=tribe, inventory=inventory,
-            server_url=self.seedlink_server_url,
-            buffer_capacity=buffer_capacity,
+            tribe=tribe, inventory=inventory, rt_client=self.rt_client,
             detect_interval=detect_interval, plot=plot,
             plot_length=plot_length, **self.plot_kwargs)
 

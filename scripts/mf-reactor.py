@@ -15,6 +15,7 @@ from rt_eqcorrscan.event_trigger import (
     magnitude_rate_trigger_func, CatalogListener)
 from rt_eqcorrscan.reactor import Reactor
 from rt_eqcorrscan.database import TemplateBank
+from rt_eqcorrscan.streaming import RealTimeClient
 
 
 Logger = logging.getLogger(__name__)
@@ -48,10 +49,12 @@ def run(**kwargs):
         client=client, catalog_lookup_kwargs=dict(),
         template_bank=template_bank, interval=600, keep=86400.,
         catalog=Catalog())
+    rt_client = RealTimeClient(
+        server_url=config.rt_match_filter.seedlink_server_url,
+        buffer_capacity=config.rt_match_filter.buffer_capacity)
 
     reactor = Reactor(
-            client=client,
-            seedlink_server_url=config.rt_match_filter.seedlink_server_url,
+            client=client, rt_client=rt_client,
             listener=listener, trigger_func=trigger_func,
             template_database=template_bank,
             real_time_tribe_kwargs=dict(
