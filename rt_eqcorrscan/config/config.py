@@ -109,8 +109,8 @@ class PlotConfig(_ConfigAttribDict):
     """
     defaults = {
         "plot_length": 600.,
-        "low_cut": 1.0,
-        "high_cut": 10.0,
+        "lowcut": 1.0,
+        "highcut": 10.0,
     }
     readonly = []
 

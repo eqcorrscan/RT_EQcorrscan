@@ -9,6 +9,7 @@ License
 import time
 import os
 import logging
+import copy
 
 from obspy import Stream, UTCDateTime, Inventory
 from eqcorrscan import Tribe, Template, Party, Family
@@ -56,7 +57,7 @@ class RealTimeTribe(Tribe):
         rt_client: _StreamingClient = None,
         detect_interval: float = 60.,
         plot: bool = True,
-        **plot_options,
+        plot_options: dict = None,
     ) -> None:
         super().__init__(templates=tribe.templates)
         self.rt_client = rt_client
@@ -69,9 +70,11 @@ class RealTimeTribe(Tribe):
         self.detect_interval = detect_interval
         self.plot = plot
         self.plot_length = plot_options.get("plot_length", 300)
-        self.plot_options = {
-            key: value for key, value in plot_options.items()
-            if key != "plot_length"}
+        self.plot_options = {}
+        if plot_options is not None:
+            self.plot_options.update({
+                key: value for key, value in plot_options.items()
+                if key != "plot_length"})
         self.detections = []
 
     def __repr__(self):
@@ -123,8 +126,9 @@ class RealTimeTribe(Tribe):
         from rt_eqcorrscan.plotting.plot_buffer import EQcorrscanPlot
 
         wait_length = 0
+        Logger.info("Waiting for data before starting to plot.")
         while len(self.rt_client.buffer) < len(self.expected_channels):
-            if wait_length >= self.detect_interval:
+            if wait_length >= self.rt_client.buffer_capacity:
                 Logger.warning("Starting plotting without the full dataset")
                 break
             # Wait until we have some data
@@ -135,10 +139,17 @@ class RealTimeTribe(Tribe):
             wait_length += self.sleep_step
             time.sleep(self.sleep_step)
             pass
+        plot_options = copy.deepcopy(self.plot_options)
+        update_interval = plot_options.pop("update_interval", 100.)
+        plot_height = plot_options.pop("plot_height", 800)
+        plot_width = plot_options.pop("plot_width", 1500)
+        offline = plot_options.pop("offline", False)
         self.plotter = EQcorrscanPlot(
             rt_client=self.rt_client, plot_length=self.plot_length,
             tribe=self, inventory=self.inventory,
-            detections=self.detections, exclude_channels=self.exclude_channels)
+            detections=self.detections, exclude_channels=self.exclude_channels,
+            update_interval=update_interval, plot_height=plot_height,
+            plot_width=plot_width, offline=offline, **plot_options)
         self.plotter.background_run()
 
     def stop(self) -> None:

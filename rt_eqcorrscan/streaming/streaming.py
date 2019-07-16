@@ -53,7 +53,6 @@ class _StreamingClient(ABC):
             self.buffer = buffer
         self.buffer_capacity = buffer_capacity
         self.threads = []
-        Logger.info("Instantiated RealTime client: {0}".format(self))
 
     def __repr__(self):
         """

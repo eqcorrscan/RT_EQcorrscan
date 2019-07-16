@@ -56,6 +56,9 @@ class EQcorrscanPlot:
         Plot width in screen units
     exclude_channels
         Iterable of channel codes to exclude from plotting
+    offline
+        Flag to set time-stamps to data time-stamps if True, else timestamps
+        will be real-time
     """
     def __init__(
         self,
@@ -68,6 +71,7 @@ class EQcorrscanPlot:
         plot_height: int = 800,
         plot_width: int = 1500,
         exclude_channels: iter = (),
+        offline: bool = False,
         **plot_data_options,
     ) -> None:
         channels = [tr.id for tr in rt_client.buffer
@@ -104,7 +108,8 @@ class EQcorrscanPlot:
             tribe=self.tribe, inventory=self.inventory,
             detections=self.detections, map_options=self.map_options,
             plot_options=self.plot_options, plot_length=self.plot_length,
-            update_interval=update_interval, **plot_data_options)
+            update_interval=update_interval, offline=offline,
+            **plot_data_options)
 
         apps = {'/RT_EQcorrscan': Application(FunctionHandler(make_doc))}
 
@@ -136,7 +141,7 @@ class EQcorrscanPlot:
 
 def define_plot(
     doc: Document,
-    rt_client: RealTimeClient,
+    rt_client: _StreamingClient,
     channels: list,
     tribe: RealTimeTribe,
     inventory: Inventory,
@@ -148,6 +153,7 @@ def define_plot(
     data_color: str = "grey",
     lowcut: float = 1.0,
     highcut: float = 10.0,
+    offline: bool = False,
 ):
     """
     Set up a bokeh plot for real-time plotting.
@@ -182,6 +188,9 @@ def define_plot(
         Lowcut for filtering data stream
     highcut
         Highcut for filtering data stream
+    offline
+        Flag to set time-stamps to data time-stamps if True, else timestamps
+        will be real-time
     """
     # Set up the data source
     stream = rt_client.get_stream().copy().detrend()
@@ -367,13 +376,14 @@ def define_plot(
     
     def update():
         Logger.debug("Plot updating")
-        _stream = rt_client.get_stream().copy().detrend()
+        _stream = rt_client.get_stream().copy().split().detrend()
         if lowcut and highcut:
             _stream.filter("bandpass", freqmin=lowcut, freqmax=highcut)
         elif lowcut:
             _stream.filter("highpass", lowcut)
         elif highcut:
             _stream.filter("lowpass", highcut)
+        _stream.merge()
 
         for _i, _channel in enumerate(channels):
             try:
@@ -408,7 +418,10 @@ def define_plot(
                 rollover=int(plot_length * _tr.stats.sampling_rate))
             previous_timestamps.update({_channel: _tr.stats.endtime})
             Logger.debug("New data plotted for {0}".format(_channel))
-        now = dt.datetime.utcnow()
+        if not offline:
+            now = dt.datetime.utcnow()
+        else:
+            now = max([tr.stats.endtime for tr in _stream]).datetime
         trace_plots[0].x_range.start = now - dt.timedelta(seconds=plot_length)
         trace_plots[0].x_range.end = now
         _update_template_alphas(

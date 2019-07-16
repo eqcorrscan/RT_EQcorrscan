@@ -7,12 +7,14 @@ Script to run the real-time matched filter for a given region or earthquake.
 import logging
 
 from obspy import UTCDateTime
+from eqcorrscan import Party
 
 from rt_eqcorrscan.config import read_config
 from rt_eqcorrscan.reactor import estimate_region, get_inventory
 from rt_eqcorrscan.database import TemplateBank, check_tribe_quality
 from rt_eqcorrscan.rt_match_filter import RealTimeTribe
 from rt_eqcorrscan.streaming import RealTimeClient
+from rt_eqcorrscan.streaming.simulate import SimulateRealTimeClient
 
 
 Logger = logging.getLogger("real-time-mf")
@@ -43,10 +45,13 @@ def run_real_time_matched_filter(**kwargs):
             "maxradius": kwargs.get("maxradius", None)}
     starttime = kwargs.get("starttime", None)
     endtime = kwargs.get("endtime", None)
+    rt_client_starttime = kwargs.get("rt_client_starttime", None)
     if starttime is not None:
         region.update({"starttime": starttime})
     if endtime is not None:
         region.update({"endtime": endtime})
+    elif rt_client_starttime is not None:
+        region.update({"endtime": rt_client_starttime})
     bank = TemplateBank(
         config.database_manager.event_path,
         event_name_structure=config.database_manager.event_name_structure,
@@ -55,6 +60,8 @@ def run_real_time_matched_filter(**kwargs):
         event_ext=config.database_manager.event_ext)
     df = bank.get_event_summary(**region)
     Logger.info("{0} events within region".format(len(df)))
+    if len(df) == 0:
+        return Party()
     Logger.debug("Region: {0}".format(region))
     Logger.info("Reading in Tribe")
 
@@ -62,7 +69,7 @@ def run_real_time_matched_filter(**kwargs):
 
     Logger.info("Read in tribe of {0} templates".format(len(tribe)))
 
-    _detection_starttime = UTCDateTime.now()
+    _detection_starttime = rt_client_starttime or UTCDateTime.now()
     inventory = get_inventory(
         client, tribe, triggering_event=triggering_event,
         location=region, starttime=_detection_starttime,
@@ -83,14 +90,24 @@ def run_real_time_matched_filter(**kwargs):
     for t in tribe:
         t.process_length = config.rt_match_filter.buffer_capacity
 
-    rt_client = RealTimeClient(
-        server_url=config.rt_match_filter.seedlink_server_url,
-        buffer_capacity=config.rt_match_filter.buffer_capacity)
+    if rt_client_starttime is None:
+        speed_up = 1.0
+        rt_client = RealTimeClient(
+            server_url=config.rt_match_filter.seedlink_server_url,
+            buffer_capacity=config.rt_match_filter.buffer_capacity)
+    else:
+        speed_up = kwargs.get("speed_up", 1.0)
+        config.plot.offline = True
+        rt_client = SimulateRealTimeClient(
+            client=client, starttime=rt_client_starttime,
+            buffer_capacity=config.rt_match_filter.buffer_capacity,
+            speed_up=speed_up)
     real_time_tribe = RealTimeTribe(
-        tribe=tribe, inventory=inventory, client=rt_client,
+        tribe=tribe, inventory=inventory, rt_client=rt_client,
         detect_interval=config.rt_match_filter.detect_interval,
         plot=config.rt_match_filter.plot,
         plot_options=config.plot)
+    real_time_tribe._speed_up = speed_up
 
     party = None
     try:
@@ -125,13 +142,19 @@ if __name__ == "__main__":
         "--config", "-c", type=str, help="Path to configuration file",
         required=False)
     parser.add_argument(
-        "--starttime", type=str, required=False,
+        "--template-starttime", type=str, required=False,
         help="Start-time as UTCDateTime parable string to collect templates "
              "from")
     parser.add_argument(
-        "--endtime", type=str, required=False,
+        "--template-endtime", type=str, required=False,
         help="End-time as UTCDateTime parable string to collect templates "
              "up to.")
+    parser.add_argument(
+        "--starttime", type=str, required=False,
+        help="Start-time for real-time simulation for past data")
+    parser.add_argument(
+        "--speed-up", type=float, required=False,
+        help="Speed-up factor for past data - unused for real-time")
     parser.add_argument(
         "--debug", action="store_true", help="Flag to set log level to debug")
 
@@ -146,10 +169,12 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError(
             "Needs either an event id or a geographic search")
+    if args.template_starttime is not None:
+        kwargs.update({"starttime": UTCDateTime(args.template_starttime)})
+    if args.template_endtime is not None:
+        kwargs.update({"endtime": UTCDateTime(args.template_endtime)})
     if args.starttime is not None:
-        kwargs.update({"starttime": UTCDateTime(args.starttime)})
-    if args.endtime is not None:
-        kwargs.update({"endtime": UTCDateTime(args.endtime)})
+        kwargs.update({"rt_client_starttime": UTCDateTime(args.starttime)})
 
     kwargs.update({"config_file": args.config, "debug": args.debug})
 

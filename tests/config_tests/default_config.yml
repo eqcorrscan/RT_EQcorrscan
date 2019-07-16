@@ -17,8 +17,8 @@ rt match filter:
   trig int: 2.0
 plot:
   plot length: 600
-  low cut: 1.0
-  high cut: 10.0
+  lowcut: 1.0
+  highcut: 10.0
 database manager:
   event path: "/Volumes/GeoPhysics_09/users-data/chambeca/Cluster_Geonet/events"
   event format: "QUAKEML"

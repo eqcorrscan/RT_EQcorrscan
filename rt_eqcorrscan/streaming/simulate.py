@@ -9,6 +9,7 @@ License
 """
 import logging
 import time
+import copy
 from numpy.random import randint
 
 from obspy import Stream, UTCDateTime
@@ -41,7 +42,7 @@ class SimulateRealTimeClient(_StreamingClient):
         self,
         client,
         starttime: UTCDateTime,
-        query_interval: float = 20.,
+        query_interval: float = 10.,
         speed_up: float = 1.,
         buffer: Stream = None,
         buffer_capacity: float = 600.
@@ -54,8 +55,9 @@ class SimulateRealTimeClient(_StreamingClient):
         self.speed_up = speed_up
         self.bulk = []
         self.streaming = False
-        Logger.info("Instantiated simulated real-time client: {0}".format(
-            self.client))
+        Logger.info(
+            "Instantiated simulated real-time client "
+            "(starttime = {0}): {1}".format(self.starttime, self))
 
     @property
     def can_add_streams(self) -> bool:
@@ -81,23 +83,35 @@ class SimulateRealTimeClient(_StreamingClient):
 
     def run(self) -> None:
         self.streaming = True
-        now = self.starttime
+        now = copy.deepcopy(self.starttime)
+        last_query_start = now - self.query_interval
         while self.streaming:
+            _query_start = UTCDateTime.now()
             for _bulk in self.bulk:
                 jitter = randint(int(self.query_interval))
                 _bulk.update({
-                    "starttime": now - self.query_interval,
+                    "starttime": last_query_start,
                     "endtime": now - jitter})
                 Logger.debug("Querying client for {0}".format(_bulk))
-                try:
-                    st = self.client.get_waveforms(**_bulk)
-                except Exception as e:
-                    Logger.error(e)
-                    continue
-                for tr in st:
-                    self.on_data(tr)
-            time.sleep(self.query_interval / self.speed_up)
+            bulk = [
+                (_bulk["network"], _bulk["station"], _bulk["location"],
+                 _bulk["channel"], _bulk["starttime"], _bulk["endtime"])
+                for _bulk in self.bulk]
+            try:
+                st = self.client.get_waveforms_bulk(bulk)
+            except Exception as e:
+                Logger.error("Failed (bulk={0})".format(bulk))
+                Logger.error(e)
+                continue
+            for tr in st:
+                self.on_data(tr)
+            _query_duration = UTCDateTime.now() - _query_start
+            sleep_step = (
+                self.query_interval - _query_duration) / self.speed_up
+            if sleep_step > 0:
+                time.sleep(sleep_step)
             now += self.query_interval
+            last_query_start = min([_bulk["endtime"] for _bulk in self.bulk])
 
     def stop(self) -> None:
         self.busy = False
