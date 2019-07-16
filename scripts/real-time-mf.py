@@ -61,16 +61,16 @@ def run_real_time_matched_filter(**kwargs):
     elif rt_client_starttime is not None:
         region.update({"endtime": rt_client_starttime})
     bank = TemplateBank(
-        config.database_manager.event_path,
+        base_path=config.database_manager.event_path,
         event_name_structure=config.database_manager.event_name_structure,
         event_format=config.database_manager.event_format,
         path_structure=config.database_manager.path_structure,
         event_ext=config.database_manager.event_ext)
+    Logger.debug("Region: {0}".format(region))
     df = bank.get_event_summary(**region)
     Logger.info("{0} events within region".format(len(df)))
     if len(df) == 0:
         return Party()
-    Logger.debug("Region: {0}".format(region))
     Logger.info("Reading in Tribe")
 
     tribe = bank.get_templates(**region)
