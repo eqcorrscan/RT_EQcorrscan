@@ -31,7 +31,7 @@ class SeedLinkTest(unittest.TestCase):
         self.rt_client.buffer = Stream()
         self.rt_client.background_run()
         self.assertFalse(self.rt_client.buffer_full)
-        time.sleep(12)
+        time.sleep(20)  # GeoNet is slow
         self.rt_client.background_stop()
         self.assertTrue(self.rt_client.buffer_full)
 
