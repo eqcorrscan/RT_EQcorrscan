@@ -12,3 +12,5 @@ RT_EQcorrscan.egg-info
 .pytest_cache
 detections
 tests/database_tests/db
+.ipynb_checkpoints
+docs/examples/template_bank
