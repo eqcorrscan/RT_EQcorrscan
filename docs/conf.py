@@ -30,6 +30,7 @@ if not READ_THE_DOCS:
 project = 'RT-EQcorrscan'
 copyright = '2019, Calum J. Chamberlain'
 author = 'Calum J. Chamberlain'
+master_doc = "index"
 
 # The full version, including alpha/beta/rc tags
 # The short X.Y version.
