@@ -265,6 +265,7 @@ def define_plot(
         'lats': station_lats, 'lons': station_lons, 'id': station_ids})
 
     trace_sources = {}
+    trace_data_range = {}
     # Allocate empty arrays
     for channel in channels:
         tr = stream.select(id=channel)[0]
@@ -275,6 +276,7 @@ def define_plot(
         data = tr.data
         trace_sources.update(
             {channel: ColumnDataSource({'time': times, 'data': data})})
+        trace_data_range.update({channel: (data.min(), data.max())})
 
     # Set up the map to go on the left side
     map_plot = figure(
@@ -292,7 +294,10 @@ def define_plot(
 
     # Set up the trace plots
     trace_plots = []
-    now = dt.datetime.utcnow()
+    if not offline:
+        now = dt.datetime.utcnow()
+    else:
+        now = max([tr.stats.endtime for tr in stream]).datetime
     p1 = figure(
         y_axis_location="right", title=title,
         x_range=[now - dt.timedelta(seconds=plot_length), now],
@@ -408,20 +413,29 @@ def define_plot(
                 rollover=int(plot_length * _tr.stats.sampling_rate))
             new_picks = _get_pick_times(
                 detections, _channel, datastream=detection_sources)
+            # new_picks.update({
+            #     'pick_values': [
+            #         [int(trace_plots[_i].y_range.start * .9),
+            #          int(trace_plots[_i].y_range.end * .9)]
+            #         for _ in new_picks['picks']]})
             new_picks.update({
                 'pick_values': [
-                    [int(trace_plots[_i].y_range.start * .9),
-                     int(trace_plots[_i].y_range.end * .9)]
+                    [int(trace_sources[_channel].data['data'].max() * .9),
+                     int(trace_sources[_channel].data['data'].min() * .9)]
                     for _ in new_picks['picks']]})
-            detection_sources[_channel].stream(
-                new_data=new_picks,
-                rollover=int(plot_length * _tr.stats.sampling_rate))
+            detection_sources[_channel].data = new_picks
+            # detection_sources[_channel].stream(
+            #     new_data=new_picks,
+            #     rollover=int(plot_length * _tr.stats.sampling_rate))
             previous_timestamps.update({_channel: _tr.stats.endtime})
             Logger.debug("New data plotted for {0}".format(_channel))
         if not offline:
             now = dt.datetime.utcnow()
         else:
-            now = max([tr.stats.endtime for tr in _stream]).datetime
+            try:
+                now = max([tr.stats.endtime for tr in _stream]).datetime
+            except ValueError:
+                return
         trace_plots[0].x_range.start = now - dt.timedelta(seconds=plot_length)
         trace_plots[0].x_range.end = now
         _update_template_alphas(
@@ -507,7 +521,8 @@ def _get_pick_times(detections: list, seed_id: str, datastream) -> dict:
     Dictionary with one key ("picks") of the pick-times.
     """
     picks = []
-    Logger.debug("Scanning {0} detections for new picks".format(len(detections)))
+    Logger.debug("Scanning {0} detections for new picks".format(
+        len(detections)))
     for detection in detections:
         try:
             pick = [p for p in detection.event.picks
@@ -516,15 +531,15 @@ def _get_pick_times(detections: list, seed_id: str, datastream) -> dict:
             pick = None
             pass
         if pick:
-            old_picks = datastream.get(seed_id, None)
-            if old_picks is None:
-                old_picks = []
-            else:
-                old_picks = old_picks.data["picks"]
-            if [pick.time.datetime, pick.time.datetime] not in old_picks:
-                Logger.debug("Plotting new pick on {0} at {1}".format(
-                    seed_id, pick.time))
-                picks.append([pick.time.datetime, pick.time.datetime])
+            # old_picks = datastream.get(seed_id, None)
+            # if old_picks is None:
+            #     old_picks = []
+            # else:
+            #     old_picks = old_picks.data["picks"]
+            # if [pick.time.datetime, pick.time.datetime] not in old_picks:
+            Logger.debug("Plotting pick on {0} at {1}".format(
+                seed_id, pick.time))
+            picks.append([pick.time.datetime, pick.time.datetime])
     return {"picks": picks}
 
 

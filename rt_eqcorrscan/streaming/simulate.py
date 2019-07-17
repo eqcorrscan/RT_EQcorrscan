@@ -10,7 +10,7 @@ License
 import logging
 import time
 import copy
-from numpy.random import randint
+from numpy import random
 
 from obspy import Stream, UTCDateTime
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
@@ -89,7 +89,7 @@ class SimulateRealTimeClient(_StreamingClient):
             _query_start = UTCDateTime.now()
             st = Stream()
             for _bulk in self.bulk:
-                jitter = randint(int(self.query_interval))
+                jitter = random.randint(int(self.query_interval))
                 _bulk.update({
                     "starttime": last_query_start,
                     "endtime": now - jitter})

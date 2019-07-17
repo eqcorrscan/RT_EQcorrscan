@@ -203,7 +203,7 @@ class RealTimeTribe(Tribe):
         run_start = UTCDateTime.now()
         self._running = True
 
-        last_possible_detection = UTCDateTime(0)
+        last_possible_detection = UTCDateTime(0) #TODO: Why is this here?
         if not os.path.isdir(detect_directory):
             os.makedirs(detect_directory)
         if self.rt_client.can_add_streams:
@@ -216,6 +216,8 @@ class RealTimeTribe(Tribe):
         else:
             Logger.warning("Client already in streaming mode,"
                            " cannot add channels")
+        Logger.info("Detection will use the following data: {0}".format(
+            self.expected_channels))
         if self.plot:  # pragma: no cover
             # Set up plotting thread
             self._plot()
@@ -232,8 +234,14 @@ class RealTimeTribe(Tribe):
                 start_time = UTCDateTime.now()
                 st = self.rt_client.get_stream()
                 st = st.merge()
+                if len(st) == 0:
+                    Logger.warning("No data")
+                    continue
                 st.trim(starttime=max([tr.stats.starttime for tr in st]),
                         endtime=min([tr.stats.endtime for tr in st]))
+                now = max([tr.stats.endtime for tr in st])
+                # Used for removing old detections - cannot be real-time to
+                # allow for offline testing.
                 Logger.info("Starting detection run")
                 try:
                     new_party = self.detect(
@@ -276,7 +284,7 @@ class RealTimeTribe(Tribe):
                     for family in self.party:
                         family.detections = [
                             d for d in family.detections
-                            if d.detect_time >= UTCDateTime.now() - keep_detections]
+                            if d.detect_time >= now - keep_detections]
                     for f in self.party:
                         for d in f:
                             if d not in self.detections:
@@ -288,11 +296,11 @@ class RealTimeTribe(Tribe):
                 Logger.info("Detection took {0:.2f}s".format(run_time))
                 if self.detect_interval <= run_time:
                     Logger.warning(
-                        "detect_interval {0} shorter than run-time {1}, "
-                        "increasing detect_interval to {2}".format(
+                        "detect_interval {0:.2f} shorter than run-time "
+                        "{1:.2f}, increasing detect_interval to {2:.2f}".format(
                             self.detect_interval, run_time, run_time + 10))
                     self.detect_interval = run_time + 10
-                Logger.debug("This step took {0}s total".format(run_time))
+                Logger.debug("This step took {0:.2f}s total".format(run_time))
                 Logger.info("Waiting {0:.2f}s until next run".format(
                     self.detect_interval - run_time))
                 time.sleep((self.detect_interval - run_time) / self._speed_up)

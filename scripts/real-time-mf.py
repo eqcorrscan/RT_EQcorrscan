@@ -66,7 +66,7 @@ def run_real_time_matched_filter(**kwargs):
         event_format=config.database_manager.event_format,
         path_structure=config.database_manager.path_structure,
         event_ext=config.database_manager.event_ext)
-    Logger.debug("Region: {0}".format(region))
+    Logger.info("Region: {0}".format(region))
     df = bank.get_event_summary(**region)
     Logger.info("{0} events within region".format(len(df)))
     if len(df) == 0:
