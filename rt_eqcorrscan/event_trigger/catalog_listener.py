@@ -127,6 +127,9 @@ class CatalogListener(_Listener):
     keep:
         Time in seconds to keep events for in the catalog in memory. Will not
         remove old events on disk. Use to reduce memory consumption.
+    waveform_client
+        Client with at least a `get_waveforms` and `get_waveforms_bulk` method.
+        If this is None (default) then the `client` will be used.
     """
     busy = False
     _test_start_step = 0  # Number of seconds prior to `now` used for testing.
@@ -134,17 +137,21 @@ class CatalogListener(_Listener):
     def __init__(
         self,
         client,
-        catalog: Catalog,
-        catalog_lookup_kwargs: dict,
         template_bank: TemplateBank,
+        catalog: Catalog = None,
+        catalog_lookup_kwargs: dict = None,
         interval: float = 600,
         keep: float = 86400,
+        waveform_client=None,
     ):
         self.client = client
+        self.waveform_client = waveform_client or client
+        if catalog is None:
+            catalog = Catalog()
         self.old_events = [
             (ev.resource_id.id, event_time(ev)) for ev in catalog]
         self.template_bank = template_bank
-        self.catalog_lookup_kwargs = catalog_lookup_kwargs
+        self.catalog_lookup_kwargs = catalog_lookup_kwargs or dict()
         self.interval = interval
         self.keep = keep
         self.threads = []
@@ -279,7 +286,8 @@ class CatalogListener(_Listener):
                         for ev in new_events])
                     if make_templates:
                         self.template_bank.make_templates(
-                            new_events, client=self.client, **template_kwargs)
+                            new_events, client=self.waveform_client,
+                            **template_kwargs)
             self.previous_time = now
             time.sleep(self.interval)
 

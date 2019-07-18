@@ -139,11 +139,35 @@ class DatabaseManagerConfig(_ConfigAttribDict):
         super().__init__(*args, **kwargs)
 
 
+class TemplateConfig(_ConfigAttribDict):
+    """
+    A holder for configuration values for Template construction.
+
+    Works like a dictionary and can have anything added to it.
+    """
+    defaults = {
+        "lowcut": 2.0,
+        "highcut": 15.0,
+        "filt_order": 4,
+        "samp_rate": 50.,
+        "length": 4.,
+        "prepick": .2,
+        "swin": "all",
+        "process_len": 300,
+        "min_snr": 0,
+    }
+    readonly = []
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+
 KEY_MAPPER = {
     "rt_match_filter": RTMatchFilterConfig,
     "reactor": ReactorConfig,
     "plot": PlotConfig,
     "database_manager": DatabaseManagerConfig,
+    "template": TemplateConfig,
 }
 
 
@@ -165,6 +189,8 @@ class Config(object):
         Config values for real-time plotting
     database_manager
         Config values for the database manager.
+    template
+        Config values for template creation.
     """
     def __init__(
         self,
@@ -176,6 +202,7 @@ class Config(object):
         self.reactor = ReactorConfig()
         self.plot = PlotConfig()
         self.database_manager = DatabaseManagerConfig()
+        self.template = TemplateConfig()
         self.log_level = log_level
         self.log_formatter = log_formatter
 
@@ -191,9 +218,10 @@ class Config(object):
 
     def __repr__(self):
         return ("Config(\n\trt_match_filter={0},\n\treactor={1},\n\tplot={2},"
-                "\n\tdatabase_manager={3}\n)".format(
+                "\n\tdatabase_manager={3},\n\ttemplate={4}".format(
                     self.rt_match_filter.__repr__(), self.reactor.__repr__(),
-                    self.plot.__repr__(), self.database_manager.__repr__()))
+                    self.plot.__repr__(), self.database_manager.__repr__(),
+                    self.template.__repr__()))
 
     def __eq__(self, other):
         if not isinstance(other, Config):

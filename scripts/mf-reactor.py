@@ -54,15 +54,15 @@ def run(**kwargs):
         buffer_capacity=config.rt_match_filter.buffer_capacity)
 
     reactor = Reactor(
-            client=client, rt_client=rt_client,
-            listener=listener, trigger_func=trigger_func,
-            template_database=template_bank,
-            real_time_tribe_kwargs=dict(
-                threshold=config.rt_match_filter.threshold,
-                threshold_type=config.rt_match_filter.threshold_type,
-                trig_int=config.rt_match_filter.trig_int),
-            plot_kwargs=dict(),
-            listener_kwargs=dict())
+        client=client, rt_client=rt_client,
+        listener=listener, trigger_func=trigger_func,
+        template_database=template_bank,
+        real_time_tribe_kwargs=dict(
+            threshold=config.rt_match_filter.threshold,
+            threshold_type=config.rt_match_filter.threshold_type,
+            trig_int=config.rt_match_filter.trig_int),
+        plot_kwargs=dict(),
+        listener_kwargs=dict())
     reactor.run()
     return
 

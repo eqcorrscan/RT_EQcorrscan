@@ -149,7 +149,8 @@ class RealTimeTribe(Tribe):
             tribe=self, inventory=self.inventory,
             detections=self.detections, exclude_channels=self.exclude_channels,
             update_interval=update_interval, plot_height=plot_height,
-            plot_width=plot_width, offline=offline, **plot_options)
+            plot_width=plot_width, offline=offline,
+            **plot_options)
         self.plotter.background_run()
 
     def stop(self) -> None:

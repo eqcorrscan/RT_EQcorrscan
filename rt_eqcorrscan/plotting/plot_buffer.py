@@ -13,6 +13,7 @@ import datetime as dt
 
 from pyproj import Proj, transform
 
+from bokeh.io import show
 from bokeh.document import Document
 from bokeh.plotting import figure
 from bokeh.models import ColumnDataSource, HoverTool, Legend, WMTSTileSource
@@ -111,9 +112,9 @@ class EQcorrscanPlot:
             update_interval=update_interval, offline=offline,
             **plot_data_options)
 
-        apps = {'/RT_EQcorrscan': Application(FunctionHandler(make_doc))}
+        self.apps = {'/RT_EQcorrscan': Application(FunctionHandler(make_doc))}
 
-        self.server = Server(apps)
+        self.server = Server(self.apps)
         self.server.start()
         Logger.info("Plotting started")
         self.threads = []
@@ -413,20 +414,12 @@ def define_plot(
                 rollover=int(plot_length * _tr.stats.sampling_rate))
             new_picks = _get_pick_times(
                 detections, _channel, datastream=detection_sources)
-            # new_picks.update({
-            #     'pick_values': [
-            #         [int(trace_plots[_i].y_range.start * .9),
-            #          int(trace_plots[_i].y_range.end * .9)]
-            #         for _ in new_picks['picks']]})
             new_picks.update({
                 'pick_values': [
                     [int(trace_sources[_channel].data['data'].max() * .9),
                      int(trace_sources[_channel].data['data'].min() * .9)]
                     for _ in new_picks['picks']]})
             detection_sources[_channel].data = new_picks
-            # detection_sources[_channel].stream(
-            #     new_data=new_picks,
-            #     rollover=int(plot_length * _tr.stats.sampling_rate))
             previous_timestamps.update({_channel: _tr.stats.endtime})
             Logger.debug("New data plotted for {0}".format(_channel))
         if not offline:

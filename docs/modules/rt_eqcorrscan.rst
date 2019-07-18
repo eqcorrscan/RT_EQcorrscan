@@ -1,5 +1,5 @@
-rt\_eqcorrscan package
-======================
+rt_eqcorrscan
+=============
 
 Subpackages
 -----------

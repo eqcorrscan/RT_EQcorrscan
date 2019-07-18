@@ -1,5 +1,5 @@
-rt_eqcorrscan package
-=====================
+Full API docs
+=============
 
 Submodules
 ----------

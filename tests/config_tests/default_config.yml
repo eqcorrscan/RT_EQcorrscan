@@ -25,3 +25,6 @@ database manager:
   path structure: "{year}/{month}/{event_id_short}"
   event ext: ".xml"
   min stations: 5
+template:
+  lowcut: 2.0
+  highcut: 20.0
