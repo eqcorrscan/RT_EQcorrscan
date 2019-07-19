@@ -18,6 +18,7 @@ from obspy.core.event import Event
 from rt_eqcorrscan.event_trigger.listener import _Listener, event_time
 from rt_eqcorrscan.database.database_manager import (
     TemplateBank, remove_unreferenced)
+from rt_eqcorrscan.event_trigger.triggers import magnitude_rate_trigger_func
 
 Logger = logging.getLogger(__name__)
 
@@ -244,6 +245,8 @@ class CatalogListener(_Listener):
             If the `filter_func` has changed then this should be the
             additional kwargs for the user-defined filter_func.
         """
+        if filter_func is None:
+            filter_func = magnitude_rate_trigger_func
         self.busy = True
         self.previous_time -= self._test_start_step
         while self.busy:
