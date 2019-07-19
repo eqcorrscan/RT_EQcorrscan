@@ -48,8 +48,9 @@ class SimulateRealTimeClient(_StreamingClient):
         buffer_capacity: float = 600.
     ) -> None:
         self.client = client
-        super().__init__(client_name=self.client.base_url, buffer=buffer,
-                         buffer_capacity=buffer_capacity)
+        super().__init__(
+            client_name=self.client.base_url, buffer=buffer,
+            buffer_capacity=buffer_capacity)
         self.starttime = starttime
         self.query_interval = query_interval
         self.speed_up = speed_up

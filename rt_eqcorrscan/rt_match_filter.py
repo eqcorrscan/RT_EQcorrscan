@@ -10,6 +10,9 @@ import time
 import os
 import logging
 import copy
+import numpy
+
+from typing import Union
 
 from obspy import Stream, UTCDateTime, Inventory
 from eqcorrscan import Tribe, Template, Party, Family
@@ -121,6 +124,11 @@ class RealTimeTribe(Tribe):
         else:
             return self.template_channels
 
+    @property
+    def minimum_data_for_detection(self) -> float:
+        """ Get the minimum required data length (in seconds) for detection. """
+        return max(template.process_length for template in self.templates)
+
     def _plot(self) -> None:  # pragma: no cover
         """ Plot the data as it comes in. """
         from rt_eqcorrscan.plotting.plot_buffer import EQcorrscanPlot
@@ -204,7 +212,7 @@ class RealTimeTribe(Tribe):
         run_start = UTCDateTime.now()
         self._running = True
 
-        last_possible_detection = UTCDateTime(0) #TODO: Why is this here?
+        last_possible_detection = UTCDateTime(0)  # TODO: Why is this here?
         if not os.path.isdir(detect_directory):
             os.makedirs(detect_directory)
         if self.rt_client.can_add_streams:
@@ -212,20 +220,23 @@ class RealTimeTribe(Tribe):
                 self.rt_client.select_stream(
                     net=tr_id.split('.')[0], station=tr_id.split('.')[1],
                     selector=tr_id.split('.')[3])
-            self.rt_client.background_run()
-            Logger.info("Started real-time streaming")
         else:
             Logger.warning("Client already in streaming mode,"
                            " cannot add channels")
+        if not self.rt_client.busy:
+            self.rt_client.background_run()
+            Logger.info("Started real-time streaming")
+        else:
+            Logger.info("Real-time streaming already running")
         Logger.info("Detection will use the following data: {0}".format(
             self.expected_channels))
         if self.plot:  # pragma: no cover
             # Set up plotting thread
             self._plot()
             Logger.info("Plotting thread started")
-        if not self.rt_client.buffer_full:
+        if not self.rt_client.buffer_length >= self.minimum_data_for_detection:
             sleep_step = (
-                self.rt_client.buffer_capacity -
+                self.minimum_data_for_detection -
                 self.rt_client.buffer_length + 5) / self._speed_up
             Logger.info("Sleeping for {0:.2f}s while accumulating data".format(
                 sleep_step))
@@ -238,11 +249,16 @@ class RealTimeTribe(Tribe):
                 if len(st) == 0:
                     Logger.warning("No data")
                     continue
-                st.trim(starttime=max([tr.stats.starttime for tr in st]),
-                        endtime=min([tr.stats.endtime for tr in st]))
-                now = max([tr.stats.endtime for tr in st])
-                # Used for removing old detections - cannot be real-time to
-                # allow for offline testing.
+                # Cope with data that doesn't come
+                last_data = max(tr.stats.endtime for tr in st)
+                st.trim(
+                    starttime=last_data - self.minimum_data_for_detection,
+                    endtime=last_data)
+                # Remove short channels
+                st.traces = [tr for tr in st
+                             if _numpy_len(tr.data) >= (
+                                     .8 * self.minimum_data_for_detection)]
+                Logger.debug(st)
                 Logger.info("Starting detection run")
                 try:
                     new_party = self.detect(
@@ -252,8 +268,8 @@ class RealTimeTribe(Tribe):
                 except Exception as e:  # pragma: no cover
                     Logger.error(e)
                     Logger.info(
-                        "Waiting for {0:.2f}s and hoping this gets better".format(
-                            self.detect_interval))
+                        "Waiting for {0:.2f}s and hoping this gets "
+                        "better".format(self.detect_interval))
                     time.sleep(self.detect_interval)
                     continue
                 if len(new_party) > 0:
@@ -285,7 +301,7 @@ class RealTimeTribe(Tribe):
                     for family in self.party:
                         family.detections = [
                             d for d in family.detections
-                            if d.detect_time >= now - keep_detections]
+                            if d.detect_time >= last_data - keep_detections]
                     for f in self.party:
                         for d in f:
                             if d not in self.detections:
@@ -310,6 +326,27 @@ class RealTimeTribe(Tribe):
         finally:
             self.stop()
         return self.party
+
+
+def _numpy_len(arr: Union[numpy.ndarray, numpy.ma.MaskedArray]) -> int:
+    """
+    Convenience function to return the length of a numpy array.
+
+    If arr is a masked array will return the count of the non-masked elements.
+
+    Parameters
+    ----------
+    arr
+        Array to get the length of - must be 1D
+
+    Returns
+    -------
+        Length of non-masked elements
+    """
+    assert arr.ndim == 1, "Only supports 1D arrays."
+    if numpy.ma.is_masked(arr):
+        return arr.count()
+    return arr.shape[0]
 
 
 if __name__ == "__main__":

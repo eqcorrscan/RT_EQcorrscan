@@ -39,7 +39,7 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         server_url: str,
         autoconnect: bool = True,
         buffer: Stream = None,
-        buffer_capacity: float = 600.
+        buffer_capacity: float = 600.,
     ) -> None:
         EasySeedLinkClient.__init__(
             self, server_url=server_url, autoconnect=autoconnect)

@@ -44,7 +44,7 @@ class _StreamingClient(ABC):
         self,
         client_name: str = None,
         buffer: Stream = None,
-        buffer_capacity: float = 600.
+        buffer_capacity: float = 600.,
     ) -> None:
         self.client_name = client_name
         if buffer is None:
