@@ -83,7 +83,7 @@ class Reactor(object):
     running_templates_ids = []  # A list of currently running templates
     max_station_distance = 1000
     n_stations = 10
-    sleep_step = 10
+    sleep_step = 300
 
     # The threads that are detecting away!
     detecting_threads = []
@@ -128,6 +128,7 @@ class Reactor(object):
         self._run_start = UTCDateTime.now()
         # Query the catalog in the listener every so often and check
         while True:
+            Logger.debug(self.listener)
             if len(self.listener.old_events) > 0:
                 working_ids = list(zip(*self.listener.old_events))[0]
                 working_cat = self.template_database.get_events(
@@ -197,12 +198,12 @@ class Reactor(object):
         detect_interval = self.real_time_tribe_kwargs.get(
             "detect_interval", 60)
         plot = self.real_time_tribe_kwargs.get("plot", False)
-        plot_length = self.real_time_tribe_kwargs.get(
-            "plot_length", 300)
+        # TODO: Needs to update the tribe from here with new templates.
+        # TODO: real-time client needs to be a seperate instance for each spin-ip - should be initialised with data, or allowed to backfill.
         real_time_tribe = RealTimeTribe(
             tribe=tribe, inventory=inventory, rt_client=self.rt_client,
             detect_interval=detect_interval, plot=plot,
-            plot_length=plot_length, **self.plot_kwargs)
+            plot_options=self.plot_kwargs)
 
         self.running_templates_ids.append(
             [t.name for t in real_time_tribe.templates])

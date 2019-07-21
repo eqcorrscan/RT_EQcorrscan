@@ -321,6 +321,7 @@ class RealTimeTribe(Tribe):
                 Logger.info("Waiting {0:.2f}s until next run".format(
                     self.detect_interval - run_time))
                 time.sleep((self.detect_interval - run_time) / self._speed_up)
+                # TODO: Needs a min-rate stop condition.
                 if max_run_length and UTCDateTime.now() > run_start + max_run_length:
                     self.stop()
         finally:

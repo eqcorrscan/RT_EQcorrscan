@@ -84,6 +84,23 @@ class RTMatchFilterConfig(_ConfigAttribDict):
             return None
         return client
 
+    def get_waveform_client(self):
+        """ Get the waveform client instance given the set parameters. """
+        from obspy import clients
+
+        try:
+            _client_module = clients.__getattribute__(
+                self.waveform_client_type.lower())
+        except AttributeError as e:
+            Logger.error(e)
+            return None
+        try:
+            client = _client_module.Client(self.waveform_client)
+        except Exception as e:
+            Logger.error(e)
+            return None
+        return client
+
 
 class ReactorConfig(_ConfigAttribDict):
     """
@@ -94,7 +111,8 @@ class ReactorConfig(_ConfigAttribDict):
     defaults = {
         "magnitude_threshold": 6.0,
         "rate_threshold": 20.0,
-        "rate_radius": 0.5,
+        "rate_radius": 0.2,
+        "minimum_events_in_bin": 10,
     }
     readonly = []
 

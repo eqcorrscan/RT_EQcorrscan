@@ -45,6 +45,7 @@ def magnitude_rate_trigger_func(
         magnitude_threshold: float = 5.5,
         rate_threshold: float = 20.,
         rate_bin: float = .2,
+        minimum_events_in_bin: int = 10,
 ) -> Catalog:
     """
     Function to turn triggered response on based on magnitude and rate.
@@ -59,6 +60,8 @@ def magnitude_rate_trigger_func(
         rate in events per day for triggering a response
     rate_bin:
         radius in degrees to calculate rate for.
+    minimum_events_in_bin
+        Minimum number of events in a bin to calculate a rate for.
 
     Returns
     -------
@@ -74,7 +77,10 @@ def magnitude_rate_trigger_func(
             trigger_events.events.append(event)
     for event in catalog:
         sub_catalog = get_nearby_events(event, catalog, radius=rate_bin)
-        rate = average_rate(sub_catalog)
+        if len(sub_catalog) >= minimum_events_in_bin:
+            rate = average_rate(sub_catalog)
+        else:
+            rate = 0.
         if rate >= rate_threshold:
             for _event in sub_catalog:
                 if _event not in trigger_events:

@@ -36,7 +36,8 @@ def run(**kwargs):
         magnitude_rate_trigger_func,
         magnitude_threshold=config.reactor.magnitude_threshold,
         rate_threshold=config.reactor.rate_threshold,
-        rate_bin=config.reactor.rate_radius)
+        rate_bin=config.reactor.rate_radius,
+        minimum_events_in_bin=config.reactor.minimum_events_in_bin)
 
     template_bank = TemplateBank(
         config.database_manager.event_path,
@@ -48,7 +49,8 @@ def run(**kwargs):
     listener = CatalogListener(
         client=client, catalog_lookup_kwargs=dict(),
         template_bank=template_bank, interval=600, keep=86400.,
-        catalog=Catalog())
+        catalog=Catalog(),
+        waveform_client=config.rt_match_filter.get_waveform_client())
     rt_client = RealTimeClient(
         server_url=config.rt_match_filter.seedlink_server_url,
         buffer_capacity=config.rt_match_filter.buffer_capacity)
@@ -61,8 +63,10 @@ def run(**kwargs):
             threshold=config.rt_match_filter.threshold,
             threshold_type=config.rt_match_filter.threshold_type,
             trig_int=config.rt_match_filter.trig_int),
-        plot_kwargs=dict(),
-        listener_kwargs=dict())
+        plot_kwargs=config.plot,
+        listener_kwargs=dict(
+            min_stations=config.database_manager.min_stations,
+            template_kwargs=config.template))
     reactor.run()
     return
 

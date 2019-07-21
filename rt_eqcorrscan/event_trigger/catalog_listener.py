@@ -141,7 +141,7 @@ class CatalogListener(_Listener):
         template_bank: TemplateBank,
         catalog: Catalog = None,
         catalog_lookup_kwargs: dict = None,
-        interval: float = 600,
+        interval: float = 300,
         keep: float = 86400,
         waveform_client=None,
     ):
@@ -245,10 +245,9 @@ class CatalogListener(_Listener):
             If the `filter_func` has changed then this should be the
             additional kwargs for the user-defined filter_func.
         """
-        if filter_func is None:
-            filter_func = magnitude_rate_trigger_func
         self.busy = True
         self.previous_time -= self._test_start_step
+        template_kwargs = template_kwargs or dict()
         while self.busy:
             now = UTCDateTime.now() - self._test_start_step
             # Remove old events from dict
@@ -272,10 +271,11 @@ class CatalogListener(_Listener):
             if new_events is not None:
                 Logger.info("{0} new events between {1} and {2}".format(
                     len(new_events), self.previous_time, now))
-                filter_func(
-                    new_events, min_stations=min_stations,
-                    auto_picks=auto_picks, auto_event=auto_event,
-                    event_type=event_type, **filter_kwargs)
+                if filter_func is not None:
+                    filter_func(
+                        new_events, min_stations=min_stations,
+                        auto_picks=auto_picks, auto_event=auto_event,
+                        event_type=event_type, **filter_kwargs)
                 old_event_ids = [tup[0] for tup in self.old_events]
                 new_events = Catalog(
                     [ev for ev in new_events if ev.resource_id
@@ -283,14 +283,18 @@ class CatalogListener(_Listener):
                 if len(new_events) > 0:
                     Logger.info("Adding {0} new events to the database".format(
                         len(new_events)))
-                    self.template_bank.put_events(new_events)
-                    self.old_events.extend([
-                        (ev.resource_id.id, event_time(ev))
-                        for ev in new_events])
+                    event_info = [(ev.resource_id.id, event_time(ev))
+                                  for ev in new_events]
                     if make_templates:
                         self.template_bank.make_templates(
                             new_events, client=self.waveform_client,
                             **template_kwargs)
+                    else:
+                        self.template_bank.put_events(new_events)
+                    # Putting the events in the bank clears the catalog.
+                    self.old_events.extend(event_info)
+                    Logger.debug("Old events current state: {0}".format(
+                        self.old_events))
             self.previous_time = now
             time.sleep(self.interval)
 
