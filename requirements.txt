@@ -11,6 +11,7 @@ pytest-cov
 pytest-pep8
 pytest-xdist
 pytest-rerunfailures
+pytest-mpl
 pyyaml
 codecov
 EQcorrscan>=0.3.0
