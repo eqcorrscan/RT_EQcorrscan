@@ -10,6 +10,7 @@ License
 
 import threading
 import logging
+import copy
 
 from abc import ABC, abstractmethod
 from obspy import Stream, Trace
@@ -39,6 +40,7 @@ class _StreamingClient(ABC):
         `EasySeedLinkClient`.
     """
     busy = False
+    started = False
 
     def __init__(
         self,
@@ -65,6 +67,10 @@ class _StreamingClient(ABC):
                 self.client_name, status_map[self.busy],
                 self.buffer_capacity, self.buffer))
         return print_str
+
+    @abstractmethod
+    def start(self) -> None:
+        """ Open the connection to the streaming service. """
 
     @abstractmethod
     def stop(self) -> None:
@@ -94,13 +100,30 @@ class _StreamingClient(ABC):
         return (max([tr.stats.endtime for tr in self.buffer]) -
                 min([tr.stats.starttime for tr in self.buffer]))
 
+    @abstractmethod
+    def copy(self, empty_buffer: bool = True):
+        """
+        Generate a new - unconnected client.
+
+        Parameters
+        ----------
+        empty_buffer
+            Whether to start the new client with an empty buffer or not.
+        """
+
     def get_stream(self) -> Stream:
         """ Get a copy of the current data in buffer. """
         return self.buffer.copy()
 
     def _bg_run(self):
+        e = None
         while self.busy:
-            self.run()
+            try:
+                self.run()
+            except Exception as e:
+                break
+        if e is not None:
+            raise e
 
     def background_run(self):
         """Run the seedlink client in the background."""

@@ -413,6 +413,12 @@ def _download_and_make_template(
 ) -> Template:
     """ Make the template using downloaded data"""
     Logger.debug("Making template for event {0}".format(event.resource_id))
+    _process_len = kwargs.pop("process_len", download_data_len)
+    if _process_len > download_data_len:
+        Logger.info(
+            "Downloading {0}s of data as required by process len".format(
+                _process_len))
+        download_data_len = _process_len
     st = _get_data_for_event(
         event=event, client=client,
         download_data_len=download_data_len, path_structure=path_structure,
@@ -420,10 +426,6 @@ def _download_and_make_template(
         save_raw=save_raw)
     Logger.debug("Downloaded {0} traces for event {1}".format(
         len(st), event.resource_id))
-    _process_len = kwargs.pop("process_len", None)
-    if _process_len:
-        Logger.warning("Setting process len to download_data_len ({0})".format(
-            download_data_len))
     tribe = Tribe().construct(
         method="from_meta_file", meta_file=Catalog([event]), st=st,
         process_len=download_data_len, **kwargs)
@@ -484,8 +486,8 @@ def _get_data_for_event(
     bulk = [
         (p.waveform_id.network_code, p.waveform_id.station_code,
          p.waveform_id.location_code, p.waveform_id.channel_code,
-         p.time - (.45 * download_data_len),
-         p.time + (.55 * download_data_len)) for p in event.picks]
+         p.time - (.5 * download_data_len),
+         p.time + (.6 * download_data_len)) for p in event.picks]
     Logger.debug(bulk)
     try:
         st = client.get_waveforms_bulk(bulk)
@@ -497,6 +499,20 @@ def _get_data_for_event(
             st += client.get_waveforms(
                 network=channel[0], station=channel[1], location=channel[2],
                 channel=channel[3], starttime=channel[4], endtime=channel[5])
+    # Trim to expected length
+    st.merge()
+    # Cope with multiple picks on the same channel at different times.
+    trimmed_stream = Stream()
+    for pick in event.picks:
+        try:
+            tr = st.select(id=pick.waveform_id.get_seed_string())[0]
+        except IndexError:
+            Logger.warning("No data downloaded for {0}".format(
+                pick.waveform_id.get_seed_string()))
+            continue
+        trimmed_stream += tr.slice(
+            starttime=pick.time - (.45 * download_data_len),
+            endtime=pick.time + (.55 * download_data_len)).copy()
     if save_raw:
         path = _summarize_event(
             event=event, path_struct=path_structure,
@@ -505,9 +521,9 @@ def _get_data_for_event(
         path += ".ms"
         ppath = (Path(bank_path) / path).absolute()
         ppath.parent.mkdir(parents=True, exist_ok=True)
-        st.write(str(ppath), format="MSEED")
+        trimmed_stream.write(str(ppath), format="MSEED")
         Logger.debug("Saved raw data to {0}".format(ppath))
-    return st
+    return trimmed_stream
 
 
 def check_tribe_quality(

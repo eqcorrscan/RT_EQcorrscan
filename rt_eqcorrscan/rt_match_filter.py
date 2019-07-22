@@ -119,10 +119,9 @@ class RealTimeTribe(Tribe):
     @property
     def expected_channels(self) -> set:
         """ ids of channels to be used for detection. """
-        if self.inventory is not None:
-            return self.template_channels.intersection(self.used_stations)
-        else:
+        if self.inventory is None or len(self.inventory) == 0:
             return self.template_channels
+        return self.template_channels.intersection(self.used_stations)
 
     @property
     def minimum_data_for_detection(self) -> float:
@@ -223,6 +222,8 @@ class RealTimeTribe(Tribe):
         last_possible_detection = UTCDateTime(0)  # TODO: Why is this here?
         if not os.path.isdir(detect_directory):
             os.makedirs(detect_directory)
+        if not self.rt_client.started:
+            self.rt_client.start()
         if self.rt_client.can_add_streams:
             for tr_id in self.expected_channels:
                 self.rt_client.select_stream(

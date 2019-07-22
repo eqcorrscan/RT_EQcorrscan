@@ -9,6 +9,7 @@ License
 import logging
 import threading
 import time
+import asyncio
 
 from collections import Counter
 from typing import Union, Callable
@@ -164,7 +165,7 @@ class Reactor(object):
         """
         detecting_thread = threading.Thread(
             target=self.spin_up,
-            args=(triggering_event, ), name="DetectingThread")
+            args=(triggering_event, True), name="DetectingThread")
         detecting_thread.daemon = True
         detecting_thread.start()
         self.detecting_threads.append(detecting_thread)
@@ -176,7 +177,11 @@ class Reactor(object):
             detecting_thread.join()
         self.listener.background_stop()
 
-    def spin_up(self, triggering_event: Event) -> Party:
+    def spin_up(
+        self,
+        triggering_event: Event,
+        new_event_loop: bool = False
+    ) -> Party:
         """
         Run the reactors response function.
 
@@ -184,7 +189,13 @@ class Reactor(object):
         ----------
         triggering_event
             Event that triggered this run - needs to have at-least an origin.
+        new_event_loop
+            Whether to start a new event loop - required when running in a
+            sub-thread.
         """
+        if new_event_loop:
+            # Set up a new event loop for the plots
+            asyncio.set_event_loop(asyncio.new_event_loop())
         region = estimate_region(triggering_event)
         if region is None:
             return
@@ -199,9 +210,8 @@ class Reactor(object):
             "detect_interval", 60)
         plot = self.real_time_tribe_kwargs.get("plot", False)
         # TODO: Needs to update the tribe from here with new templates.
-        # TODO: real-time client needs to be a seperate instance for each spin-ip - should be initialised with data, or allowed to backfill.
         real_time_tribe = RealTimeTribe(
-            tribe=tribe, inventory=inventory, rt_client=self.rt_client,
+            tribe=tribe, inventory=inventory, rt_client=self.rt_client.copy(),
             detect_interval=detect_interval, plot=plot,
             plot_options=self.plot_kwargs)
 

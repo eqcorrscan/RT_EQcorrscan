@@ -60,6 +60,17 @@ class SimulateRealTimeClient(_StreamingClient):
             "Instantiated simulated real-time client "
             "(starttime = {0}): {1}".format(self.starttime, self))
 
+    def start(self) -> None:
+        """ Dummy - client is always started. """
+        self.started = True
+        return
+
+    def copy(self, empty_buffer: bool = True):
+        other = copy.deepcopy(self)
+        if empty_buffer:
+            other.buffer = Stream()
+        return other
+
     @property
     def can_add_streams(self) -> bool:
         return True  # We can always add streams
@@ -110,7 +121,8 @@ class SimulateRealTimeClient(_StreamingClient):
             sleep_step = (
                 self.query_interval - _query_duration) / self.speed_up
             if sleep_step > 0:
-                Logger.debug("Waiting {0:.2f}s before next query".format(sleep_step))
+                Logger.debug("Waiting {0:.2f}s before next query".format(
+                    sleep_step))
                 time.sleep(sleep_step)
             now += max(self.query_interval, _query_duration)
             last_query_start = min([_bulk["endtime"] for _bulk in self.bulk])
@@ -118,6 +130,7 @@ class SimulateRealTimeClient(_StreamingClient):
     def stop(self) -> None:
         self.busy = False
         self.streaming = False
+        self.started = False
 
 
 if __name__ == "__main__":

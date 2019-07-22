@@ -25,29 +25,23 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
     ----------
     server_url
         URL for seedlink server
-    autoconnect
-        Whether to start connection automatically or wait
     buffer
         Stream to buffer data into
     buffer_capacity
         Length of buffer in seconds. Old data are removed in a LIFO style.
     """
-    busy = False
-
     def __init__(
         self,
         server_url: str,
-        autoconnect: bool = True,
         buffer: Stream = None,
         buffer_capacity: float = 600.,
     ) -> None:
         EasySeedLinkClient.__init__(
-            self, server_url=server_url, autoconnect=autoconnect)
+            self, server_url=server_url, autoconnect=False)
         _StreamingClient.__init__(
             self, client_name=server_url, buffer=buffer,
             buffer_capacity=buffer_capacity)
-
-        Logger.info("Instantiated RealTime client: {0}".format(self))
+        Logger.debug("Instantiated RealTime client: {0}".format(self))
 
     def __repr__(self):
         """
@@ -71,6 +65,32 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
                 self.buffer_capacity, self.buffer))
         return print_str
 
+    def copy(self, empty_buffer: bool = True):
+        """
+        Generate a new, unconnected copy of the client.
+
+        Parameters
+        ----------
+        empty_buffer
+            Whether to start the new client with an empty buffer or not.
+        """
+        if empty_buffer:
+            buffer = Stream()
+        else:
+            buffer = self.buffer.copy()
+        return RealTimeClient(
+            server_url=self.server_hostname, buffer=buffer,
+            buffer_capacity=self.buffer_capacity)
+
+    def start(self) -> None:
+        """ Start the connection. """
+        if not self.started:
+            self.connect()
+            self.started = True
+        else:
+            Logger.warning("Attempted to start connection, but "
+                           "connection already started.")
+
     @property
     def can_add_streams(self) -> bool:
         return not self._EasySeedLinkClient__streaming_started
@@ -79,6 +99,7 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         self.busy = False
         self.conn.terminate()
         self.close()
+        self.started = False
 
     def on_seedlink_error(self):
         """ Cope with seedlink errors."""
