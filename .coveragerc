@@ -3,10 +3,8 @@ branch = True
 source = rt_eqcorrscan
 omit =
   rt_eqcorrscan/examples/*.py
-  rt_eqcorrscan/plotting/*.py
-  rt_eqcorrscan/plotting/tests/*.py
+  rt_eqcorrscan/plotting/plot_buffer.py
   rt_eqcorrscan/tests/*.py
-  rt_eqcorrscan/*/tests/*.py
 [report]
 exclude_lines =
    pragma: no cover

@@ -171,7 +171,7 @@ class CatalogListener(_Listener):
         ...     template_bank=TemplateBank('.'))
         >>> print(listener) # doctest: +NORMALIZE_WHITESPACE
         CatalogListener(client=Client(http://service.geonet.org.nz),\
-        catalog=Catalog(0 events), interval=600, **kwargs)
+        catalog=Catalog(0 events), interval=300, **kwargs)
         """
         print_str = (
             "CatalogListener(client=Client({0}), catalog=Catalog({1} events), "

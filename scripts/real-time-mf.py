@@ -119,10 +119,7 @@ def run_real_time_matched_filter(**kwargs):
 
     party = None
     try:
-        party = real_time_tribe.run(
-            threshold=config.rt_match_filter.threshold,
-            threshold_type=config.rt_match_filter.threshold_type,
-            trig_int=config.rt_match_filter.trig_int)
+        party = real_time_tribe.run(**config.rt_match_filter)
     except KeyboardInterrupt as e:
         Logger.error(e)
     finally:

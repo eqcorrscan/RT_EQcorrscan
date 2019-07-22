@@ -1,5 +1,5 @@
 """
-Tools for managing a "database" (in the loosest sense) of template information.
+Tools for managing a database of template information.
 
 Author
     Calum J Chamberlain
@@ -183,6 +183,7 @@ class _SerialExecutor(Executor):
 
 
 class TemplateBank(EventBank):
+    # TODO: This should probably be it's own _Bank subclass with extra columns including if template exists and template channels - would allow for faster filtering
     """
     A database manager for templates. Based on obsplus EventBank.
 

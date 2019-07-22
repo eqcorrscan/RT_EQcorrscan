@@ -15,7 +15,7 @@ import numpy
 from typing import Union
 
 from obspy import Stream, UTCDateTime, Inventory
-from eqcorrscan import Tribe, Template, Party, Family
+from eqcorrscan import Tribe, Template, Party, Family, Detection
 
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
 
@@ -175,6 +175,8 @@ class RealTimeTribe(Tribe):
         trig_int: float,
         keep_detections: float = 86400,
         detect_directory: str = "detections",
+        plot_detections: bool = True,
+        save_waveforms: bool = True,
         max_run_length: float = None,
         **kwargs
     ) -> Party:
@@ -200,6 +202,12 @@ class RealTimeTribe(Tribe):
         detect_directory
             Relative path to directory for detections. This directory will be
             created if it doesn't exist.
+        plot_detections
+            Whether to plot detections or not - plots will be saved to the
+            `detect_directory` as png images.
+        save_waveforms
+            Whether to save waveforms of detections or not - waveforms
+            will be saved in the `detect_directory` as miniseed files.
         max_run_length
             Maximum detection run time in seconds. Default is to run
             indefinitely.
@@ -281,18 +289,12 @@ class RealTimeTribe(Tribe):
                         for detection in family:
                             if detection.detect_time > last_possible_detection:
                                 # TODO: lag-calc and relative magnitudes?
-                                year_dir = os.path.join(
-                                    detect_directory,
-                                    str(detection.detect_time.year))
-                                if not os.path.isdir(year_dir):
-                                    os.makedirs(year_dir)
-                                day_dir = os.path.join(
-                                    year_dir, str(detection.detect_time.julday))
-                                if not os.path.isdir(day_dir):
-                                    os.makedirs(day_dir)
-                                detection.event.write(os.path.join(
-                                    day_dir, detection.detect_time.strftime(
-                                        "%Y%m%dT%H%M%S.xml")), format="QUAKEML")
+                                _write_detection(
+                                    detection=detection,
+                                    detect_directory=detect_directory,
+                                    save_waveform=save_waveforms,
+                                    plot_detection=plot_detections,
+                                    stream=st)
                                 _family += detection
                         self.party += _family
                     Logger.info("Removing duplicate detections")
@@ -327,6 +329,31 @@ class RealTimeTribe(Tribe):
         finally:
             self.stop()
         return self.party
+
+
+def _write_detection(
+    detection: Detection,
+    detect_directory: str,
+    save_waveform: bool,
+    plot_detection: bool,
+    stream: Stream,
+) -> None:
+    from rt_eqcorrscan.plotting.plot_event import plot_event
+
+    _path = os.path.join(
+        detect_directory, detection.detect_time.strftime("%Y/%j"))
+    if not os.path.isdir(_path):
+        os.makedirs(_path)
+    _filename = os.path.join(
+        _path, detection.detect_time.strftime("%Y%m%dT%H%M%S"))
+    detection.event.write("{0}.xml".format(_filename), format="QUAKEML")
+    st = stream.slice().copy()
+    if plot_detection:
+        # Make plot
+        fig = plot_event(event=detection.event, st=st, length=90, show=False)
+        fig.savefig("{0}.png".format(_filename))
+    if save_waveform:
+        st.split().write("{0}.ms".format(_filename), format="MSEED")
 
 
 def _numpy_len(arr: Union[numpy.ndarray, numpy.ma.MaskedArray]) -> int:
