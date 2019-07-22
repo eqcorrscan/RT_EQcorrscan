@@ -51,6 +51,7 @@ install:
   - python setup.py develop
 
 script:
+   - export CI="true"
    - py.test -n 2 -v
 
 after_success:

@@ -7,6 +7,7 @@ Not to be run on CI.
 import unittest
 import time
 import logging
+import os
 
 from itertools import cycle
 
@@ -28,6 +29,8 @@ SLEEP_STEP = .5
 MAX_DURATION = 3600
 
 
+@unittest.skipIf("CI" in os.environ and os.environ["CI"] == "true",
+                 "Skipping this test on CI.")
 class SeedLinkTest(unittest.TestCase):
     def test_real_time_plotting(self):
         """Test the real-time plotter - must be run interactively."""

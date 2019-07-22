@@ -53,6 +53,7 @@ jobs:
           name: run tests
           command: |
             . venv/bin/activate
+            export CI="true"
             py.test -n 2 -v
 
       - run:
