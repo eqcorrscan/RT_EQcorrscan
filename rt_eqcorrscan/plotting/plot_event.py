@@ -52,7 +52,8 @@ def plot_event(
         # If there isn't an origin time, use the start of the stream
         origin_time = st[0].stats.starttime
     st = st.slice(origin_time, origin_time + length)
-    st.filter("bandpass", freqmin=passband[0], freqmax=passband[1])
+    st.split().detrend().filter(
+        "bandpass", freqmin=passband[0], freqmax=passband[1]).merge()
     # Trim the event around the origin time
     if fig is None:
         fig, axes = plt.subplots(len(st), 1, sharex=True, figsize=size)
