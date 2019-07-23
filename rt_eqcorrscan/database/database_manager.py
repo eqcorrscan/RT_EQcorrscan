@@ -548,6 +548,7 @@ def check_tribe_quality(
     -------
     A filtered tribe.
     """
+    min_stations = min_stations or 0
     _templates = []
     # Perform length check
     for template in tribe:
@@ -569,22 +570,14 @@ def check_tribe_quality(
     # Perform station check
     if seed_ids is None:
         seed_ids = {tr.id for template in tribe for tr in template.st}
-    _templates = []
     for template in templates:
-        _template = template.copy()
         _st = Stream()
-        for tr in _template.st:
+        for tr in template.st:
             if tr.id in seed_ids:
                 _st += tr
-        _template.st = _st
-        if min_stations is not None:
-            n_sta = len({tr.stats.station for tr in _template.st})
-            if n_sta < min_stations:
-                continue
-        _templates.append(_template)
-    templates = _templates
-
-    return Tribe(templates)
+        template.st = _st
+    return Tribe([t for t in templates
+                  if len({tr.stats.station for tr in t.st}) > min_stations])
 
 
 def remove_unreferenced(catalog: Union[Catalog, Event]) -> Catalog:

@@ -18,8 +18,10 @@ def plot_event(
     event: Event,
     st: Stream,
     length: float = 60.,
+    passband: tuple = (2, 10),
     size: tuple = (10.5, 10.5),
     show: bool = True,
+    fig: Figure = None
 ) -> Figure:
     """
     Plot the waveforms for an event with pick and calculated arrival times.
@@ -30,10 +32,14 @@ def plot_event(
         Obspy Stream for this event
     length
         Length to plot, from origin time
+    passband
+        Tuple of (lowcut, highcut) for filtering.
     size
         Figure size parsed to matplotlib.
     show
         Whether to show the figure or not.
+    fig
+        Figure to plot into.
 
     Returns
         Figure.
@@ -46,8 +52,15 @@ def plot_event(
         # If there isn't an origin time, use the start of the stream
         origin_time = st[0].stats.starttime
     st = st.slice(origin_time, origin_time + length)
+    st.filter("bandpass", freqmin=passband[0], freqmax=passband[1])
     # Trim the event around the origin time
-    fig, axes = plt.subplots(len(st), 1, sharex=True, figsize=size)
+    if fig is None:
+        fig, axes = plt.subplots(len(st), 1, sharex=True, figsize=size)
+    else:
+        axes = [fig.add_subplot(len(st), 1, 1)]
+        if len(st) > 1:
+            for i in range(len(st) - 1):
+                axes.append(fig.add_subplot(len(st), 1, i + 2, sharex=axes[0]))
     if len(st) == 1:
         axes = [axes]
     lines, labels = ([], [])

@@ -15,6 +15,7 @@ import numpy
 from typing import Union
 
 from obspy import Stream, UTCDateTime, Inventory
+from matplotlib.figure import Figure
 from eqcorrscan import Tribe, Template, Party, Family, Detection
 
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
@@ -177,6 +178,8 @@ class RealTimeTribe(Tribe):
         plot_detections: bool = True,
         save_waveforms: bool = True,
         max_run_length: float = None,
+        backfill_to: UTCDateTime = None,
+        backfill_client=None,
         **kwargs
     ) -> Party:
         """
@@ -210,6 +213,10 @@ class RealTimeTribe(Tribe):
         max_run_length
             Maximum detection run time in seconds. Default is to run
             indefinitely.
+        backfill_to
+            Time to backfill the data buffer to.
+        backfill_client
+            Client to use to backfill the data buffer.
 
         Returns
         -------
@@ -217,7 +224,10 @@ class RealTimeTribe(Tribe):
         `keep_detections` threshold.
         """
         run_start = UTCDateTime.now()
+        detection_iteration = 0  # Counter for number of detection loops run
         self._running = True
+        fig = None
+        # Used for plotting - figure is reused to avoid memory leaks.
 
         last_possible_detection = UTCDateTime(0)  # TODO: Why is this here?
         if not os.path.isdir(detect_directory):
@@ -239,6 +249,20 @@ class RealTimeTribe(Tribe):
             Logger.info("Real-time streaming already running")
         Logger.info("Detection will use the following data: {0}".format(
             self.expected_channels))
+        if backfill_client and backfill_to:
+            for tr_id in self.expected_channels:
+                try:
+                    tr_in_buffer = self.rt_client.buffer.select(id=tr_id)[0]
+                except IndexError:
+                    tr_in_buffer = None
+                if tr_in_buffer:
+                    endtime = tr_in_buffer.stats.starttime
+                else:
+                    endtime = backfill_to + self.rt_client.buffer_capacity
+                tr = backfill_client.get_waveforms(
+                    *tr_id.split('.'), starttime=backfill_to,
+                    endtime=endtime).merge()[0]
+                self.rt_client.on_data(tr)
         if self.plot:  # pragma: no cover
             # Set up plotting thread
             self._plot()
@@ -260,9 +284,11 @@ class RealTimeTribe(Tribe):
                     continue
                 # Cope with data that doesn't come
                 last_data = max(tr.stats.endtime for tr in st)
-                st.trim(
-                    starttime=last_data - self.minimum_data_for_detection,
-                    endtime=last_data)
+                if detection_iteration > 0:
+                    # For the first run we want to detect in everything we have.
+                    st.trim(
+                        starttime=last_data - self.minimum_data_for_detection,
+                        endtime=last_data)
                 # Remove short channels
                 st.traces = [tr for tr in st
                              if _numpy_len(tr.data) >= (
@@ -290,12 +316,12 @@ class RealTimeTribe(Tribe):
                         for detection in family:
                             if detection.detect_time > last_possible_detection:
                                 # TODO: lag-calc and relative magnitudes?
-                                _write_detection(
+                                fig = _write_detection(
                                     detection=detection,
                                     detect_directory=detect_directory,
                                     save_waveform=save_waveforms,
                                     plot_detection=plot_detections,
-                                    stream=st)
+                                    stream=st, fig=fig)
                                 _family += detection
                         self.party += _family
                     Logger.info("Removing duplicate detections")
@@ -338,7 +364,33 @@ def _write_detection(
     save_waveform: bool,
     plot_detection: bool,
     stream: Stream,
-) -> None:
+    fig=None,
+) -> Figure:
+    """
+    Handle detection writing including writing streams and figures.
+
+    Parameters
+    ----------
+    detection
+        The Detection to write
+    detect_directory
+        The head directory to write to - will create
+        "{detect_directory}/{year}/{julian day}" directories
+    save_waveform
+        Whether to save the waveform for the detected event or not
+    plot_detection
+        Whether to plot the detection waveform or not
+    stream
+        The stream the detection was made in - required for save_waveform and
+        plot_detection.
+    fig
+        A figure object to reuse.
+
+    Returns
+    -------
+    An empty figure object to be reused if a figure was created, or the figure
+    passed to it.
+    """
     from rt_eqcorrscan.plotting.plot_event import plot_event
 
     _path = os.path.join(
@@ -349,12 +401,15 @@ def _write_detection(
         _path, detection.detect_time.strftime("%Y%m%dT%H%M%S"))
     detection.event.write("{0}.xml".format(_filename), format="QUAKEML")
     st = stream.slice().copy()
-    if plot_detection:
-        # Make plot
-        fig = plot_event(event=detection.event, st=st, length=90, show=False)
-        fig.savefig("{0}.png".format(_filename))
     if save_waveform:
         st.split().write("{0}.ms".format(_filename), format="MSEED")
+    if plot_detection:
+        # Make plot
+        fig = plot_event(fig=fig, event=detection.event, st=st.merge(),
+                         length=90, show=False)
+        fig.savefig("{0}.png".format(_filename))
+        fig.clf()
+    return fig
 
 
 def _numpy_len(arr: Union[numpy.ndarray, numpy.ma.MaskedArray]) -> int:

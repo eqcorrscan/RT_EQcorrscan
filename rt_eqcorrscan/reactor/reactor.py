@@ -10,6 +10,7 @@ import logging
 import threading
 import time
 import asyncio
+import copy
 
 from collections import Counter
 from typing import Union, Callable
@@ -21,9 +22,11 @@ from obspy.geodetics import locations2degrees, kilometer2degrees
 
 from eqcorrscan import Tribe, Party
 
-from rt_eqcorrscan.database.database_manager import TemplateBank
+from rt_eqcorrscan.database.database_manager import (
+    TemplateBank, check_tribe_quality)
 from rt_eqcorrscan.rt_match_filter import RealTimeTribe
 from rt_eqcorrscan.event_trigger.catalog_listener import CatalogListener
+from rt_eqcorrscan.event_trigger.listener import event_time
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
 
 
@@ -56,6 +59,9 @@ class Reactor(object):
     template_database
         A template database to be used to generate tribes for real-time
         matched-filter detection.
+    template_lookup_kwargs
+        Keyword arguments passed to get_templates - regional arguments will be
+        set based on the triggering event.
     listener_kwargs
         Dictionary of keyword arguments to be passed to listener.run
     real_time_tribe_kwargs
@@ -84,10 +90,11 @@ class Reactor(object):
     running_templates_ids = []  # A list of currently running templates
     max_station_distance = 1000
     n_stations = 10
-    sleep_step = 300
+    sleep_step = 15
 
     # The threads that are detecting away!
     detecting_threads = []
+    # TODO: Build in an AWS spin-up functionality - would need some communication...
 
     def __init__(
         self,
@@ -96,6 +103,7 @@ class Reactor(object):
         listener: CatalogListener,
         trigger_func: Callable,
         template_database: TemplateBank,
+        template_lookup_kwargs: dict,
         listener_kwargs: dict,
         real_time_tribe_kwargs: dict,
         plot_kwargs: dict,
@@ -105,6 +113,7 @@ class Reactor(object):
         self.listener = listener
         self.trigger_func = trigger_func
         self.template_database = template_database
+        self.template_lookup_kwargs = template_lookup_kwargs
         self.real_time_tribe_kwargs = real_time_tribe_kwargs
         self.plot_kwargs = plot_kwargs
         self.listener_kwargs = listener_kwargs
@@ -154,7 +163,10 @@ class Reactor(object):
                 break
             time.sleep(self.sleep_step)
 
-    def background_spin_up(self, triggering_event: Event) -> None:
+    def background_spin_up(
+        self,
+        triggering_event: Event,
+    ) -> None:
         """
         Spin up a detection run in a background (daemon) thread.
 
@@ -165,11 +177,12 @@ class Reactor(object):
         """
         detecting_thread = threading.Thread(
             target=self.spin_up,
-            args=(triggering_event, True), name="DetectingThread")
+            args=(triggering_event, True),
+            name="DetectingThread")
         detecting_thread.daemon = True
         detecting_thread.start()
         self.detecting_threads.append(detecting_thread)
-        Logger.info("Started detecting")
+        Logger.info("Started detector thread - continuing listening")
 
     def stop(self) -> None:
         """Stop all the processes."""
@@ -180,7 +193,7 @@ class Reactor(object):
     def spin_up(
         self,
         triggering_event: Event,
-        new_event_loop: bool = False
+        new_event_loop: bool = False,
     ) -> Party:
         """
         Run the reactors response function.
@@ -193,15 +206,32 @@ class Reactor(object):
             Whether to start a new event loop - required when running in a
             sub-thread.
         """
+        process_length = self.real_time_tribe_kwargs.get(
+            "process_length", None)
+        min_stations = self.real_time_tribe_kwargs.get("min_stations", None)
         if new_event_loop:
             # Set up a new event loop for the plots
             asyncio.set_event_loop(asyncio.new_event_loop())
         region = estimate_region(triggering_event)
         if region is None:
             return
+        region.update(self.template_lookup_kwargs)
         tribe = self.template_database.get_templates(**region)
         tribe.templates = [t for t in tribe
                            if t.name not in self.running_templates_ids]
+        tribe = check_tribe_quality(tribe, min_stations=min_stations)
+        # Enforce process-len
+        if process_length is not None:
+            warn = False
+            for template in tribe:
+                if template.process_length != process_length:
+                    warn = True
+                    template.process_length = process_length
+            if warn:
+                Logger.warning(
+                    "Changing process-length form to {0}, this may "
+                    "degrade correlations slightly.".format(
+                        process_length))
         inventory = get_inventory(
             self.client, tribe, triggering_event=triggering_event,
             max_distance=self.max_station_distance,
@@ -217,7 +247,11 @@ class Reactor(object):
 
         self.running_templates_ids.append(
             [t.name for t in real_time_tribe.templates])
-        return real_time_tribe.run(**self.real_time_tribe_kwargs)
+        real_time_tribe_kwargs = {
+            "backfill_to": event_time(triggering_event),
+            "backfill_client": self.listener.waveform_client}
+        real_time_tribe_kwargs.update(self.real_time_tribe_kwargs)
+        return real_time_tribe.run(**real_time_tribe_kwargs)
 
 
 def get_inventory(

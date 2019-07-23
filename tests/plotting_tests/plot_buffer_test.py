@@ -26,7 +26,7 @@ logging.basicConfig(
     format="%(asctime)s\t%(name)s\t%(levelname)s\t%(message)s")
 
 SLEEP_STEP = .5
-MAX_DURATION = 3600
+MAX_DURATION = 80
 
 
 @unittest.skipIf("CI" in os.environ and os.environ["CI"] == "true",
@@ -72,12 +72,13 @@ class SeedLinkTest(unittest.TestCase):
 
         detections = []
         plotter = EQcorrscanPlot(
-            rt_client=rt_client, plot_length=600,
+            rt_client=rt_client, plot_length=60,
             tribe=tribe, inventory=inv, update_interval=1000,
             detections=detections)
         plotter.background_run()
 
         duration = 0
+        step = 5
         while duration < MAX_DURATION:
             detections.append(
                 Detection(
@@ -89,13 +90,9 @@ class SeedLinkTest(unittest.TestCase):
                         Pick(time=UTCDateTime.now(),
                              waveform_id=WaveformStreamID(seed_string=seed_id))
                         for seed_id in seed_list])))
-            time.sleep(20)
-            duration += 20
+            time.sleep(step)
+            duration += step
         rt_client.background_stop()
-        self.assertEqual(
-            len(rt_client.get_stream()[0]) *
-            rt_client.get_stream()[0].stats.delta,
-            buffer_capacity)
 
 
 if __name__ == "__main__":

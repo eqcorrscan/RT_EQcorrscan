@@ -47,7 +47,8 @@ def run(**kwargs):
         event_ext=config.database_manager.event_ext)
 
     listener = CatalogListener(
-        client=client, catalog_lookup_kwargs=dict(),
+        client=client,
+        catalog_lookup_kwargs=config.reactor.catalog_lookup_kwargs,
         template_bank=template_bank, interval=600, keep=86400.,
         catalog=Catalog(),
         waveform_client=config.rt_match_filter.get_waveform_client())
@@ -55,10 +56,15 @@ def run(**kwargs):
         server_url=config.rt_match_filter.seedlink_server_url,
         buffer_capacity=config.rt_match_filter.buffer_capacity)
 
+    real_time_tribe_kwargs = config.rt_match_filter.__dict__
+    real_time_tribe_kwargs.update(
+        {"process_length": config.template.process_len})
     reactor = Reactor(
         client=client, rt_client=rt_client,
         listener=listener, trigger_func=trigger_func,
         template_database=template_bank,
+        template_lookup_kwargs=dict(
+            starttime=config.database_manager.lookup_starttime),
         real_time_tribe_kwargs=config.rt_match_filter,
         plot_kwargs=config.plot,
         listener_kwargs=dict(

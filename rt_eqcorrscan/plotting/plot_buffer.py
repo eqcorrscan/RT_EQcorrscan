@@ -194,7 +194,7 @@ def define_plot(
         will be real-time
     """
     # Set up the data source
-    stream = rt_client.get_stream().copy().detrend()
+    stream = rt_client.get_stream().copy().split().detrend()
     if lowcut and highcut:
         stream.filter("bandpass", freqmin=lowcut, freqmax=highcut)
         title = "Streaming data: {0}-{1} Hz bandpass".format(lowcut, highcut)
@@ -206,6 +206,7 @@ def define_plot(
         title = "Streaming data: {0} Hz lowpass".format(highcut)
     else:
         title = "Raw streaming data"
+    stream.merge()
 
     template_lats, template_lons, template_alphas, template_ids = (
         [], [], [], [])

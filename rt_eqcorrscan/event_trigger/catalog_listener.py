@@ -141,7 +141,7 @@ class CatalogListener(_Listener):
         template_bank: TemplateBank,
         catalog: Catalog = None,
         catalog_lookup_kwargs: dict = None,
-        interval: float = 300,
+        interval: float = 10,
         keep: float = 86400,
         waveform_client=None,
     ):
@@ -171,7 +171,7 @@ class CatalogListener(_Listener):
         ...     template_bank=TemplateBank('.'))
         >>> print(listener) # doctest: +NORMALIZE_WHITESPACE
         CatalogListener(client=Client(http://service.geonet.org.nz),\
-        catalog=Catalog(0 events), interval=300, **kwargs)
+        catalog=Catalog(0 events), interval=10, **kwargs)
         """
         print_str = (
             "CatalogListener(client=Client({0}), catalog=Catalog({1} events), "

@@ -16,6 +16,7 @@ try:
 except ImportError:
     from yaml import Loader, Dumper
 
+from obspy import UTCDateTime
 from obspy.core.util import AttribDict
 
 
@@ -54,6 +55,7 @@ class RTMatchFilterConfig(_ConfigAttribDict):
         "client_type": "FDSN",
         "seedlink_server_url": "link.geonet.org.nz",
         "n_stations": 10,
+        "min_stations": 5,
         "max_distance": 1000.,
         "buffer_capacity": 300.,
         "detect_interval": 120.,
@@ -115,6 +117,7 @@ class ReactorConfig(_ConfigAttribDict):
         "rate_threshold": 20.0,
         "rate_radius": 0.2,
         "minimum_events_in_bin": 10,
+        "catalog_lookup_kwargs": dict(),
     }
     readonly = []
 
@@ -152,6 +155,7 @@ class DatabaseManagerConfig(_ConfigAttribDict):
         "path_structure": "{year}/{month}/{event_id_end}",
         "event_ext": ".xml",
         "min_stations": 5,
+        "lookup_starttime": "1970:01:01T00:00:00.00000Z",
     }
     readonly = []
 
