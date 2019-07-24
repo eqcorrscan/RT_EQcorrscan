@@ -10,10 +10,10 @@ import numpy as np
 import logging
 import threading
 import datetime as dt
+import asyncio
 
 from pyproj import Proj, transform
 
-from bokeh.io import show
 from bokeh.document import Document
 from bokeh.plotting import figure
 from bokeh.models import ColumnDataSource, HoverTool, Legend, WMTSTileSource
@@ -73,10 +73,16 @@ class EQcorrscanPlot:
         plot_width: int = 1500,
         exclude_channels: iter = (),
         offline: bool = False,
+        new_event_loop: bool = True,
         **plot_data_options,
     ) -> None:
+        if new_event_loop:
+            # Set up a new event loop for the plots
+            asyncio.set_event_loop(asyncio.new_event_loop())
         channels = [tr.id for tr in rt_client.buffer
                     if tr.stats.channel not in exclude_channels]
+        Logger.info("Plot will contain the following channels: {0}".format(
+            channels))
         self.channels = sorted(channels)
         self.tribe = tribe
         self.plot_length = plot_length

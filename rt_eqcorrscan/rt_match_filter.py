@@ -133,20 +133,7 @@ class RealTimeTribe(Tribe):
         """ Plot the data as it comes in. """
         from rt_eqcorrscan.plotting.plot_buffer import EQcorrscanPlot
 
-        wait_length = 0
-        Logger.info("Waiting for data before starting to plot.")
-        while len(self.rt_client.buffer) < len(self.expected_channels):
-            if wait_length >= self.rt_client.buffer_capacity:
-                Logger.warning("Starting plotting without the full dataset")
-                break
-            # Wait until we have some data
-            Logger.debug(
-                "Waiting for data, currently have {0} channels of {1} "
-                "expected channels".format(
-                    len(self.rt_client.buffer), len(self.expected_channels)))
-            wait_length += self.sleep_step
-            time.sleep(self.sleep_step)
-            pass
+        self._wait()
         plot_options = copy.deepcopy(self.plot_options)
         update_interval = plot_options.pop("update_interval", 100.)
         plot_height = plot_options.pop("plot_height", 800)
@@ -160,6 +147,22 @@ class RealTimeTribe(Tribe):
             plot_width=plot_width, offline=offline,
             **plot_options)
         self.plotter.background_run()
+
+    def _wait(self, wait_length: int = 0) -> None:
+        Logger.info("Waiting for data before starting to plot.")
+        while len(self.rt_client.buffer) < len(self.expected_channels):
+            if wait_length >= self.rt_client.buffer_capacity:
+                Logger.warning("Starting plotting without the full dataset")
+                break
+            # Wait until we have some data
+            Logger.debug(
+                "Waiting for data, currently have {0} channels of {1} "
+                "expected channels".format(
+                    len(self.rt_client.buffer), len(self.expected_channels)))
+            wait_length += self.sleep_step
+            time.sleep(self.sleep_step)
+            pass
+        return
 
     def stop(self) -> None:
         """ Stop the real-time system. """
@@ -250,6 +253,7 @@ class RealTimeTribe(Tribe):
         Logger.info("Detection will use the following data: {0}".format(
             self.expected_channels))
         if backfill_client and backfill_to:
+            self._wait()
             for tr_id in self.expected_channels:
                 try:
                     tr_in_buffer = self.rt_client.buffer.select(id=tr_id)[0]
@@ -262,7 +266,10 @@ class RealTimeTribe(Tribe):
                 tr = backfill_client.get_waveforms(
                     *tr_id.split('.'), starttime=backfill_to,
                     endtime=endtime).merge()[0]
+                Logger.debug("Downloaded backfill: {0}".format(tr))
                 self.rt_client.on_data(tr)
+                Logger.debug("Stream in buffer is now: {0}".format(
+                    self.rt_client.buffer))
         if self.plot:  # pragma: no cover
             # Set up plotting thread
             self._plot()
@@ -349,6 +356,7 @@ class RealTimeTribe(Tribe):
                 Logger.debug("This step took {0:.2f}s total".format(run_time))
                 Logger.info("Waiting {0:.2f}s until next run".format(
                     self.detect_interval - run_time))
+                detection_iteration += 1
                 time.sleep((self.detect_interval - run_time) / self._speed_up)
                 # TODO: Needs a min-rate stop condition.
                 if max_run_length and UTCDateTime.now() > run_start + max_run_length:

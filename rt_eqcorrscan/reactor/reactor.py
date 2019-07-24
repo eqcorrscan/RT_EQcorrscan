@@ -9,8 +9,6 @@ License
 import logging
 import threading
 import time
-import asyncio
-import copy
 
 from collections import Counter
 from typing import Union, Callable
@@ -87,7 +85,8 @@ class Reactor(object):
     ```
     """
     triggered_events = []
-    running_templates_ids = []  # A list of currently running templates
+    _plotting = None  # Place to store the triggering_id of a plotting tribe.
+    running_tribes = dict()
     max_station_distance = 1000
     n_stations = 10
     sleep_step = 15
@@ -121,6 +120,10 @@ class Reactor(object):
         self._run_start = None
         self.up_time = 0
 
+    @property
+    def running_templates_ids(self):
+        return [t.name for tribe in self.running_tribes.items() for t in tribe]
+
     def get_up_time(self):
         return self._up_time
 
@@ -147,6 +150,7 @@ class Reactor(object):
                 working_cat = []
             Logger.debug("Currently analysing a catalog of {0} events".format(
                 len(working_cat)))
+            # TODO: Check if new events should be in one of the already running tribes and add them.
 
             trigger_events = self.trigger_func(working_cat)
             for trigger_event in trigger_events:
@@ -175,9 +179,11 @@ class Reactor(object):
         triggering_event
             Event that triggered this run - needs to have at-least an origin.
         """
+        real_time_tribe, real_time_tribe_kwargs = self.spin_up(
+            triggering_event=triggering_event, run=False)
         detecting_thread = threading.Thread(
-            target=self.spin_up,
-            args=(triggering_event, True),
+            target=real_time_tribe.run,
+            kwargs=real_time_tribe_kwargs,
             name="DetectingThread")
         detecting_thread.daemon = True
         detecting_thread.start()
@@ -186,6 +192,8 @@ class Reactor(object):
 
     def stop(self) -> None:
         """Stop all the processes."""
+        for event_id in self.running_tribes.keys():
+            self.stop_tribe(event_id)
         for detecting_thread in self.detecting_threads:
             detecting_thread.join()
         self.listener.background_stop()
@@ -193,8 +201,8 @@ class Reactor(object):
     def spin_up(
         self,
         triggering_event: Event,
-        new_event_loop: bool = False,
-    ) -> Party:
+        run: bool = True,
+    ) -> Union[Party, tuple]:
         """
         Run the reactors response function.
 
@@ -202,16 +210,13 @@ class Reactor(object):
         ----------
         triggering_event
             Event that triggered this run - needs to have at-least an origin.
-        new_event_loop
-            Whether to start a new event loop - required when running in a
-            sub-thread.
+        run
+            Whether to run the real-time tribe immediately (True),
+            or return it (False).
         """
         process_length = self.real_time_tribe_kwargs.get(
             "process_length", None)
-        min_stations = self.real_time_tribe_kwargs.get("min_stations", None)
-        if new_event_loop:
-            # Set up a new event loop for the plots
-            asyncio.set_event_loop(asyncio.new_event_loop())
+        min_stations = self.listener_kwargs.get("min_stations", None)
         region = estimate_region(triggering_event)
         if region is None:
             return
@@ -219,6 +224,8 @@ class Reactor(object):
         tribe = self.template_database.get_templates(**region)
         tribe.templates = [t for t in tribe
                            if t.name not in self.running_templates_ids]
+        Logger.debug("Checking tribe quality: removing templates with "
+                     "fewer than {0} stations".format(min_stations))
         tribe = check_tribe_quality(tribe, min_stations=min_stations)
         # Enforce process-len
         if process_length is not None:
@@ -229,7 +236,7 @@ class Reactor(object):
                     template.process_length = process_length
             if warn:
                 Logger.warning(
-                    "Changing process-length form to {0}, this may "
+                    "Changing process-length to {0}, this may "
                     "degrade correlations slightly.".format(
                         process_length))
         inventory = get_inventory(
@@ -239,19 +246,45 @@ class Reactor(object):
         detect_interval = self.real_time_tribe_kwargs.get(
             "detect_interval", 60)
         plot = self.real_time_tribe_kwargs.get("plot", False)
-        # TODO: Needs to update the tribe from here with new templates.
+        if plot and self._plotting is not None:
+            Logger.warning(
+                "Cannot plot for more than one real-time-tribe at once.")
+            plot = False
+        elif plot:
+            self._plotting = triggering_event.resource_id
         real_time_tribe = RealTimeTribe(
             tribe=tribe, inventory=inventory, rt_client=self.rt_client.copy(),
             detect_interval=detect_interval, plot=plot,
             plot_options=self.plot_kwargs)
 
-        self.running_templates_ids.append(
-            [t.name for t in real_time_tribe.templates])
         real_time_tribe_kwargs = {
             "backfill_to": event_time(triggering_event),
             "backfill_client": self.listener.waveform_client}
         real_time_tribe_kwargs.update(self.real_time_tribe_kwargs)
-        return real_time_tribe.run(**real_time_tribe_kwargs)
+        self.running_tribes.update(
+            {triggering_event.resource_id: real_time_tribe})
+        if run:
+            return real_time_tribe.run(**real_time_tribe_kwargs)
+        else:
+            return real_time_tribe, real_time_tribe_kwargs
+
+    def stop_tribe(self, triggering_event_id: str = None) -> None:
+        """
+        Stop a specific tribe.
+
+        Parameters
+        ----------
+        triggering_event_id
+            The id of the triggering event for which a tribe is running.
+        """
+        if triggering_event_id is None:
+            return self.stop()
+        tribe_to_stop = self.running_tribes[triggering_event_id]
+        tribe_to_stop.stop()
+        self.running_tribes.pop(triggering_event_id)
+        if self._plotting == triggering_event_id:
+            self._plotting = None  # Allow new plots
+        return None
 
 
 def get_inventory(
