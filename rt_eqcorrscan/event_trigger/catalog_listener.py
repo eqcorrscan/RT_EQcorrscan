@@ -283,6 +283,24 @@ class CatalogListener(_Listener):
                 if len(new_events) > 0:
                     Logger.info("Adding {0} new events to the database".format(
                         len(new_events)))
+                    for event in new_events:
+                        try:
+                            origin = (
+                                event.preferred_origin() or event.origins[0])
+                        except IndexError:
+                            continue
+                        try:
+                            magnitude = (
+                                event.preferred_magnitude() or
+                                event.magnitudes[0])
+                        except IndexError:
+                            continue
+                        Logger.info(
+                            "Event {0}: M {1:.1f}, lat: {2:.2f}, "
+                            "long: {3:.2f}, depth: {4:.2f}".format(
+                                event.resource_id.id, magnitude.mag,
+                                origin.latitude, origin.longitude,
+                                origin.depth / 10.))
                     event_info = [(ev.resource_id.id, event_time(ev))
                                   for ev in new_events]
                     if make_templates:

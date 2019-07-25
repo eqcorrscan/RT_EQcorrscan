@@ -9,12 +9,14 @@ License
 """
 import logging
 import os
+import sys
 
 from yaml import load, dump
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
 except ImportError:
     from yaml import Loader, Dumper
+from logging.handlers import RotatingFileHandler
 
 from obspy import UTCDateTime
 from obspy.core.util import AttribDict
@@ -284,8 +286,25 @@ class Config(object):
 
     def setup_logging(self, **kwargs):
         """Set up logging using the logging parameters."""
+        file_log_args = dict(filename="rt_eqcorrscan.log", mode='a',
+                             maxBytes=5*1024*1024, backupCount=2,
+                             encoding=None, delay=0)
+        file_log_args.update(kwargs)
+        rotating_handler = RotatingFileHandler(**file_log_args)
+        rotating_handler.setFormatter(
+            logging.Formatter(self.log_formatter))
+        rotating_handler.setLevel(logging.DEBUG)
+        # Console handler
+        console_handler = logging.StreamHandler(stream=sys.stdout)
+        console_handler.setLevel(self.log_level)
+        console_handler.setFormatter(
+            logging.Formatter(self.log_formatter))
+        # logging.basicConfig(
+        #     level=self.log_level, format=self.log_formatter)
+        # logging.getLogger().addHandler(rotating_handler)
         logging.basicConfig(
-            level=self.log_level, format=self.log_formatter, **kwargs)
+            level=self.log_level, format=self.log_formatter,
+            handlers=[rotating_handler, console_handler])
 
 
 def read_config(config_file=None) -> Config:
