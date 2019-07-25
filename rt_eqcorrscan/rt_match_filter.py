@@ -53,6 +53,7 @@ class RealTimeTribe(Tribe):
     _running = False
     _speed_up = 1.0
     # Speed-up for simulated runs - do not change for real-time!
+    _max_wait_length = 60.
 
     def __init__(
         self,
@@ -148,10 +149,12 @@ class RealTimeTribe(Tribe):
             **plot_options)
         self.plotter.background_run()
 
-    def _wait(self, wait_length: int = 0) -> None:
-        Logger.info("Waiting for data before starting to plot.")
+    def _wait(self) -> None:
+        Logger.info("Waiting for data.")
+        max_wait = min(self._max_wait_length, self.rt_client.buffer_capacity)
+        wait_length = 0.
         while len(self.rt_client.buffer) < len(self.expected_channels):
-            if wait_length >= self.rt_client.buffer_capacity:
+            if wait_length >= max_wait:
                 Logger.warning("Starting plotting without the full dataset")
                 break
             # Wait until we have some data
@@ -258,11 +261,8 @@ class RealTimeTribe(Tribe):
                 try:
                     tr_in_buffer = self.rt_client.buffer.select(id=tr_id)[0]
                 except IndexError:
-                    tr_in_buffer = None
-                if tr_in_buffer:
-                    endtime = tr_in_buffer.stats.starttime
-                else:
-                    endtime = backfill_to + self.rt_client.buffer_capacity
+                    continue
+                endtime = tr_in_buffer.stats.starttime
                 tr = backfill_client.get_waveforms(
                     *tr_id.split('.'), starttime=backfill_to,
                     endtime=endtime).merge()[0]

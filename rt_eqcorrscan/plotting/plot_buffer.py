@@ -81,7 +81,7 @@ class EQcorrscanPlot:
             asyncio.set_event_loop(asyncio.new_event_loop())
         channels = [tr.id for tr in rt_client.buffer
                     if tr.stats.channel not in exclude_channels]
-        Logger.info("Plot will contain the following channels: {0}".format(
+        Logger.debug("Plot will contain the following channels: {0}".format(
             channels))
         self.channels = sorted(channels)
         self.tribe = tribe

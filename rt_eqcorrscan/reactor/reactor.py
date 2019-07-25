@@ -122,7 +122,7 @@ class Reactor(object):
 
     @property
     def running_templates_ids(self):
-        return [t.name for tribe in self.running_tribes.items() for t in tribe]
+        return [t.name for tribe in self.running_tribes.values() for t in tribe]
 
     def get_up_time(self):
         return self._up_time
@@ -262,7 +262,7 @@ class Reactor(object):
             "backfill_client": self.listener.waveform_client}
         real_time_tribe_kwargs.update(self.real_time_tribe_kwargs)
         self.running_tribes.update(
-            {triggering_event.resource_id: real_time_tribe})
+            {triggering_event.resource_id.id: real_time_tribe})
         if run:
             return real_time_tribe.run(**real_time_tribe_kwargs)
         else:
