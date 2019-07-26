@@ -19,6 +19,7 @@ from matplotlib.figure import Figure
 from eqcorrscan import Tribe, Template, Party, Family, Detection
 
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
+from rt_eqcorrscan.config.notification import Notifier
 
 Logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ class RealTimeTribe(Tribe):
     exclude_channels
         Channels to exclude from plotting
     """
+    notifier = Notifier()
     _running = False
     _speed_up = 1.0
     # Speed-up for simulated runs - do not change for real-time!
@@ -343,6 +345,10 @@ class RealTimeTribe(Tribe):
                             if d not in self.detections:
                                 # Need to append rather than create a new object
                                 self.detections.append(d)
+                                self.notifier.notify(
+                                    message="Made detection at {0}".format(
+                                        d.detect_time),
+                                    level=2)
                 Logger.info("Party now contains {0} detections".format(
                     len(self.detections)))
                 run_time = UTCDateTime.now() - start_time
