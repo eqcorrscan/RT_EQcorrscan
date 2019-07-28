@@ -27,6 +27,7 @@ from rt_eqcorrscan.rt_match_filter import RealTimeTribe
 from rt_eqcorrscan.event_trigger.catalog_listener import CatalogListener
 from rt_eqcorrscan.event_trigger.listener import event_time
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
+from rt_eqcorrscan.config import Notifier
 
 
 Logger = logging.getLogger(__name__)
@@ -69,6 +70,8 @@ class Reactor(object):
     plot_kwargs
         Dictionary of plotting keyword arguments - only required if `plot=True`
         in `real_time_tribe_kwargs`.
+    notifier
+        Notifier that will send messages about triggers.
 
     Notes
     -----
@@ -107,6 +110,7 @@ class Reactor(object):
         listener_kwargs: dict,
         real_time_tribe_kwargs: dict,
         plot_kwargs: dict,
+        notifier: Notifier = None,
     ):
         self.client = client
         self.rt_client = rt_client
@@ -117,6 +121,7 @@ class Reactor(object):
         self.real_time_tribe_kwargs = real_time_tribe_kwargs
         self.plot_kwargs = plot_kwargs
         self.listener_kwargs = listener_kwargs
+        self.notifier = notifier or Notifier()
         # Time-keepers
         self._run_start = None
         self.up_time = 0
@@ -159,6 +164,10 @@ class Reactor(object):
                     Logger.warning(
                         "Listener triggered by event {0}".format(
                             trigger_event))
+                    self.notifier.notify(
+                        message="Listener triggered by event {0}".format(
+                            trigger_event),
+                        level=5)
                     self.triggered_events.append(trigger_event)
                     self.background_spin_up(trigger_event)
             self.set_up_time(UTCDateTime.now())
@@ -259,6 +268,7 @@ class Reactor(object):
             detect_interval=detect_interval, plot=plot,
             plot_options=self.plot_kwargs,
             name=triggering_event.resource_id.id.split('/')[-1])
+        real_time_tribe.notifier = self.notifier
 
         real_time_tribe_kwargs = {
             "backfill_to": event_time(triggering_event),
