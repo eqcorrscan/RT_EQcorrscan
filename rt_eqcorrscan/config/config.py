@@ -221,7 +221,7 @@ class Config(object):
     def __init__(
         self,
         log_level: str = "INFO",
-        log_formatter: str = "%(asctime)s\t%(name)s\t%(levelname)s\t%(message)s",
+        log_formatter: str = "%(asctime)s\t[%(threadName)s]: %(name)s\t%(levelname)s\t%(message)s",
         **kwargs
     ):
         self.rt_match_filter = RTMatchFilterConfig()
@@ -287,7 +287,7 @@ class Config(object):
     def setup_logging(self, **kwargs):
         """Set up logging using the logging parameters."""
         file_log_args = dict(filename="rt_eqcorrscan.log", mode='a',
-                             maxBytes=5*1024*1024, backupCount=2,
+                             maxBytes=512*1024, backupCount=2,
                              encoding=None, delay=0)
         file_log_args.update(kwargs)
         rotating_handler = RotatingFileHandler(**file_log_args)

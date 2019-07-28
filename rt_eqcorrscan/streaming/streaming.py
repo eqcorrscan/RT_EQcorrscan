@@ -11,6 +11,7 @@ License
 import threading
 import logging
 import copy
+import numpy as np
 
 from abc import ABC, abstractmethod
 from obspy import Stream, Trace
@@ -50,9 +51,10 @@ class _StreamingClient(ABC):
     ) -> None:
         self.client_name = client_name
         if buffer is None:
-            self.buffer = Stream()
-        else:
-            self.buffer = buffer
+            buffer = Buffer()
+        elif isinstance(buffer, Stream):
+            buffer = Buffer(buffer.traces)
+        self.buffer = buffer
         self.buffer_capacity = buffer_capacity
         self.threads = []
 
@@ -151,6 +153,13 @@ class _StreamingClient(ABC):
         trace
             New data.
         """
+        """
+        TODO: This is not memory efficient - should
+        1. Add trace to stream if trace not in stream already
+        2. Append data until buffer full for trace
+        3. Once buffer is full for trace should shift data and put new data in,
+           NOT add - this creates additional objects.
+        """
         logging.debug("Packet of {0} samples for {1}".format(
             trace.stats.npts, trace.id))
         self.buffer += trace
@@ -178,6 +187,43 @@ class _StreamingClient(ABC):
         """
         Logger.error("Client error")
         pass
+
+
+class Buffer(object):
+    def __init__(self, traces: list = None):
+        if traces is None:
+            traces = []
+        self.traces = traces
+
+    def __add__(self, other):
+        # TODO
+        return
+
+    def __iadd__(self, other):
+        # TODO
+        return
+
+    @property
+    def stream(self):
+        return Stream([tr.trace for tr in self.traces])
+
+
+class TraceBuffer(object):
+    def __init__(self, data, header, maxlen: int):
+        # Ensure data is a deque with maxlen
+        self.data = data
+        self.stats = header
+
+    def __add__(self, other):
+        # TODO
+
+    def __iadd__(self, other):
+        # TODO
+
+    @property
+    def trace(self):
+        # TODO:
+        return Trace(header=self.stats, data=np.array(self.data))
 
 
 if __name__ == "__main__":

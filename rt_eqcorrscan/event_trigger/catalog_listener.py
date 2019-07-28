@@ -297,10 +297,10 @@ class CatalogListener(_Listener):
                             continue
                         Logger.info(
                             "Event {0}: M {1:.1f}, lat: {2:.2f}, "
-                            "long: {3:.2f}, depth: {4:.2f}".format(
+                            "long: {3:.2f}, depth: {4:.2f}km".format(
                                 event.resource_id.id, magnitude.mag,
                                 origin.latitude, origin.longitude,
-                                origin.depth / 10.))
+                                origin.depth / 1000.))
                     event_info = [(ev.resource_id.id, event_time(ev))
                                   for ev in new_events]
                     if make_templates:

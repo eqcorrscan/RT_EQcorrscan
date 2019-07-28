@@ -6,6 +6,9 @@ detection when triggered.
 """
 
 import logging
+import faulthandler
+
+faulthandler.enable()
 
 from functools import partial
 from obspy import Catalog

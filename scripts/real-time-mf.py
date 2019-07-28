@@ -45,12 +45,17 @@ def run_real_time_matched_filter(**kwargs):
         triggering_event = client.get_events(
             eventid=triggering_eventid)[0]
         region = estimate_region(triggering_event)
+        tribe_name = triggering_eventid
     else:
         triggering_event = None
         region = {
             "latitude": kwargs.get("latitude", None),
             "longitude": kwargs.get("longitude", None),
             "maxradius": kwargs.get("maxradius", None)}
+        tribe_name = "{0}_{1}_{2}".format(
+            kwargs.get("latitude", "lat"),
+            kwargs.get("longitude", "long"),
+            kwargs.get("maxradius", "rad"))
     starttime = kwargs.get("starttime", None)
     endtime = kwargs.get("endtime", None)
     rt_client_starttime = kwargs.get("rt_client_starttime", None)
@@ -113,7 +118,7 @@ def run_real_time_matched_filter(**kwargs):
     real_time_tribe = RealTimeTribe(
         tribe=tribe, inventory=inventory, rt_client=rt_client,
         detect_interval=config.rt_match_filter.detect_interval,
-        plot=config.rt_match_filter.plot,
+        plot=config.rt_match_filter.plot, name=tribe_name,
         plot_options=config.plot)
     real_time_tribe._speed_up = speed_up
 

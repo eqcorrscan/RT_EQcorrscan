@@ -11,6 +11,9 @@ import os
 import logging
 import copy
 import numpy
+import gc
+
+from pympler import summary, muppy
 
 from typing import Union
 
@@ -32,6 +35,8 @@ class RealTimeTribe(Tribe):
 
     Parameters
     ----------
+    name
+        Tribe identifier - used to define save path.
     tribe
         Tribe of templates to use for detection.
     inventory
@@ -57,6 +62,7 @@ class RealTimeTribe(Tribe):
 
     def __init__(
         self,
+        name: str = None,
         tribe: Tribe = None,
         inventory: Inventory = None,
         rt_client: _StreamingClient = None,
@@ -69,6 +75,7 @@ class RealTimeTribe(Tribe):
         assert (self.rt_client.buffer_capacity >= max(
             [template.process_length for template in self.templates]))
         assert (self.rt_client.buffer_capacity >= detect_interval)
+        self.name = name or "RealTimeTribe"
         self.buffer = Stream()
         self.inventory = inventory
         self.party = Party()
@@ -209,7 +216,8 @@ class RealTimeTribe(Tribe):
             Duration to store detection in memory for in seconds.
         detect_directory
             Relative path to directory for detections. This directory will be
-            created if it doesn't exist.
+            created if it doesn't exist - tribe name will be appended to this
+            string to give the directory name.
         plot_detections
             Whether to plot detections or not - plots will be saved to the
             `detect_directory` as png images.
@@ -236,6 +244,7 @@ class RealTimeTribe(Tribe):
         # Used for plotting - figure is reused to avoid memory leaks.
 
         last_possible_detection = UTCDateTime(0)  # TODO: Why is this here?
+        detect_directory += self.name
         if not os.path.isdir(detect_directory):
             os.makedirs(detect_directory)
         if not self.rt_client.started:
@@ -284,8 +293,7 @@ class RealTimeTribe(Tribe):
         try:
             while self._running:
                 start_time = UTCDateTime.now()
-                st = self.rt_client.get_stream()
-                st = st.merge()
+                st = self.rt_client.get_stream().merge()
                 if len(st) == 0:
                     Logger.warning("No data")
                     continue
@@ -297,9 +305,9 @@ class RealTimeTribe(Tribe):
                         starttime=last_data - self.minimum_data_for_detection,
                         endtime=last_data)
                 # Remove short channels
-                st.traces = [tr for tr in st
-                             if _numpy_len(tr.data) >= (
-                                     .8 * self.minimum_data_for_detection)]
+                st.traces = [
+                    tr for tr in st
+                    if _numpy_len(tr.data) >= (.8 * self.minimum_data_for_detection)]
                 Logger.debug(st)
                 Logger.info("Starting detection run")
                 try:
@@ -323,12 +331,6 @@ class RealTimeTribe(Tribe):
                         for detection in family:
                             if detection.detect_time > last_possible_detection:
                                 # TODO: lag-calc and relative magnitudes?
-                                fig = _write_detection(
-                                    detection=detection,
-                                    detect_directory=detect_directory,
-                                    save_waveform=save_waveforms,
-                                    plot_detection=plot_detections,
-                                    stream=st, fig=fig)
                                 _family += detection
                         self.party += _family
                     Logger.info("Removing duplicate detections")
@@ -342,6 +344,12 @@ class RealTimeTribe(Tribe):
                         for d in f:
                             if d not in self.detections:
                                 # Need to append rather than create a new object
+                                fig = _write_detection(
+                                    detection=d,
+                                    detect_directory=detect_directory,
+                                    save_waveform=save_waveforms,
+                                    plot_detection=plot_detections,
+                                    stream=st, fig=fig)
                                 self.detections.append(d)
                 Logger.info("Party now contains {0} detections".format(
                     len(self.detections)))
@@ -361,6 +369,9 @@ class RealTimeTribe(Tribe):
                 # TODO: Needs a min-rate stop condition.
                 if max_run_length and UTCDateTime.now() > run_start + max_run_length:
                     self.stop()
+                gc.collect()
+                sum1 = summary.summarize(muppy.get_objects())
+                summary.print_(sum1)
         finally:
             self.stop()
         return self.party
@@ -408,7 +419,9 @@ def _write_detection(
     _filename = os.path.join(
         _path, detection.detect_time.strftime("%Y%m%dT%H%M%S"))
     detection.event.write("{0}.xml".format(_filename), format="QUAKEML")
-    st = stream.slice().copy()
+    detection.event.picks.sort(key=lambda p: p.time)
+    st = stream.slice(
+        detection.event.picks[0].time, detection.event.picks[-1].time).copy()
     if save_waveform:
         st.split().write("{0}.ms".format(_filename), format="MSEED")
     if plot_detection:

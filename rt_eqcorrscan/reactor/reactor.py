@@ -7,8 +7,9 @@ License
     GPL v3.0
 """
 import logging
-import threading
+import multiprocessing
 import time
+import gc
 
 from collections import Counter
 from typing import Union, Callable
@@ -165,6 +166,7 @@ class Reactor(object):
                 Logger.info("Times up: Stopping")
                 self.stop()
                 break
+            gc.collect()
             time.sleep(self.sleep_step)
 
     def background_spin_up(
@@ -181,10 +183,10 @@ class Reactor(object):
         """
         real_time_tribe, real_time_tribe_kwargs = self.spin_up(
             triggering_event=triggering_event, run=False)
-        detecting_thread = threading.Thread(
+        detecting_thread = multiprocessing.Process(
             target=real_time_tribe.run,
             kwargs=real_time_tribe_kwargs,
-            name="DetectingThread")
+            name="DetectingThread_{0}".format(real_time_tribe.name))
         detecting_thread.daemon = True
         detecting_thread.start()
         self.detecting_threads.append(detecting_thread)
@@ -255,7 +257,8 @@ class Reactor(object):
         real_time_tribe = RealTimeTribe(
             tribe=tribe, inventory=inventory, rt_client=self.rt_client.copy(),
             detect_interval=detect_interval, plot=plot,
-            plot_options=self.plot_kwargs)
+            plot_options=self.plot_kwargs,
+            name=triggering_event.resource_id.id.split('/')[-1])
 
         real_time_tribe_kwargs = {
             "backfill_to": event_time(triggering_event),
@@ -281,6 +284,11 @@ class Reactor(object):
             return self.stop()
         tribe_to_stop = self.running_tribes[triggering_event_id]
         tribe_to_stop.stop()
+        # TODO: stop the detecting thread if it is running in the background.
+        tribe_thread = [
+            thread for thread in self.detecting_threads
+            if thread.name.endswith(triggering_event_id.split('/')[-1])][0]
+        tribe_thread.join()
         self.running_tribes.pop(triggering_event_id)
         if self._plotting == triggering_event_id:
             self._plotting = None  # Allow new plots

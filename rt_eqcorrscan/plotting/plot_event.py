@@ -46,28 +46,33 @@ def plot_event(
     """
     import matplotlib.pyplot as plt
 
+    event.picks.sort(key=lambda p: p.time)
     try:
         origin_time = event.preferred_origin().time or event.origins[0].time
     except AttributeError:
-        # If there isn't an origin time, use the start of the stream
-        origin_time = st[0].stats.starttime
-    st = st.slice(origin_time, origin_time + length)
-    st.split().detrend().filter(
+        # If there isn't an origin time, use the first pick time
+        try:
+            origin_time = event.picks[0].time - 5
+        except KeyError:
+            # No picks, so use the stream start time
+            origin_time = min([tr.stats.starttime for tr in st])
+    _st = st.slice(origin_time, origin_time + length).copy()
+    _st = _st.split().detrend().filter(
         "bandpass", freqmin=passband[0], freqmax=passband[1]).merge()
     # Trim the event around the origin time
     if fig is None:
-        fig, axes = plt.subplots(len(st), 1, sharex=True, figsize=size)
+        fig, axes = plt.subplots(len(_st), 1, sharex=True, figsize=size)
     else:
-        axes = [fig.add_subplot(len(st), 1, 1)]
-        if len(st) > 1:
-            for i in range(len(st) - 1):
-                axes.append(fig.add_subplot(len(st), 1, i + 2, sharex=axes[0]))
-    if len(st) == 1:
+        axes = [fig.add_subplot(len(_st), 1, 1)]
+        if len(_st) > 1:
+            for i in range(len(_st) - 1):
+                axes.append(fig.add_subplot(len(_st), 1, i + 2, sharex=axes[0]))
+    if len(_st) == 1:
         axes = [axes]
     lines, labels = ([], [])
     min_x = []
     max_x = []
-    for ax, tr in zip(axes, st):
+    for ax, tr in zip(axes, _st):
         picks, arrivals = ([], [])
         for pick in event.picks:
             if pick.waveform_id.station_code == tr.stats.station:
@@ -92,6 +97,7 @@ def plot_event(
     fig.legend(lines, labels)
     if show:
         fig.show()
+    del _st
     return fig
 
 
