@@ -7,12 +7,13 @@ License
     GPL v3.0
 """
 import logging
-import multiprocessing
 import time
 import gc
 
 from collections import Counter
 from typing import Union, Callable
+from multiprocessing import cpu_count, Process
+from threading import Thread
 
 from obspy import Inventory, UTCDateTime
 from obspy.core.event import Event
@@ -127,6 +128,10 @@ class Reactor(object):
         self.up_time = 0
 
     @property
+    def available_cores(self) -> int:
+        return max(1, cpu_count() - len(self.running_tribes))
+
+    @property
     def running_templates_ids(self):
         return [t.name for tribe in self.running_tribes.values() for t in tribe]
 
@@ -192,11 +197,13 @@ class Reactor(object):
         """
         real_time_tribe, real_time_tribe_kwargs = self.spin_up(
             triggering_event=triggering_event, run=False)
-        detecting_thread = multiprocessing.Process(
+        if real_time_tribe is None:
+            return
+        detecting_thread = Process(
             target=real_time_tribe.run,
             kwargs=real_time_tribe_kwargs,
             name="DetectingThread_{0}".format(real_time_tribe.name))
-        detecting_thread.daemon = True
+        # detecting_thread.daemon = True
         detecting_thread.start()
         self.detecting_threads.append(detecting_thread)
         Logger.info("Started detector thread - continuing listening")
@@ -230,11 +237,15 @@ class Reactor(object):
         min_stations = self.listener_kwargs.get("min_stations", None)
         region = estimate_region(triggering_event)
         if region is None:
-            return
+            return None, None
         region.update(self.template_lookup_kwargs)
         tribe = self.template_database.get_templates(**region)
         tribe.templates = [t for t in tribe
                            if t.name not in self.running_templates_ids]
+        if len(tribe) == 0:
+            Logger.warning("No appropriate templates for event: {0}".format(
+                region))
+            return None, None
         Logger.debug("Checking tribe quality: removing templates with "
                      "fewer than {0} stations".format(min_stations))
         tribe = check_tribe_quality(tribe, min_stations=min_stations)
@@ -272,7 +283,8 @@ class Reactor(object):
 
         real_time_tribe_kwargs = {
             "backfill_to": event_time(triggering_event),
-            "backfill_client": self.listener.waveform_client}
+            "backfill_client": self.listener.waveform_client,
+            "cores": self.available_cores}
         real_time_tribe_kwargs.update(self.real_time_tribe_kwargs)
         self.running_tribes.update(
             {triggering_event.resource_id.id: real_time_tribe})

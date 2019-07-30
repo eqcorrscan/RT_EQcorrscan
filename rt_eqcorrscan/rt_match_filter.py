@@ -13,7 +13,7 @@ import copy
 import numpy
 import gc
 
-from pympler import summary, muppy
+# from pympler import summary, muppy
 
 from typing import Union
 
@@ -316,6 +316,7 @@ class RealTimeTribe(Tribe):
                     new_party = self.detect(
                         stream=st, plotvar=False, threshold=threshold,
                         threshold_type=threshold_type, trig_int=trig_int,
+                        xcorr_func="fftw", concurrency="concurrent",
                         **kwargs)
                 except Exception as e:  # pragma: no cover
                     Logger.error(e)
@@ -376,8 +377,8 @@ class RealTimeTribe(Tribe):
                 if max_run_length and UTCDateTime.now() > run_start + max_run_length:
                     self.stop()
                 gc.collect()
-                sum1 = summary.summarize(muppy.get_objects())
-                summary.print_(sum1)
+                # sum1 = summary.summarize(muppy.get_objects())
+                # summary.print_(sum1)
         finally:
             self.stop()
         return self.party

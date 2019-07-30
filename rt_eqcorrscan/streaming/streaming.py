@@ -10,12 +10,12 @@ License
 
 import threading
 import logging
-import copy
-import numpy as np
 
 from abc import ABC, abstractmethod
+
 from obspy import Stream, Trace
 
+from rt_eqcorrscan.streaming.buffers import Buffer
 
 Logger = logging.getLogger(__name__)
 
@@ -51,9 +51,10 @@ class _StreamingClient(ABC):
     ) -> None:
         self.client_name = client_name
         if buffer is None:
-            buffer = Buffer()
-        elif isinstance(buffer, Stream):
-            buffer = Buffer(buffer.traces)
+            # buffer = Buffer()
+            biffer = Stream()
+        # elif isinstance(buffer, Stream):
+        #     buffer = Buffer(buffer.traces)
         self.buffer = buffer
         self.buffer_capacity = buffer_capacity
         self.threads = []
@@ -189,43 +190,7 @@ class _StreamingClient(ABC):
         pass
 
 
-class Buffer(object):
-    def __init__(self, traces: list = None):
-        if traces is None:
-            traces = []
-        self.traces = traces
-
-    def __add__(self, other):
-        # TODO
-        return
-
-    def __iadd__(self, other):
-        # TODO
-        return
-
-    @property
-    def stream(self):
-        return Stream([tr.trace for tr in self.traces])
-
-
-class TraceBuffer(object):
-    def __init__(self, data, header, maxlen: int):
-        # Ensure data is a deque with maxlen
-        self.data = data
-        self.stats = header
-
-    def __add__(self, other):
-        # TODO
-
-    def __iadd__(self, other):
-        # TODO
-
-    @property
-    def trace(self):
-        # TODO:
-        return Trace(header=self.stats, data=np.array(self.data))
-
-
 if __name__ == "__main__":
     import doctest
+
     doctest.testmod()

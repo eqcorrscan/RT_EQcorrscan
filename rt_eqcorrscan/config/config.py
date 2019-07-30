@@ -221,7 +221,7 @@ class Config(object):
     def __init__(
         self,
         log_level: str = "INFO",
-        log_formatter: str = "%(asctime)s\t[%(threadName)s]: %(name)s\t%(levelname)s\t%(message)s",
+        log_formatter: str = "%(asctime)s\t[%(processName)s:%(threadName)s]: %(name)s\t%(levelname)s\t%(message)s",
         **kwargs
     ):
         self.rt_match_filter = RTMatchFilterConfig()
