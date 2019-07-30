@@ -129,7 +129,7 @@ class Reactor(object):
 
     @property
     def available_cores(self) -> int:
-        return max(1, cpu_count() - len(self.running_tribes))
+        return max(1, cpu_count() - 1)
 
     @property
     def running_templates_ids(self):
