@@ -32,12 +32,54 @@ class Buffer(object):
     """
     def __init__(self, traces: List = None, maxlen: float = None):
         if traces is None:
-            traces = []
+            self.traces = []
         else:
+            self.traces = []
             for tr in traces:
-                assert isinstance(tr, TraceBuffer)
-        self.traces = traces
-        self.maxlen = maxlen
+                if isinstance(tr, Trace):
+                    self.traces.append(TraceBuffer(
+                        data=tr.data, header=tr.stats,
+                        maxlen=int(tr.stats.sampling_rate * maxlen)))
+                elif isinstance(tr, TraceBuffer):
+                    self.traces.append(tr)
+                else:
+                    raise NotImplementedError(
+                        "traces must be either Trace or TraceBuffer")
+        self._maxlen = maxlen
+        self.sanitize_traces()
+
+    def __repr__(self):
+        return "Buffer({0} traces, maxlen={1})".format(
+            len(self.traces), self.maxlen)
+
+    def __iter__(self):
+        return self.traces.__iter__()
+
+    def __len__(self):
+        return len(self.traces)
+
+    @property
+    def maxlen(self):
+        return self._maxlen
+
+    @maxlen.setter
+    def maxlen(self, maxlen):
+        self._maxlen = maxlen
+        self.sanitize_traces()
+
+    def sanitize_traces(self):
+        """ Ensure all traces meet that maxlen criteria. """
+        _traces = []
+        for tr in self.traces:
+            _maxlen = int(self.maxlen * tr.stats.smapling_rate)
+            if not tr.data.maxlen == _maxlen:
+                # Need to make a new tracebuffer with the correct maxlen
+                _tr = tr.trace
+                _traces.append(TraceBuffer(
+                    data=_tr.data, header=_tr.stats, maxlen=_maxlen))
+            else:
+                _traces.append(tr)
+        self.traces = _traces
 
     def add_stream(self, stream: Union[Trace, Stream]) -> None:
         """
@@ -46,10 +88,6 @@ class Buffer(object):
         Parameters
         ----------
         stream
-
-        Returns
-        -------
-
         """
         if isinstance(stream, Trace):
             stream = Stream([stream])
@@ -80,8 +118,34 @@ class Buffer(object):
         return [tr for tr in self.traces if tr.id == seed_id]
 
     @property
-    def stream(self):
+    def stream(self) -> Stream:
+        """
+        Get a static Stream view of the buffer
+
+        Returns
+        -------
+        A stream representing the current state of the Buffer.
+        """
         return Stream([tr.trace for tr in self.traces])
+
+    def is_full(self, strict=False) -> bool:
+        """
+        Check whether the buffer is full or not.
+
+        If strict=False (default) then only the start and end of the buffer
+        are checked.  Otherwise (strict=True) the whole buffer must contain
+        real data (e.g. the mask is all False)
+
+        Parameters
+        ----------
+        strict
+            Whether to check the whole deque (True), or just the start and end
+            (False: default).
+        """
+        for tr in self.traces:
+            if not tr.is_full(strict=strict):
+                return False
+        return True
 
 
 class BufferStats(AttribDict):
@@ -104,6 +168,9 @@ class BufferStats(AttribDict):
         'location': '',
         'channel': '',
     }
+
+    def __repr__(self):
+        return self.__str__()
 
     def __init__(self, header: dict = None):
         super().__init__(header)
@@ -176,7 +243,7 @@ class TraceBuffer(object):
     header
         Standard header info for an Obspy Trace.
     maxlen
-        Maximum length of trace in sample.
+        Maximum length of trace in samples.
 
     Examples
     --------
@@ -212,7 +279,13 @@ class TraceBuffer(object):
             self.data, self.stats, self.data.maxlen)
 
     def __len__(self) -> int:
-        return len(self.data.data)
+        """ Length of buffer in samples. """
+        return len(self.data)
+
+    @property
+    def data_len(self) -> float:
+        """ Length of buffer in seconds. """
+        return self.__len__() * self.stats.delta
 
     def get_id(self) -> str:
         """
@@ -300,6 +373,20 @@ class TraceBuffer(object):
         2018-01-01T00:00:34.000000Z
         >>> print(trace_buffer.data)
         NumpyDeque(data=[15.0 16.0 17.0 18.0 19.0 -- -- -- -- -- 0.0 1.0 2.0 3.0 4.0], maxlen=15)
+
+        Add a trace that starts one sample after the current trace ends
+        >>> trace = Trace(
+        ...     np.arange(5), header=dict(
+        ...         station="bob",
+        ...         starttime=trace_buffer.stats.endtime + trace_buffer.stats.delta,
+        ...         delta=1.))
+        >>> print(trace_buffer.stats.endtime)
+        2018-01-01T00:00:34.000000Z
+        >>> print(trace.stats.starttime)
+        2018-01-01T00:00:35.000000Z
+        >>> trace_buffer.add_trace(trace)
+        >>> print(trace_buffer.data)
+        NumpyDeque(data=[-- -- -- -- -- 0.0 1.0 2.0 3.0 4.0 0.0 1.0 2.0 3.0 4.0], maxlen=15)
         """
         # Check that stats match
         assert self.id == trace.id, "IDs {0} and {1} differ".format(
@@ -326,7 +413,7 @@ class TraceBuffer(object):
                     old_data[old_data_start:], insert_start, self.data.maxlen)
                 new_data = trace.slice(starttime=self.stats.endtime).data
             # If there is a gap.
-            elif trace.stats.starttime > self.stats.endtime:
+            elif trace.stats.starttime > self.stats.endtime + self.stats.delta:
                 new_data = np.empty(
                     trace.stats.npts +
                     int(self.stats.sampling_rate *
@@ -362,6 +449,22 @@ class TraceBuffer(object):
         buffer they will be masked.
         """
         return Trace(header=self.stats.__dict__, data=self.data.data)
+
+    def is_full(self, strict=False) -> bool:
+        """
+        Check if the tracebuffer is full or not.
+
+        If strict=False (default) then only the start and end of the buffer
+        are checked.  Otherwise (strict=True) the whole buffer must contain
+        real data (e.g. the mask is all False)
+
+        Parameters
+        ----------
+        strict
+            Whether to check the whole deque (True), or just the start and end
+            (False: default).
+        """
+        return self.data.is_full(strict=strict)
 
     def copy(self):
         """
@@ -407,6 +510,9 @@ class NumpyDeque(object):
         return "NumpyDeque(data={0}, maxlen={1})".format(
             self.data, self.maxlen)
 
+    def __len__(self):
+        return sum(~self._mask)
+
     @property
     def maxlen(self) -> int:
         return self._maxlen
@@ -416,6 +522,24 @@ class NumpyDeque(object):
         if self._mask.sum() > 0:
             return np.ma.masked_array(self._data, mask=self._mask)
         return self._data
+
+    def is_full(self, strict=False) -> bool:
+        """
+        Check whether the buffer is full.
+
+        If strict=False (default) then only the start and end of the buffer
+        are checked.  Otherwise (strict=True) the whole buffer must contain
+        real data (e.g. the mask is all False)
+
+        Parameters
+        ----------
+        strict
+            Whether to check the whole deque (True), or just the start and end
+            (False: default).
+        """
+        if strict:
+            return ~np.any(self._mask)
+        return ~np.any([self._mask[0], self._mask[-1]])
 
     def extend(
         self,
@@ -442,8 +566,8 @@ class NumpyDeque(object):
             self._data[0:] = other[-self.maxlen:]
             self._mask[:] = mask_value[-self.maxlen:]
             return
-        self._data[:] = np.roll(self._data[::-1], other_length)[::-1]
-        self._mask[:] = np.roll(self._mask[::-1], other_length)[::-1]
+        self._data[0:-other_length] = self._data[other_length:]
+        self._mask[0:-other_length] = self._mask[other_length:]
         self._data[-other_length:] = other
         self._mask[-other_length:] = mask_value
 
@@ -472,8 +596,8 @@ class NumpyDeque(object):
             self._data[0:] = other[0:self.maxlen]
             self._mask[:] = mask_value[0:self.maxlen]
             return
-        self._data[:] = np.roll(self._data, other_length)
-        self._mask[:] = np.roll(self._mask, other_length)
+        self._data[other_length:] = self._data[0:-other_length]
+        self._mask[other_length:] = self._mask[0:-other_length]
         self._data[0:other_length] = other
         self._mask[0:other_length] = mask_value
 

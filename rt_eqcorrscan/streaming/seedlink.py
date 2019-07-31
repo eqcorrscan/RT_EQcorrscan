@@ -54,8 +54,7 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         Seed-link client at geofon.gfz-potsdam.de, status: Stopped, buffer \
         capacity: 600.0s
             Current Buffer:
-        0 Trace(s) in Stream:
-        <BLANKLINE>
+        Buffer(0 traces, maxlen=600.0)
         """
         status_map = {True: "Running", False: "Stopped"}
         print_str = (

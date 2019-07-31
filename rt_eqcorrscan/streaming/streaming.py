@@ -12,6 +12,7 @@ import threading
 import logging
 
 from abc import ABC, abstractmethod
+from typing import Union
 
 from obspy import Stream, Trace
 
@@ -46,16 +47,15 @@ class _StreamingClient(ABC):
     def __init__(
         self,
         client_name: str = None,
-        buffer: Stream = None,
+        buffer: Union[Stream, Buffer] = None,
         buffer_capacity: float = 600.,
     ) -> None:
         self.client_name = client_name
         if buffer is None:
-            # buffer = Buffer()
-            biffer = Stream()
-        # elif isinstance(buffer, Stream):
-        #     buffer = Buffer(buffer.traces)
-        self.buffer = buffer
+            buffer = Buffer(traces=[], maxlen=buffer_capacity)
+        elif isinstance(buffer, Stream):
+            buffer = Buffer(buffer.traces, maxlen=buffer_capacity)
+        self._buffer = buffer
         self.buffer_capacity = buffer_capacity
         self.threads = []
 
@@ -85,23 +85,27 @@ class _StreamingClient(ABC):
         """ Whether streams can be added."""
 
     @property
+    def buffer(self) -> Buffer:
+        return self._buffer
+
+    def clear_buffer(self):
+        """ Clear the current buffer. """
+        self._buffer = Buffer(traces=[], maxlen=self.buffer_capacity)
+
+    @property
     def buffer_full(self) -> bool:
         if len(self.buffer) == 0:
             return False
-        for tr in self.buffer:
-            if tr.stats.endtime - tr.stats.starttime < self.buffer_capacity:
-                return False
-        return True
+        return self.buffer.is_full()
 
     @property
     def buffer_length(self) -> float:
         """
-        Return the maximum length of the buffer
+        Return the maximum length of the buffer in seconds.
         """
         if len(self.buffer) == 0:
-            return 0
-        return (max([tr.stats.endtime for tr in self.buffer]) -
-                min([tr.stats.starttime for tr in self.buffer]))
+            return 0.
+        return max([tr.data_len for tr in self.buffer])
 
     @abstractmethod
     def copy(self, empty_buffer: bool = True):
@@ -116,7 +120,7 @@ class _StreamingClient(ABC):
 
     def get_stream(self) -> Stream:
         """ Get a copy of the current data in buffer. """
-        return self.buffer.copy()
+        return self.buffer.stream
 
     def _bg_run(self):
         e = None
@@ -154,26 +158,19 @@ class _StreamingClient(ABC):
         trace
             New data.
         """
-        """
-        TODO: This is not memory efficient - should
-        1. Add trace to stream if trace not in stream already
-        2. Append data until buffer full for trace
-        3. Once buffer is full for trace should shift data and put new data in,
-           NOT add - this creates additional objects.
-        """
         logging.debug("Packet of {0} samples for {1}".format(
             trace.stats.npts, trace.id))
-        self.buffer += trace
-        self.buffer.merge()
-        _tr = self.buffer.select(id=trace.id)[0]
-        if _tr.stats.npts * _tr.stats.delta > self.buffer_capacity:
-            Logger.debug(
-                "Trimming trace to {0}-{1}".format(
-                    _tr.stats.endtime - self.buffer_capacity,
-                    _tr.stats.endtime))
-            _tr.trim(_tr.stats.endtime - self.buffer_capacity)
-        else:
-            Logger.debug("Buffer contains {0}".format(self.buffer))
+        self.buffer.add_stream(trace)
+        # self.buffer.merge()
+        # _tr = self.buffer.select(id=trace.id)[0]
+        # if _tr.stats.npts * _tr.stats.delta > self.buffer_capacity:
+        #     Logger.debug(
+        #         "Trimming trace to {0}-{1}".format(
+        #             _tr.stats.endtime - self.buffer_capacity,
+        #             _tr.stats.endtime))
+        #     _tr.trim(_tr.stats.endtime - self.buffer_capacity)
+        # else:
+        Logger.debug("Buffer contains {0}".format(self.buffer))
 
     def on_terminate(self) -> Stream:  # pragma: no cover
         """

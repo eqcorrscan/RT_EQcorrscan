@@ -92,15 +92,15 @@ class RealTimeTribeTest(unittest.TestCase):
             threshold=0.9, threshold_type="MAD", trig_int=3,
             max_run_length=100, detect_directory=self.detect_dir)
         self.assertTrue(isinstance(party, Party))
-        self.assertTrue(os.path.isdir(self.detect_dir))
+        self.assertTrue(os.path.isdir(self.detect_dir + "RealTimeTribe"))
         detect_files = glob.glob(os.path.join(
-            self.detect_dir, "????", "???", "*.xml"))
+            self.detect_dir + "RealTimeTribe", "????", "???", "*.xml"))
         self.assertGreater(len(detect_files), 0)
 
     @classmethod
     def tearDownClass(cls) -> None:
-        if os.path.isdir(cls.detect_dir):
-            shutil.rmtree(cls.detect_dir)
+        if os.path.isdir(cls.detect_dir + "RealTimeTribe"):
+            shutil.rmtree(cls.detect_dir + "RealTimeTribe")
 
 
 if __name__ == "__main__":

@@ -107,8 +107,7 @@ class RealTimeTribe(Tribe):
         Seed-link client at geofon.gfz-potsdam.de, status: Stopped, \
         buffer capacity: 600.0s
             Current Buffer:
-        0 Trace(s) in Stream:
-        <BLANKLINE>
+        Buffer(0 traces, maxlen=600.0)
         """
         return 'Real-Time Tribe of {0} templates on client:\n{1}'.format(
             self.__len__(), self.rt_client)
@@ -164,7 +163,7 @@ class RealTimeTribe(Tribe):
         wait_length = 0.
         while len(self.rt_client.buffer) < len(self.expected_channels):
             if wait_length >= max_wait:
-                Logger.warning("Starting plotting without the full dataset")
+                Logger.warning("Starting operation without the full dataset")
                 break
             # Wait until we have some data
             Logger.debug(
@@ -317,7 +316,8 @@ class RealTimeTribe(Tribe):
                         stream=st, plotvar=False, threshold=threshold,
                         threshold_type=threshold_type, trig_int=trig_int,
                         xcorr_func="fftw", concurrency="concurrent",
-                        **kwargs)
+                        process_cores=2, **kwargs)
+                # TODO: Catch memory allocation errors and stop.
                 except Exception as e:  # pragma: no cover
                     Logger.error(e)
                     Logger.info(

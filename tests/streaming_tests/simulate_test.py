@@ -11,7 +11,7 @@ from obspy.clients.fdsn import Client
 from rt_eqcorrscan.streaming.simulate import SimulateRealTimeClient
 
 
-class SeedLinkTest(unittest.TestCase):
+class FDSNTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = Client("GEONET")
@@ -28,7 +28,7 @@ class SeedLinkTest(unittest.TestCase):
                          self.rt_client.buffer_capacity)
 
     def test_full_buffer(self):
-        self.rt_client.buffer = Stream()
+        self.rt_client.clear_buffer()
         self.rt_client.background_run()
         self.assertFalse(self.rt_client.buffer_full)
         time.sleep(20)  # GeoNet is slow

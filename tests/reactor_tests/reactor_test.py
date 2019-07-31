@@ -28,6 +28,8 @@ class ReactorTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.testing_path = os.path.abspath(
             os.path.dirname(__file__)) + os.path.sep + "db"
+        if not os.path.isdir(cls.testing_path):
+            os.makedirs(cls.testing_path)
         cls.template_bank = TemplateBank(cls.testing_path)
         cls.listener = CatalogListener(
             client=Client("GEONET"), catalog=Catalog(),

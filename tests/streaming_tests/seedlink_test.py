@@ -14,7 +14,7 @@ class SeedLinkTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.rt_client = RealTimeClient(
-            server_url="link.geonet.org.nz", buffer_capacity=10)
+            server_url="link.geonet.org.nz", buffer_capacity=10.)
         cls.rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
 
     def test_background_streaming(self):
@@ -25,7 +25,7 @@ class SeedLinkTest(unittest.TestCase):
                          self.rt_client.buffer_capacity)
 
     def test_full_buffer(self):
-        self.rt_client.buffer = Stream()
+        self.rt_client.clear_buffer()
         self.rt_client.background_run()
         self.assertFalse(self.rt_client.buffer_full)
         time.sleep(12)
