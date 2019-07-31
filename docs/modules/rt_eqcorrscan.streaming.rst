@@ -4,6 +4,14 @@ rt\_eqcorrscan.streaming package
 Submodules
 ----------
 
+rt\_eqcorrscan.streaming.buffers module
+-----------------------------------------
+
+.. automodule:: rt_eqcorrscan.streaming.buffers
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 rt\_eqcorrscan.streaming.seedlink module
 ----------------------------------------
 

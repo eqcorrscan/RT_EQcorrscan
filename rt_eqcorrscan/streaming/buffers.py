@@ -349,6 +349,7 @@ class TraceBuffer(object):
         NumpyDeque(data=[1. 2. 3. 4. 5. 6. 7. 8. 6. 5. 4. 3. 2. 1. 0.], maxlen=15)
 
         Try adding a trace that is longer than the maxlen
+
         >>> trace = Trace(
         ...     np.arange(20), header=dict(
         ...         station="bob", starttime=trace_buffer.stats.endtime,
@@ -362,6 +363,7 @@ class TraceBuffer(object):
         NumpyDeque(data=[ 5.  6.  7.  8.  9. 10. 11. 12. 13. 14. 15. 16. 17. 18. 19.], maxlen=15)
 
         Add a trace that starts after the current tracebuffer ends
+
         >>> trace = Trace(
         ...     np.arange(5), header=dict(
         ...         station="bob", starttime=trace_buffer.stats.endtime + 5,
@@ -375,6 +377,7 @@ class TraceBuffer(object):
         NumpyDeque(data=[15.0 16.0 17.0 18.0 19.0 -- -- -- -- -- 0.0 1.0 2.0 3.0 4.0], maxlen=15)
 
         Add a trace that starts one sample after the current trace ends
+        
         >>> trace = Trace(
         ...     np.arange(5), header=dict(
         ...         station="bob",
@@ -658,22 +661,26 @@ class NumpyDeque(object):
         NumpyDeque(data=[-- -- 0.0 1.0 2.0], maxlen=5)
 
         Insert a single element list
+
         >>> np_deque.insert([6], 1, 2)
         >>> print(np_deque)
         NumpyDeque(data=[-- 6.0 0.0 1.0 2.0], maxlen=5)
 
         Insert a numpy array
+
         >>> np_deque.insert(np.array([11, 12]), 3, 5)
         >>> print(np_deque)
         NumpyDeque(data=[-- 6.0 0.0 11.0 12.0], maxlen=5)
 
         Insert a masked array - only the unmasked elements are used.
+
         >>> np_deque.insert(
         ...     np.ma.masked_array([99, 99], mask=[True, False]), 2, 4)
         >>> print(np_deque)
         NumpyDeque(data=[-- 6.0 0.0 99.0 12.0], maxlen=5)
 
         Insert an array longer than maxlen
+
         >>> np_deque.insert(np.arange(10), 0, 10)
         >>> print(np_deque)
         NumpyDeque(data=[5. 6. 7. 8. 9.], maxlen=5)
