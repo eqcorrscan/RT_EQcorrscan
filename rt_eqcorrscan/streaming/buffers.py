@@ -11,6 +11,7 @@ import copy
 import numpy as np
 
 from typing import Union, List
+from collections.abc import Sized
 
 from obspy import Stream, Trace, UTCDateTime
 from obspy.core.trace import Stats
@@ -337,7 +338,7 @@ class TraceBuffer(object):
         ...         station="bob", endtime=UTCDateTime(2018, 1, 1, 0, 0, 1),
         ...         delta=1.),
         ...     maxlen=15)
-        >>> print(trace_buffer.data)
+        >>> print(trace_buffer.data) # doctest: +NORMALIZE_WHITESPACE
         NumpyDeque(data=[-- -- -- -- -- 0.0 1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0], maxlen=15)
         >>> trace = Trace(
         ...     np.arange(7)[::-1], header=dict(
@@ -345,8 +346,8 @@ class TraceBuffer(object):
         >>> trace_buffer.add_trace(trace)
         >>> print(trace_buffer.stats.endtime)
         2018-01-01T00:00:06.000000Z
-        >>> print(trace_buffer.data)
-        NumpyDeque(data=[1. 2. 3. 4. 5. 6. 7. 8. 6. 5. 4. 3. 2. 1. 0.], maxlen=15)
+        >>> print(trace_buffer.data) # doctest: +NORMALIZE_WHITESPACE
+        NumpyDeque(data=[ 1. 2. 3. 4. 5. 6. 7. 8. 6. 5. 4. 3. 2. 1. 0.], maxlen=15)
 
         Try adding a trace that is longer than the maxlen
 
@@ -359,7 +360,7 @@ class TraceBuffer(object):
         >>> trace_buffer.add_trace(trace)
         >>> print(trace_buffer.stats.endtime)
         2018-01-01T00:00:25.000000Z
-        >>> print(trace_buffer.data)
+        >>> print(trace_buffer.data) # doctest: +NORMALIZE_WHITESPACE
         NumpyDeque(data=[ 5.  6.  7.  8.  9. 10. 11. 12. 13. 14. 15. 16. 17. 18. 19.], maxlen=15)
 
         Add a trace that starts after the current tracebuffer ends
@@ -373,7 +374,7 @@ class TraceBuffer(object):
         >>> trace_buffer.add_trace(trace)
         >>> print(trace_buffer.stats.endtime)
         2018-01-01T00:00:34.000000Z
-        >>> print(trace_buffer.data)
+        >>> print(trace_buffer.data) # doctest: +NORMALIZE_WHITESPACE
         NumpyDeque(data=[15.0 16.0 17.0 18.0 19.0 -- -- -- -- -- 0.0 1.0 2.0 3.0 4.0], maxlen=15)
 
         Add a trace that starts one sample after the current trace ends
@@ -388,7 +389,7 @@ class TraceBuffer(object):
         >>> print(trace.stats.starttime)
         2018-01-01T00:00:35.000000Z
         >>> trace_buffer.add_trace(trace)
-        >>> print(trace_buffer.data)
+        >>> print(trace_buffer.data) # doctest: +NORMALIZE_WHITESPACE
         NumpyDeque(data=[-- -- -- -- -- 0.0 1.0 2.0 3.0 4.0 0.0 1.0 2.0 3.0 4.0], maxlen=15)
         """
         # Check that stats match
@@ -412,8 +413,7 @@ class TraceBuffer(object):
                 else:
                     old_data_start = 0
                     insert_start = -len(old_data)
-                self.data.insert(
-                    old_data[old_data_start:], insert_start, self.data.maxlen)
+                self.data.insert(old_data[old_data_start:], insert_start)
                 new_data = trace.slice(starttime=self.stats.endtime).data
             # If there is a gap.
             elif trace.stats.starttime > self.stats.endtime + self.stats.delta:
@@ -437,8 +437,7 @@ class TraceBuffer(object):
             old_data = trace.slice(starttime=trim_start).data
             insert_start = int(self.stats.sampling_rate * (
                     self.stats.endtime - trim_start))
-            insert_stop = insert_start + len(old_data)
-            self.data.insert(old_data, insert_start, insert_stop)
+            self.data.insert(old_data, insert_start)
         self.stats.npts = len(self.data.data)
 
     @property
@@ -615,6 +614,8 @@ class NumpyDeque(object):
         other
             Single element to add to the deque.
         """
+        if isinstance(other, Sized):
+            raise TypeError("other must be a single item, use extend")
         self.extend([other])
 
     def appendleft(self, other) -> None:
@@ -628,13 +629,14 @@ class NumpyDeque(object):
         other
             Single element to add to the deque.
         """
+        if isinstance(other, Sized):
+            raise TypeError("other must be a single item, use extendleft")
         self.extendleft([other])
 
     def insert(
         self,
         other: Union[list, np.ndarray, np.ma.MaskedArray],
-        start: int,
-        stop: int
+        index: int,
     ) -> None:
         """
         Insert elements between a stop and start point of the deque.
@@ -649,42 +651,43 @@ class NumpyDeque(object):
         ----------
         other
             Elements to insert.
-        start
+        index
             Start of the slice in the current deque
-        stop
-            End of the slice in the current deque
 
         Examples
         --------
         >>> np_deque = NumpyDeque(data=[0, 1, 2], maxlen=5)
-        >>> print(np_deque)
+        >>> print(np_deque) # doctest: +NORMALIZE_WHITESPACE
         NumpyDeque(data=[-- -- 0.0 1.0 2.0], maxlen=5)
 
         Insert a single element list
 
-        >>> np_deque.insert([6], 1, 2)
-        >>> print(np_deque)
+        >>> np_deque.insert([6], 1)
+        >>> print(np_deque) # doctest: +NORMALIZE_WHITESPACE
         NumpyDeque(data=[-- 6.0 0.0 1.0 2.0], maxlen=5)
 
         Insert a numpy array
 
-        >>> np_deque.insert(np.array([11, 12]), 3, 5)
-        >>> print(np_deque)
+        >>> np_deque.insert(np.array([11, 12]), 3)
+        >>> print(np_deque) # doctest: +NORMALIZE_WHITESPACE
         NumpyDeque(data=[-- 6.0 0.0 11.0 12.0], maxlen=5)
 
         Insert a masked array - only the unmasked elements are used.
 
         >>> np_deque.insert(
-        ...     np.ma.masked_array([99, 99], mask=[True, False]), 2, 4)
-        >>> print(np_deque)
+        ...     np.ma.masked_array([99, 99], mask=[True, False]), 2)
+        >>> print(np_deque) # doctest: +NORMALIZE_WHITESPACE
         NumpyDeque(data=[-- 6.0 0.0 99.0 12.0], maxlen=5)
 
         Insert an array longer than maxlen
 
-        >>> np_deque.insert(np.arange(10), 0, 10)
-        >>> print(np_deque)
-        NumpyDeque(data=[5. 6. 7. 8. 9.], maxlen=5)
+        >>> np_deque.insert(np.arange(10), 0)
+        >>> print(np_deque) # doctest: +NORMALIZE_WHITESPACE
+        NumpyDeque(data=[ 5. 6. 7. 8. 9.], maxlen=5)
         """
+        if not isinstance(other, Sized):
+            other = [other]
+        stop = index + len(other)
         if len(other) > self.maxlen:
             Logger.warning("Array longer than max-length, reverting to extend")
             self.extend(other)
@@ -692,11 +695,15 @@ class NumpyDeque(object):
             # Only take the non-masked bits
             for i in range(len(other)):
                 if not other.mask[i]:
-                    self._data[start + i] = other.data[i]
-                    self._mask[start + i] = 0
+                    self._data[index + i] = other.data[i]
+                    self._mask[index + i] = 0
         else:
-            self._data[start:stop] = other
-            self._mask[start:stop] = 0
+            if stop == 0:
+                self._data[index:] = other
+                self._mask[index:] = 0
+            else:
+                self._data[index:stop] = other
+                self._mask[index:stop] = 0
 
 
 if __name__ == "__main__":

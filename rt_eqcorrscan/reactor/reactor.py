@@ -13,7 +13,6 @@ import gc
 from collections import Counter
 from typing import Union, Callable
 from multiprocessing import cpu_count, Process
-from threading import Thread
 
 from obspy import Inventory, UTCDateTime
 from obspy.core.event import Event
@@ -321,7 +320,8 @@ def get_inventory(
         max_distance: float = 1000.,
         n_stations: int = 10,
         duration: float = 10,
-        level: str = "channel"
+        level: str = "channel",
+        channel_list: Union[list, tuple] = ("EH?", "HH?"),
 ) -> Inventory:
     """
     Get a suitable inventory for a tribe - selects the most used, closest
@@ -352,6 +352,9 @@ def get_inventory(
         Duration stations must be active for. Units: days
     level:
         Level for inventory parsable by `client.get_stations`.
+    channel_list
+        List of channel-codes to be acquired.  If `None` then all channels
+        will be searched.
 
     Returns
     -------
@@ -375,7 +378,7 @@ def get_inventory(
         lon = location["longitude"]
         _starttime = starttime
 
-    for channel_str in ["EH?", "HH?"]:
+    for channel_str in channel_list or ["*"]:
         try:
             inv += client.get_stations(
                 startbefore=_starttime,
@@ -386,13 +389,7 @@ def get_inventory(
                 level=level)
         except FDSNNoDataException:
             continue
-    inv_len = 0
-    for net in inv:
-        inv_len += len(net)
-    if inv_len <= n_stations:
-        return [sta.code for net in inv for sta in net]
     # Calculate distances
-
     station_count = Counter(
         [pick.waveform_id.station_code for template in tribe
          for pick in template.event.picks])
