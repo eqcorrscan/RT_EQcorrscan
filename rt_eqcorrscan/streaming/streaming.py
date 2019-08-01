@@ -15,6 +15,7 @@ from abc import ABC, abstractmethod
 from typing import Union
 
 from obspy import Stream, Trace
+from obsplus import WaveBank
 
 from rt_eqcorrscan.streaming.buffers import Buffer
 
@@ -33,7 +34,10 @@ class _StreamingClient(ABC):
     buffer
         Stream to buffer data into
     buffer_capacity
-        Length of buffer in seconds. Old data are removed in a LIFO style.
+        Length of buffer in seconds. Old data are removed in a FIFO style.
+    wavebank
+        Optional wavebank to save data to. Used for backfilling by
+        RealTimeTribe
 
     Notes
     -----
@@ -49,6 +53,7 @@ class _StreamingClient(ABC):
         client_name: str = None,
         buffer: Union[Stream, Buffer] = None,
         buffer_capacity: float = 600.,
+        wavebank: WaveBank = None,
     ) -> None:
         self.client_name = client_name
         if buffer is None:
@@ -57,6 +62,7 @@ class _StreamingClient(ABC):
             buffer = Buffer(buffer.traces, maxlen=buffer_capacity)
         self._buffer = buffer
         self.buffer_capacity = buffer_capacity
+        self.wavebank = wavebank
         self.threads = []
 
     def __repr__(self):
@@ -161,15 +167,9 @@ class _StreamingClient(ABC):
         logging.debug("Packet of {0} samples for {1}".format(
             trace.stats.npts, trace.id))
         self.buffer.add_stream(trace)
-        # self.buffer.merge()
-        # _tr = self.buffer.select(id=trace.id)[0]
-        # if _tr.stats.npts * _tr.stats.delta > self.buffer_capacity:
-        #     Logger.debug(
-        #         "Trimming trace to {0}-{1}".format(
-        #             _tr.stats.endtime - self.buffer_capacity,
-        #             _tr.stats.endtime))
-        #     _tr.trim(_tr.stats.endtime - self.buffer_capacity)
-        # else:
+        # TODO - write data to wavebank - needs config options
+        if self.wavebank is not None:
+            self.wavebank.put_waveforms(stream=Stream([trace]))
         Logger.debug("Buffer contains {0}".format(self.buffer))
 
     def on_terminate(self) -> Stream:  # pragma: no cover

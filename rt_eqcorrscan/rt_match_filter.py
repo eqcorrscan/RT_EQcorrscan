@@ -58,6 +58,8 @@ class RealTimeTribe(Tribe):
     """
     notifier = Notifier()
     _running = False
+    _detecting_thread = None
+    busy = False
     _speed_up = 1.0
     # Speed-up for simulated runs - do not change for real-time!
     _max_wait_length = 60.
@@ -175,6 +177,51 @@ class RealTimeTribe(Tribe):
             pass
         return
 
+    def _bg_run(self, *args, **kwargs):
+        e = None
+        while self.busy:
+            try:
+                self.run(*args, **kwargs)
+            except Exception as e:
+                break
+        if e is not None:
+            raise e
+
+    def background_run(self, *args, **kwargs):
+        """
+        Run the RealTimeTribe in the background.
+
+        Takes the same arguments as `run`.
+        """
+        from multiprocessing import Process
+
+        self.busy = True
+        detecting_thread = Process(
+            target=self._bg_run,
+            args=args, kwargs=kwargs,
+            name="DetectingProcess_{0}".format(self.name))
+        # detecting_thread.daemon = True
+        detecting_thread.start()
+        self._detecting_thread = detecting_thread
+        Logger.info("Started detecting")
+
+    def add_templates(self, maximum_backfill: float = 0.) -> None:
+        """
+        Add templates to the tribe.
+
+        This method will run the new templates back in time, then append the
+        templates to the already running tribe.
+
+        Parameters
+        ----------
+        maximum_backfill
+            Time in seconds to backfill to - if this is larger than the
+            difference between the time now and the time that the tribe
+            started, then it will backfill to when the tribe started.
+        """
+        # TODO - write this! Needs to: 1) Add templates to tribe
+        return
+
     def stop(self) -> None:
         """ Stop the real-time system. """
         if self.plotter is not None:  # pragma: no cover
@@ -188,7 +235,7 @@ class RealTimeTribe(Tribe):
         threshold_type: str,
         trig_int: float,
         keep_detections: float = 86400,
-        detect_directory: str = "detections",
+        detect_directory: str = "{name}/detections",
         plot_detections: bool = True,
         save_waveforms: bool = True,
         max_run_length: float = None,
@@ -245,7 +292,7 @@ class RealTimeTribe(Tribe):
         # Used for plotting - figure is reused to avoid memory leaks.
 
         last_possible_detection = UTCDateTime(0)  # TODO: Why is this here?
-        detect_directory += self.name
+        detect_directory = detect_directory.format(name=self.name)
         if not os.path.isdir(detect_directory):
             os.makedirs(detect_directory)
         if not self.rt_client.started:
@@ -317,9 +364,12 @@ class RealTimeTribe(Tribe):
                         threshold_type=threshold_type, trig_int=trig_int,
                         xcorr_func="fftw", concurrency="concurrent",
                         process_cores=2, **kwargs)
-                # TODO: Catch memory allocation errors and stop.
                 except Exception as e:  # pragma: no cover
                     Logger.error(e)
+                    if "Cannot allocate memory" in str(e):
+                        Logger.error("Out of memory, stopping this detector")
+                        self.stop()
+                        break
                     Logger.info(
                         "Waiting for {0:.2f}s and hoping this gets "
                         "better".format(self.detect_interval))

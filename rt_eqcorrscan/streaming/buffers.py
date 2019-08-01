@@ -92,7 +92,7 @@ class Buffer(object):
         if isinstance(stream, Trace):
             stream = Stream([stream])
         for tr in stream:
-            traces_in_buffer = self.select(seed_id=tr.id)
+            traces_in_buffer = self.select(id=tr.id)
             if len(traces_in_buffer) > 0:
                 for trace_in_buffer in traces_in_buffer:
                     trace_in_buffer.add_trace(tr)
@@ -101,13 +101,13 @@ class Buffer(object):
                     data=tr.data, header=tr.stats,
                     maxlen=int(self.maxlen * tr.stats.sampling_rate)))
 
-    def select(self, seed_id: str) -> List:
+    def select(self, id: str) -> List:
         """
         Select traces from the buffer based on seed id
 
         Parameters
         ----------
-        seed_id
+        id
             Standard four-part seed id as
             {network}.{station}.{location}.{channel}
 
@@ -115,7 +115,7 @@ class Buffer(object):
         -------
         List of matching traces.
         """
-        return [tr for tr in self.traces if tr.id == seed_id]
+        return [tr for tr in self.traces if tr.id == id]
 
     @property
     def stream(self) -> Stream:
