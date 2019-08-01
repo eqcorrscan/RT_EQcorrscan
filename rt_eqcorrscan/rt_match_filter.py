@@ -219,7 +219,9 @@ class RealTimeTribe(Tribe):
             difference between the time now and the time that the tribe
             started, then it will backfill to when the tribe started.
         """
-        # TODO - write this! Needs to: 1) Add templates to tribe
+        # TODO - write this! Needs to: 1) Add templates to tribe, 2) backfill with new templates using self.rt_client.wavebank
+        # self._running is a lock on the tribe.
+        # run backfill in a seperate process.
         return
 
     def stop(self) -> None:
@@ -227,7 +229,10 @@ class RealTimeTribe(Tribe):
         if self.plotter is not None:  # pragma: no cover
             self.plotter.background_stop()
         self.rt_client.background_stop()
+        self.busy = False
         self._running = False
+        if self._detecting_thread is not None:
+            self._detecting_thread.join()
 
     def run(
         self,
@@ -287,7 +292,8 @@ class RealTimeTribe(Tribe):
         """
         run_start = UTCDateTime.now()
         detection_iteration = 0  # Counter for number of detection loops run
-        self._running = True
+        if not self.busy:
+            self.busy = True
         fig = None
         # Used for plotting - figure is reused to avoid memory leaks.
 
@@ -339,7 +345,8 @@ class RealTimeTribe(Tribe):
                 sleep_step))
             time.sleep(sleep_step)
         try:
-            while self._running:
+            while self.busy:
+                self._running = True  # Lock tribe
                 start_time = UTCDateTime.now()
                 st = self.rt_client.get_stream().merge()
                 if len(st) == 0:
@@ -422,6 +429,7 @@ class RealTimeTribe(Tribe):
                 Logger.info("Waiting {0:.2f}s until next run".format(
                     self.detect_interval - run_time))
                 detection_iteration += 1
+                self._running = False  # Release lock
                 time.sleep((self.detect_interval - run_time) / self._speed_up)
                 # TODO: Needs a min-rate stop condition.
                 if max_run_length and UTCDateTime.now() > run_start + max_run_length:
