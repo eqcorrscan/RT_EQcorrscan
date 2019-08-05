@@ -23,6 +23,7 @@ from eqcorrscan import Tribe, Template, Party, Family, Detection
 
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
 from rt_eqcorrscan.config.notification import Notifier
+from rt_eqcorrscan.event_trigger.triggers import average_rate
 
 Logger = logging.getLogger(__name__)
 
@@ -140,6 +141,13 @@ class RealTimeTribe(Tribe):
         """ Get the minimum required data length (in seconds) for detection. """
         return max(template.process_length for template in self.templates)
 
+    def _remove_old_detections(self, endtime: UTCDateTime) -> None:
+        """ Remove detections older than keep duration. Works in-place. """
+        # Use a copy to avoid changing list while iterating
+        for d in copy.copy(self.detections):
+            if d.detect_time <= endtime:
+                self.detections.remove(d)
+
     def _plot(self) -> None:  # pragma: no cover
         """ Plot the data as it comes in. """
         from rt_eqcorrscan.plotting.plot_buffer import EQcorrscanPlot
@@ -244,6 +252,7 @@ class RealTimeTribe(Tribe):
         plot_detections: bool = True,
         save_waveforms: bool = True,
         max_run_length: float = None,
+        minimum_rate: float = None,
         backfill_to: UTCDateTime = None,
         backfill_client=None,
         **kwargs
@@ -280,6 +289,10 @@ class RealTimeTribe(Tribe):
         max_run_length
             Maximum detection run time in seconds. Default is to run
             indefinitely.
+        minimum_rate
+            Stopping criteria: if the detection rate drops below this the
+            detector will stop. If set to None, then the detector will run
+            until `max_run_length`
         backfill_to
             Time to backfill the data buffer to.
         backfill_client
@@ -297,7 +310,6 @@ class RealTimeTribe(Tribe):
         fig = None
         # Used for plotting - figure is reused to avoid memory leaks.
 
-        last_possible_detection = UTCDateTime(0)  # TODO: Why is this here?
         detect_directory = detect_directory.format(name=self.name)
         if not os.path.isdir(detect_directory):
             os.makedirs(detect_directory)
@@ -386,35 +398,30 @@ class RealTimeTribe(Tribe):
                     for family in new_party:
                         if family is None:
                             continue
-                        _family = Family(
-                            template=family.template, detections=[])
-                        for detection in family:
-                            if detection.detect_time > last_possible_detection:
-                                # TODO: lag-calc and relative magnitudes?
-                                _family += detection
-                        self.party += _family
+                        self.party += family
                     Logger.info("Removing duplicate detections")
-                    self.party.decluster(trig_int=trig_int)
-                    # Remove old detections here
+                    # TODO: Decluster on pick time? Find matching picks and calc median pick time difference
+                    self.party.decluster(trig_int=trig_int, timing="detect")
                     for family in self.party:
                         family.detections = [
                             d for d in family.detections
                             if d.detect_time >= last_data - keep_detections]
                     for f in self.party:
                         for d in f:
-                            if d not in self.detections:
-                                # Need to append rather than create a new object
-                                fig = _write_detection(
-                                    detection=d,
-                                    detect_directory=detect_directory,
-                                    save_waveform=save_waveforms,
-                                    plot_detection=plot_detections,
-                                    stream=st, fig=fig)
-                                self.detections.append(d)
-                                self.notifier.notify(
-                                    message="Made detection at {0}".format(
-                                        d.detect_time),
-                                    level=2)
+                            if d in self.detections:
+                                continue
+                            fig = _write_detection(
+                                detection=d,
+                                detect_directory=detect_directory,
+                                save_waveform=save_waveforms,
+                                plot_detection=plot_detections, stream=st,
+                                fig=fig)
+                            # Need to append rather than create a new object
+                            self.detections.append(d)
+                            self.notifier.notify(
+                                message="Made detection at {0}".format(
+                                    d.detect_time), level=2)
+                self._remove_old_detections(last_data - keep_detections)
                 Logger.info("Party now contains {0} detections".format(
                     len(self.detections)))
                 run_time = UTCDateTime.now() - start_time
@@ -431,10 +438,12 @@ class RealTimeTribe(Tribe):
                 detection_iteration += 1
                 self._running = False  # Release lock
                 time.sleep((self.detect_interval - run_time) / self._speed_up)
-                # TODO: Needs a min-rate stop condition.
                 if max_run_length and UTCDateTime.now() > run_start + max_run_length:
                     self.stop()
+                if minimum_rate and average_rate(self.detections) < minimum_rate:
+                    self.stop()
                 gc.collect()
+                # Memory output
                 # sum1 = summary.summarize(muppy.get_objects())
                 # summary.print_(sum1)
         finally:

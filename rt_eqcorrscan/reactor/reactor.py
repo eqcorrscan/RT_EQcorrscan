@@ -160,9 +160,11 @@ class Reactor(object):
                 working_cat = []
             Logger.debug("Currently analysing a catalog of {0} events".format(
                 len(working_cat)))
+            trigger_events = self.trigger_func(working_cat)
+
             # TODO: Check if new events should be in one of the already running tribes and add them.
             # Use real_time_tribe.add_templates() method.
-            trigger_events = self.trigger_func(working_cat)
+
             for trigger_event in trigger_events:
                 if trigger_event not in self.triggered_events:
                     Logger.warning(

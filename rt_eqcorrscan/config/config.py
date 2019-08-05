@@ -61,6 +61,8 @@ class RTMatchFilterConfig(_ConfigAttribDict):
         "max_distance": 1000.,
         "buffer_capacity": 300.,
         "detect_interval": 120.,
+        "max_run_length": None,
+        "minimum_rate": 20.,
         "plot": True,
         "threshold": .5,
         "threshold_type": "av_chan_corr",

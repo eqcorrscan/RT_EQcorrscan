@@ -59,9 +59,6 @@ def run(**kwargs):
         server_url=config.rt_match_filter.seedlink_server_url,
         buffer_capacity=config.rt_match_filter.buffer_capacity)
 
-    real_time_tribe_kwargs = config.rt_match_filter.__dict__
-    real_time_tribe_kwargs.update(
-        {"process_length": config.template.process_len})
     reactor = Reactor(
         client=client, rt_client=rt_client,
         listener=listener, trigger_func=trigger_func,

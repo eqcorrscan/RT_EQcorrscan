@@ -6,9 +6,12 @@ Author
 License
     GPL v3.0
 """
+from typing import Union, List
 
 from obspy.core.event import Catalog, Event
 from obspy.geodetics import locations2degrees
+
+from eqcorrscan.core.match_filter import Detection
 
 from rt_eqcorrscan.event_trigger.listener import event_time
 
@@ -111,14 +114,14 @@ def inter_event_distance(
         lat2=origin_2.latitude, long2=origin_2.longitude)
 
 
-def average_rate(catalog: Catalog) -> float:
+def average_rate(catalog: Union[List[Detection], Catalog]) -> float:
     """
     Compute mean rate of occurrence of events in catalog.
 
     Parameters
     ----------
     catalog:
-        Catalog of events
+        Catalog of events, or list of detections
 
     Returns
     -------
@@ -126,7 +129,13 @@ def average_rate(catalog: Catalog) -> float:
     """
     if len(catalog) <= 1:
         return 0.
-    event_times = sorted([event_time(e) for e in catalog])
+    if isinstance(catalog, Catalog):
+        event_times = sorted([event_time(e) for e in catalog])
+    elif isinstance(catalog, list):
+        event_times = sorted([d.detect_time for d in catalog])
+    else:
+        raise NotImplementedError(
+            "catalog must be either a Catalog or list of Detections.")
     rates = [
         86400. / (event_times[i + 1] - event_times[i])
         for i in range(len(event_times) - 1)]
