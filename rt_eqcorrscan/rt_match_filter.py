@@ -15,7 +15,7 @@ import gc
 
 # from pympler import summary, muppy
 
-from typing import Union
+from typing import Union, List
 
 from obspy import Stream, UTCDateTime, Inventory
 from matplotlib.figure import Figure
@@ -64,6 +64,7 @@ class RealTimeTribe(Tribe):
     _speed_up = 1.0
     # Speed-up for simulated runs - do not change for real-time!
     _max_wait_length = 60.
+    _fig = None
 
     def __init__(
         self,
@@ -148,6 +149,65 @@ class RealTimeTribe(Tribe):
             if d.detect_time <= endtime:
                 self.detections.remove(d)
 
+    def _handle_detections(
+        self,
+        new_party: Party,
+        trig_int: float,
+        endtime: UTCDateTime,
+        detect_directory: str,
+        save_waveforms: bool,
+        plot_detections: bool,
+        st: Stream,
+    ) -> None:
+        """
+        Handle new detections - do all the additional post-detection processing
+
+        Parameters
+        ----------
+        new_party
+            The party of new detections
+        trig_int
+            Minimum inter-detection time in seconds.
+        endtime
+            Last detection-time to be kept.
+        detect_directory
+            The head directory to write to - will create
+            "{detect_directory}/{year}/{julian day}" directories
+        save_waveforms
+            Whether to save the waveform for the detected event or not
+        plot_detections
+            Whether to plot the detection waveform or not
+        st
+            The stream the detection was made in - required for save_waveform and
+            plot_detection.
+        """
+        for family in new_party:
+            if family is None:
+                continue
+            self.party += family
+        Logger.info("Removing duplicate detections")
+        # TODO: Decluster on pick time? Find matching picks and calc median pick time difference
+        self.party.decluster(trig_int=trig_int, timing="detect")
+        for family in self.party:
+            family.detections = [
+                d for d in family.detections
+                if d.detect_time >= endtime]
+        for f in self.party:
+            for d in f:
+                if d in self.detections:
+                    continue
+                self._fig = _write_detection(
+                    detection=d,
+                    detect_directory=detect_directory,
+                    save_waveform=save_waveforms,
+                    plot_detection=plot_detections, stream=st,
+                    fig=self._fig)
+                # Need to append rather than create a new object
+                self.detections.append(d)
+                self.notifier.notify(
+                    message="Made detection at {0}".format(
+                        d.detect_time), level=2)
+
     def _plot(self) -> None:  # pragma: no cover
         """ Plot the data as it comes in. """
         from rt_eqcorrscan.plotting.plot_buffer import EQcorrscanPlot
@@ -213,7 +273,20 @@ class RealTimeTribe(Tribe):
         self._detecting_thread = detecting_thread
         Logger.info("Started detecting")
 
-    def add_templates(self, maximum_backfill: float = 0.) -> None:
+    def add_templates(
+        self,
+        templates: Union[List[Template], Tribe],
+        threshold: float,
+        threshold_type: str,
+        trig_int: float,
+        keep_detections: float = 86400,
+        detect_directory: str = "{name}/detections",
+        plot_detections: bool = True,
+        save_waveforms: bool = True,
+        maximum_backfill: float = None,
+        endtime: UTCDateTime = None,
+        **kwargs
+    ) -> None:
         """
         Add templates to the tribe.
 
@@ -222,14 +295,61 @@ class RealTimeTribe(Tribe):
 
         Parameters
         ----------
+        templates
+            New templates to add to the tribe.
+        threshold
+            Threshold for detection
+        threshold_type
+            Type of threshold to use. See
+            `eqcorrscan.core.match_filter.Tribe.detect` for options.
+        trig_int
+            Minimum inter-detection time in seconds.
+        keep_detections
+            Duration to store detection in memory for in seconds.
+        detect_directory
+            Relative path to directory for detections. This directory will be
+            created if it doesn't exist - tribe name will be appended to this
+            string to give the directory name.
+        plot_detections
+            Whether to plot detections or not - plots will be saved to the
+            `detect_directory` as png images.
+        save_waveforms
+            Whether to save waveforms of detections or not - waveforms
+            will be saved in the `detect_directory` as miniseed files.
         maximum_backfill
             Time in seconds to backfill to - if this is larger than the
             difference between the time now and the time that the tribe
             started, then it will backfill to when the tribe started.
+        endtime
+            Time to stop the backfill, if None will run to now.
         """
-        # TODO - write this! Needs to: 1) Add templates to tribe, 2) backfill with new templates using self.rt_client.wavebank
-        # self._running is a lock on the tribe.
-        # run backfill in a seperate process.
+        while self._running:
+            time.sleep(1)  # Wait until the lock is released
+        self.templates.extend(templates)
+        if isinstance(templates, list):
+            templates = Tribe(templates)
+        # Get the stream
+        endtime = endtime or UTCDateTime.now()
+        if maximum_backfill is not None:
+            starttime = endtime - maximum_backfill
+        else:
+            starttime = UTCDateTime(0)
+        if starttime >= endtime or self.rt_client.wavebank is None:
+            return
+        bulk = [tuple(chan.split('.').extend([starttime, endtime]))
+                for chan in self.expected_channels]
+        st = self.rt_client.wavebank.get_waveforms_bulk(bulk)
+        new_party = templates.detect(
+            stream=st, plotvar=False, threshold=threshold,
+            threshold_type=threshold_type, trig_int=trig_int,
+            xcorr_func="fftw", concurrency="concurrent",
+            process_cores=2, **kwargs)
+        while self._running:
+            time.sleep(1)  # Wait until lock is released to add detections
+        self._handle_detections(
+            new_party=new_party, detect_directory=detect_directory,
+            endtime=endtime - keep_detections, plot_detections=plot_detections,
+            save_waveforms=save_waveforms, st=st, trig_int=trig_int)
         return
 
     def stop(self) -> None:
@@ -307,9 +427,6 @@ class RealTimeTribe(Tribe):
         detection_iteration = 0  # Counter for number of detection loops run
         if not self.busy:
             self.busy = True
-        fig = None
-        # Used for plotting - figure is reused to avoid memory leaks.
-
         detect_directory = detect_directory.format(name=self.name)
         if not os.path.isdir(detect_directory):
             os.makedirs(detect_directory)
@@ -394,33 +511,12 @@ class RealTimeTribe(Tribe):
                         "better".format(self.detect_interval))
                     time.sleep(self.detect_interval)
                     continue
-                if len(new_party) > 0:
-                    for family in new_party:
-                        if family is None:
-                            continue
-                        self.party += family
-                    Logger.info("Removing duplicate detections")
-                    # TODO: Decluster on pick time? Find matching picks and calc median pick time difference
-                    self.party.decluster(trig_int=trig_int, timing="detect")
-                    for family in self.party:
-                        family.detections = [
-                            d for d in family.detections
-                            if d.detect_time >= last_data - keep_detections]
-                    for f in self.party:
-                        for d in f:
-                            if d in self.detections:
-                                continue
-                            fig = _write_detection(
-                                detection=d,
-                                detect_directory=detect_directory,
-                                save_waveform=save_waveforms,
-                                plot_detection=plot_detections, stream=st,
-                                fig=fig)
-                            # Need to append rather than create a new object
-                            self.detections.append(d)
-                            self.notifier.notify(
-                                message="Made detection at {0}".format(
-                                    d.detect_time), level=2)
+                self._handle_detections(
+                    new_party, trig_int=trig_int,
+                    endtime=last_data - keep_detections,
+                    detect_directory=detect_directory,
+                    save_waveforms=save_waveforms,
+                    plot_detections=plot_detections, st=st)
                 self._remove_old_detections(last_data - keep_detections)
                 Logger.info("Party now contains {0} detections".format(
                     len(self.detections)))

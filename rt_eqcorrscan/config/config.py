@@ -160,6 +160,7 @@ class DatabaseManagerConfig(_ConfigAttribDict):
         "event_ext": ".xml",
         "min_stations": 5,
         "lookup_starttime": "1970:01:01T00:00:00.00000Z",
+        # TODO: Add wavebank args.
     }
     readonly = []
 

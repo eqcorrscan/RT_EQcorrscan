@@ -13,6 +13,9 @@ import copy
 from numpy import random
 
 from obspy import Stream, UTCDateTime
+
+from obsplus import WaveBank
+
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
 
 
@@ -36,7 +39,7 @@ class SimulateRealTimeClient(_StreamingClient):
     buffer
         Stream to buffer data into
     buffer_capacity
-        Length of buffer in seconds. Old data are removed in a LIFO style.
+        Length of buffer in seconds. Old data are removed in a FIFO style.
     """
     def __init__(
         self,
@@ -45,12 +48,13 @@ class SimulateRealTimeClient(_StreamingClient):
         query_interval: float = 10.,
         speed_up: float = 1.,
         buffer: Stream = None,
-        buffer_capacity: float = 600.
+        buffer_capacity: float = 600.,
+        wavebank: WaveBank = None,
     ) -> None:
         self.client = client
         super().__init__(
             client_name=self.client.base_url, buffer=buffer,
-            buffer_capacity=buffer_capacity)
+            buffer_capacity=buffer_capacity, wavebank=wavebank)
         self.starttime = starttime
         self.query_interval = query_interval
         self.speed_up = speed_up

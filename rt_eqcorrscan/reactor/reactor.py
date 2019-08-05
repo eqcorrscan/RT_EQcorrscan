@@ -19,6 +19,8 @@ from obspy.core.event import Event
 from obspy.clients.fdsn.client import FDSNNoDataException
 from obspy.geodetics import locations2degrees, kilometer2degrees
 
+from obsplus.events import get_events
+
 from eqcorrscan import Tribe, Party
 
 from rt_eqcorrscan.database.database_manager import (
@@ -132,7 +134,8 @@ class Reactor(object):
 
     @property
     def running_templates_ids(self):
-        return [t.name for tribe in self.running_tribes.values() for t in tribe]
+        return [t.name for tribe in self.running_tribes.values()
+                for t in tribe["tribe"]]
 
     def get_up_time(self):
         return self._up_time
@@ -145,8 +148,23 @@ class Reactor(object):
 
     up_time = property(get_up_time, set_up_time)
 
-    def run(self, max_run_length: float = None) -> None:
-        """Run all the processes."""
+    def run(
+        self,
+        max_run_length: float = None,
+        maximum_backfill: float = None,
+    ) -> None:
+        """
+        Run all the processes.
+
+        Parameters
+        ----------
+        max_run_length
+            Maximum run length for the reactor - will stop if run-time reaches
+            this point. Units: seconds
+        maximum_backfill
+            Maximum back-fill length for new templates being added to already
+            running tribes. Units: seconds
+        """
         self.listener.background_run(**self.listener_kwargs)
         self._run_start = UTCDateTime.now()
         # Query the catalog in the listener every so often and check
@@ -160,11 +178,20 @@ class Reactor(object):
                 working_cat = []
             Logger.debug("Currently analysing a catalog of {0} events".format(
                 len(working_cat)))
+
+            # Check if new events should be in one of the already running
+            # tribes and add them.
+            for tribe_region in self.running_tribes.values():
+                add_events = get_events(working_cat, **tribe_region["region"])
+                tribe_region["tribe"].add_templates(
+                    self.template_database.get_templates(
+                        [e.resource_id for e in add_events]),
+                    maximum_backfill=maximum_backfill,
+                    **self.real_time_tribe_kwargs)
+                for e in add_events:
+                    working_cat.remove(e)
+
             trigger_events = self.trigger_func(working_cat)
-
-            # TODO: Check if new events should be in one of the already running tribes and add them.
-            # Use real_time_tribe.add_templates() method.
-
             for trigger_event in trigger_events:
                 if trigger_event not in self.triggered_events:
                     Logger.warning(
@@ -283,7 +310,8 @@ class Reactor(object):
             "cores": self.available_cores}
         real_time_tribe_kwargs.update(self.real_time_tribe_kwargs)
         self.running_tribes.update(
-            {triggering_event.resource_id.id: real_time_tribe})
+            {triggering_event.resource_id.id:
+             {"tribe": real_time_tribe, "region": region}})
         if run:
             return real_time_tribe.run(**real_time_tribe_kwargs)
         else:
@@ -300,7 +328,7 @@ class Reactor(object):
         """
         if triggering_event_id is None:
             return self.stop()
-        tribe_to_stop = self.running_tribes[triggering_event_id]
+        tribe_to_stop = self.running_tribes[triggering_event_id]["tribe"]
         tribe_to_stop.stop()
         # TODO: stop the detecting thread if it is running in the background.
         tribe_thread = [

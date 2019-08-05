@@ -11,6 +11,8 @@ import logging
 from obspy.clients.seedlink.easyseedlink import EasySeedLinkClient
 from obspy import Stream
 
+from obsplus import WaveBank
+
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
 
 
@@ -35,12 +37,13 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         server_url: str,
         buffer: Stream = None,
         buffer_capacity: float = 600.,
+        wavebank: WaveBank = None,
     ) -> None:
         EasySeedLinkClient.__init__(
             self, server_url=server_url, autoconnect=False)
         _StreamingClient.__init__(
             self, client_name=server_url, buffer=buffer,
-            buffer_capacity=buffer_capacity)
+            buffer_capacity=buffer_capacity, wavebank=wavebank)
         Logger.debug("Instantiated RealTime client: {0}".format(self))
 
     def __repr__(self):
@@ -79,7 +82,7 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
             buffer = self.buffer.copy()
         return RealTimeClient(
             server_url=self.server_hostname, buffer=buffer,
-            buffer_capacity=self.buffer_capacity)
+            buffer_capacity=self.buffer_capacity, wavebank=self.wavebank)
 
     def start(self) -> None:
         """ Start the connection. """

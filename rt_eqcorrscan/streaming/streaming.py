@@ -22,7 +22,6 @@ from rt_eqcorrscan.streaming.buffers import Buffer
 Logger = logging.getLogger(__name__)
 
 
-#TODO: Save data to a wavebank.
 class _StreamingClient(ABC):
     """
     Abstract Base Class for streaming clients
@@ -154,7 +153,6 @@ class _StreamingClient(ABC):
         for thread in self.threads:
             thread.join()
 
-    # TODO: Save to wavebank if required
     def on_data(self, trace: Trace):
         """
         Handle incoming data
@@ -167,7 +165,6 @@ class _StreamingClient(ABC):
         logging.debug("Packet of {0} samples for {1}".format(
             trace.stats.npts, trace.id))
         self.buffer.add_stream(trace)
-        # TODO - write data to wavebank - needs config options
         if self.wavebank is not None:
             self.wavebank.put_waveforms(stream=Stream([trace]))
         Logger.debug("Buffer contains {0}".format(self.buffer))
