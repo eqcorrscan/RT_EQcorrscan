@@ -419,6 +419,8 @@ def get_inventory(
                 level=level)
         except FDSNNoDataException:
             continue
+    if len(inv) == 0:
+        return inv
     # Calculate distances
     station_count = Counter(
         [pick.waveform_id.station_code for template in tribe
