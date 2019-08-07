@@ -347,7 +347,7 @@ class TraceBuffer(object):
         >>> print(trace_buffer.stats.endtime)
         2018-01-01T00:00:06.000000Z
         >>> print(trace_buffer.data) # doctest: +NORMALIZE_WHITESPACE
-        NumpyDeque(data=[ 1. 2. 3. 4. 5. 6. 7. 8. 6. 5. 4. 3. 2. 1. 0.], maxlen=15)
+        NumpyDeque(data=[1. 2. 3. 4. 5. 6. 7. 8. 6. 5. 4. 3. 2. 1. 0.], maxlen=15)
 
         Try adding a trace that is longer than the maxlen
 
@@ -361,7 +361,7 @@ class TraceBuffer(object):
         >>> print(trace_buffer.stats.endtime)
         2018-01-01T00:00:25.000000Z
         >>> print(trace_buffer.data) # doctest: +NORMALIZE_WHITESPACE
-        NumpyDeque(data=[ 5.  6.  7.  8.  9. 10. 11. 12. 13. 14. 15. 16. 17. 18. 19.], maxlen=15)
+        NumpyDeque(data=[5.  6.  7.  8.  9. 10. 11. 12. 13. 14. 15. 16. 17. 18. 19.], maxlen=15)
 
         Add a trace that starts after the current tracebuffer ends
 
@@ -509,8 +509,11 @@ class NumpyDeque(object):
         self._mask[-length:] = mask_value
 
     def __repr__(self):
+        data_str = self.data.__str__()
+        if data_str.startswith("[ "):
+            data_str = data_str.replace("[ ", "[")
         return "NumpyDeque(data={0}, maxlen={1})".format(
-            self.data, self.maxlen)
+            data_str, self.maxlen)
 
     def __len__(self):
         return sum(~self._mask)
@@ -683,7 +686,7 @@ class NumpyDeque(object):
 
         >>> np_deque.insert(np.arange(10), 0)
         >>> print(np_deque) # doctest: +NORMALIZE_WHITESPACE
-        NumpyDeque(data=[ 5. 6. 7. 8. 9.], maxlen=5)
+        NumpyDeque(data=[5. 6. 7. 8. 9.], maxlen=5)
         """
         if not isinstance(other, Sized):
             other = [other]

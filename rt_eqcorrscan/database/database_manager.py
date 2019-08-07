@@ -273,7 +273,7 @@ class TemplateBank(EventBank):
     def put_templates(
         self,
         templates: Union[list, Tribe],
-        update_index: bool = False
+        update_index: bool = True,
     ) -> None:
         """
         Save templates to the database.
@@ -283,27 +283,13 @@ class TemplateBank(EventBank):
         templates
             Templates to put into the database
         update_index
-            Flag to indicate whether or not to update the event index after
-            writing the new events. Default is False.
+            Flag to indicate whether or not to update the entire event index
+            after writing the new events. Default is False.
         """
         for t in templates:
             assert(isinstance(t, Template))
         catalog = Catalog([t.event for t in templates])
         self.put_events(catalog, update_index=update_index)
-        if not update_index:
-            df = obsplus.events.pd._default_cat_to_df(catalog)
-            paths = [os.path.join(
-                self.bank_path, _summarize_event(
-                    event, path_struct=self.path_structure,
-                    name_struct=self.name_structure)["path"])
-                for event in catalog]
-            update_time = [os.path.getmtime(fi) for fi in paths]
-            df["updated"] = update_time
-            # Strip the leading bank_path
-            paths = [_path.replace(self.bank_path, "") for _path in paths]
-            df["path"] = paths
-            if len(df):
-                self._write_update(self._clean_dataframe(df))
         inner_put_template = partial(
             _put_template, path_structure=self.path_structure,
             template_name_structure=self.template_name_structure,
