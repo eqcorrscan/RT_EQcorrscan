@@ -156,7 +156,7 @@ def define_plot(
     map_options: dict,
     plot_options: dict,
     plot_length: float,
-    update_interval: float,
+    update_interval: int,
     data_color: str = "grey",
     lowcut: float = 1.0,
     highcut: float = 10.0,
@@ -389,7 +389,7 @@ def define_plot(
     
     def update():
         Logger.debug("Plot updating")
-        _stream = rt_client.get_stream().copy().split().detrend()
+        _stream = rt_client.get_stream().split().detrend()
         if lowcut and highcut:
             _stream.filter("bandpass", freqmin=lowcut, freqmax=highcut)
         elif lowcut:
@@ -415,7 +415,11 @@ def define_plot(
                 step=dt.timedelta(seconds=_tr.stats.delta))
             _new_data = _tr.slice(
                 starttime=previous_timestamps[_channel]).data
+            if isinstance(_new_data, np.ma.MaskedArray):
+                _new_data = _new_data.filled(0)
             new_data = {'time': new_times[1:], 'data': _new_data[1:]}
+            Logger.debug("New times: {0}\t New data: {1}".format(
+                new_data["time"].shape, new_data["data"].shape))
             trace_sources[_channel].stream(
                 new_data=new_data,
                 rollover=int(plot_length * _tr.stats.sampling_rate))
@@ -423,8 +427,10 @@ def define_plot(
                 detections, _channel, datastream=detection_sources)
             new_picks.update({
                 'pick_values': [
-                    [int(trace_sources[_channel].data['data'].max() * .9),
-                     int(trace_sources[_channel].data['data'].min() * .9)]
+                    [int(np.nan_to_num(
+                        trace_sources[_channel].data['data']).max() * .9),
+                     int(np.nan_to_num(
+                         trace_sources[_channel].data['data']).min() * .9)]
                     for _ in new_picks['picks']]})
             detection_sources[_channel].data = new_picks
             previous_timestamps.update({_channel: _tr.stats.endtime})

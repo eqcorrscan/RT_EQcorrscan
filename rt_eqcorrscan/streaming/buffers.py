@@ -450,7 +450,7 @@ class TraceBuffer(object):
         A trace with the buffer's data and stats. If there are gaps in the
         buffer they will be masked.
         """
-        return Trace(header=self.stats.__dict__, data=self.data.data)
+        return Trace(header=self.stats.__dict__, data=self.data.data.copy())
 
     def is_full(self, strict=False) -> bool:
         """
