@@ -9,9 +9,11 @@ License
 
 import logging
 import os
+import time
 
 from pathlib import Path
 from collections import Counter
+from os.path import exists, getmtime
 
 from typing import Optional, Union, Callable, Iterable
 from concurrent.futures import Executor
@@ -22,9 +24,10 @@ from obsplus import EventBank
 from obsplus.constants import (
     EVENT_NAME_STRUCTURE, EVENT_PATH_STRUCTURE, get_events_parameters)
 from obsplus.utils import compose_docstring
+from obsplus.interfaces import ProgressBar
 from obsplus.bank.utils import (
     _get_path, _get_event_origin_time, _get_time_values, _summarize_event,
-    EVENT_EXT)
+    _try_read_catalog)
 
 from obspy import Catalog, Stream
 from obspy.core.event import Event
@@ -270,10 +273,93 @@ class TemplateBank(EventBank):
         future = self.executor.map(_lazy_template_read, paths)
         return Tribe([t for t in future if t is not None])
 
+    def update_index(
+        self, bar: Optional[ProgressBar] = None, paths: Optional[Iterable] = None
+    ) -> "EventBank":
+        """
+        Iterate files in bank and add any modified since last update to index.
+
+        Parameters
+        ----------
+        {bar_parameter_description}
+        paths
+            Paths to update for - if not set, all paths will be scanned.
+        """
+
+        def func(path):
+            """ Function to yield events, update_time and paths. """
+            cat = _try_read_catalog(path, format=self.format)
+            update_time = getmtime(path)
+            path = path.replace(self.bank_path, "")
+            return cat, update_time, path
+
+        self._enforce_min_version()  # delete index if schema has changed
+        # create iterator  and lists for storing output
+        update_time = time.time()
+        iterator = paths or self._measured_unindexed_iterator(bar)
+        events, update_times, paths = [], [], []
+        for cat, mtime, path in self._map(func, iterator):
+            if cat is None:
+                continue
+            for event in cat:
+                events.append(event)
+                update_times.append(mtime)
+                paths.append(path)
+        # add new events to database
+        df = obsplus.events.pd._default_cat_to_df(Catalog(events=events))
+        df["updated"] = update_times
+        df["path"] = paths
+        if len(df):
+            self._write_update(self._prepare_dataframe(df), update_time)
+        return self
+
+    def put_events(self, catalog: Union[Event, Catalog], update_index=True):
+        """
+        Put an event into the database.
+
+        If the event_id already exists the old event will be overwritten on
+        disk.
+
+        Parameters
+        ----------
+        catalog
+            A Catalog or Event object to put into the database.
+        update_index
+            Flag to indicate whether or not to update the event index after
+            writing the new events. Default is True.
+        """
+        self.ensure_bank_path_exists(create=True)
+        events = [catalog] if isinstance(catalog, Event) else catalog
+        # get dataframe of current event info, if they exists
+        event_ids = [str(x.resource_id) for x in events]
+        df = self.read_index(event_id=event_ids).set_index("event_id")
+        paths = []
+        for event in events:
+            rid = str(event.resource_id)
+            if rid in df.index:  # event needs to be updated
+                path = self.bank_path + df.loc[rid, "path"]
+                assert exists(path)
+                event.write(path, self.format)
+                paths.append(path)
+            else:  # event file does not yet exist
+                path = _summarize_event(
+                    event,
+                    path_struct=self.path_structure,
+                    name_struct=self.name_structure,
+                )["path"]
+                ppath = (Path(self.bank_path) / path).absolute()
+                ppath.parent.mkdir(parents=True, exist_ok=True)
+                event.write(str(ppath), self.format)
+                paths.append(str(ppath))
+        if update_index:
+            self.update_index()  # Completely update index.
+        else:
+            self.update_index(paths=paths)  # Parse *only* the new events
+
     def put_templates(
         self,
         templates: Union[list, Tribe],
-        update_index: bool = True,
+        update_index: bool = False,
     ) -> None:
         """
         Save templates to the database.
@@ -284,7 +370,7 @@ class TemplateBank(EventBank):
             Templates to put into the database
         update_index
             Flag to indicate whether or not to update the entire event index
-            after writing the new events. Default is False.
+            after writing the new events.
         """
         for t in templates:
             assert(isinstance(t, Template))
