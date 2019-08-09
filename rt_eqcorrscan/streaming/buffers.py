@@ -20,135 +20,6 @@ from obspy.core.util import AttribDict
 Logger = logging.getLogger(__name__)
 
 
-class Buffer(object):
-    """
-    Container for TraceBuffers.
-
-    Parameters
-    ----------
-    traces
-        List of TraceBuffers
-    maxlen
-        Maximum length for TraceBuffers in seconds.
-    """
-    def __init__(self, traces: List = None, maxlen: float = None):
-        if traces is None:
-            self.traces = []
-        else:
-            self.traces = []
-            for tr in traces:
-                if isinstance(tr, Trace):
-                    self.traces.append(TraceBuffer(
-                        data=tr.data, header=tr.stats,
-                        maxlen=int(tr.stats.sampling_rate * maxlen)))
-                elif isinstance(tr, TraceBuffer):
-                    self.traces.append(tr)
-                else:
-                    raise NotImplementedError(
-                        "traces must be either Trace or TraceBuffer")
-        self._maxlen = maxlen
-        self.sanitize_traces()
-
-    def __repr__(self):
-        return "Buffer({0} traces, maxlen={1})".format(
-            len(self.traces), self.maxlen)
-
-    def __iter__(self):
-        return self.traces.__iter__()
-
-    def __len__(self):
-        return len(self.traces)
-
-    @property
-    def maxlen(self):
-        return self._maxlen
-
-    @maxlen.setter
-    def maxlen(self, maxlen):
-        self._maxlen = maxlen
-        self.sanitize_traces()
-
-    def sanitize_traces(self):
-        """ Ensure all traces meet that maxlen criteria. """
-        _traces = []
-        for tr in self.traces:
-            _maxlen = int(self.maxlen * tr.stats.smapling_rate)
-            if not tr.data.maxlen == _maxlen:
-                # Need to make a new tracebuffer with the correct maxlen
-                _tr = tr.trace
-                _traces.append(TraceBuffer(
-                    data=_tr.data, header=_tr.stats, maxlen=_maxlen))
-            else:
-                _traces.append(tr)
-        self.traces = _traces
-
-    def add_stream(self, stream: Union[Trace, Stream]) -> None:
-        """
-        Add a stream or trace to the buffer.
-
-        Parameters
-        ----------
-        stream
-        """
-        if isinstance(stream, Trace):
-            stream = Stream([stream])
-        for tr in stream:
-            traces_in_buffer = self.select(id=tr.id)
-            if len(traces_in_buffer) > 0:
-                for trace_in_buffer in traces_in_buffer:
-                    trace_in_buffer.add_trace(tr)
-            else:
-                self.traces.append(TraceBuffer(
-                    data=tr.data, header=tr.stats,
-                    maxlen=int(self.maxlen * tr.stats.sampling_rate)))
-
-    def select(self, id: str) -> List:
-        """
-        Select traces from the buffer based on seed id
-
-        Parameters
-        ----------
-        id
-            Standard four-part seed id as
-            {network}.{station}.{location}.{channel}
-
-        Returns
-        -------
-        List of matching traces.
-        """
-        return [tr for tr in self.traces if tr.id == id]
-
-    @property
-    def stream(self) -> Stream:
-        """
-        Get a static Stream view of the buffer
-
-        Returns
-        -------
-        A stream representing the current state of the Buffer.
-        """
-        return Stream([tr.trace for tr in self.traces])
-
-    def is_full(self, strict=False) -> bool:
-        """
-        Check whether the buffer is full or not.
-
-        If strict=False (default) then only the start and end of the buffer
-        are checked.  Otherwise (strict=True) the whole buffer must contain
-        real data (e.g. the mask is all False)
-
-        Parameters
-        ----------
-        strict
-            Whether to check the whole deque (True), or just the start and end
-            (False: default).
-        """
-        for tr in self.traces:
-            if not tr.is_full(strict=strict):
-                return False
-        return True
-
-
 class BufferStats(AttribDict):
     """
     Container for header attributes for TraceBuffer.
@@ -262,11 +133,12 @@ class TraceBuffer(object):
     UTCDateTime(2009, 8, 24, 0, 20, 32)
     >>> assert np.all(trace_buffer.data.data == st[0].data[-100:])
     """
+
     def __init__(
-        self,
-        data: np.ndarray,
-        header: Union[dict, Stats, BufferStats],
-        maxlen: int
+            self,
+            data: np.ndarray,
+            header: Union[dict, Stats, BufferStats],
+            maxlen: int
     ):
         # Take the right-most samples
         self.data = NumpyDeque(data, maxlen=maxlen)
@@ -378,7 +250,7 @@ class TraceBuffer(object):
         NumpyDeque(data=[15.0 16.0 17.0 18.0 19.0 -- -- -- -- -- 0.0 1.0 2.0 3.0 4.0], maxlen=15)
 
         Add a trace that starts one sample after the current trace ends
-        
+
         >>> trace = Trace(
         ...     np.arange(5), header=dict(
         ...         station="bob",
@@ -396,11 +268,11 @@ class TraceBuffer(object):
         assert self.id == trace.id, "IDs {0} and {1} differ".format(
             self.id, trace.id)
         assert self.stats.sampling_rate == trace.stats.sampling_rate, (
-                "Sampling rates {0} and {1} differ".format(
-                    self.stats.sampling_rate, trace.stats.sampling_rate))
+            "Sampling rates {0} and {1} differ".format(
+                self.stats.sampling_rate, trace.stats.sampling_rate))
         assert self.stats.calib == trace.stats.calib, (
-                "Calibration factors {0} and {1} differ".format(
-                    self.stats.calib, trace.stats.calib))
+            "Calibration factors {0} and {1} differ".format(
+                self.stats.calib, trace.stats.calib))
         # If data are newer in trace than in self.
         if trace.stats.endtime > self.stats.endtime:
             # If there is overlap
@@ -490,10 +362,11 @@ class NumpyDeque(object):
     maxlen
         Maximum length of the deque.
     """
+
     def __init__(
-        self,
-        data: Union[list, np.ndarray, np.ma.MaskedArray],
-        maxlen: int
+            self,
+            data: Union[list, np.ndarray, np.ma.MaskedArray],
+            maxlen: int
     ):
         self._maxlen = maxlen
         self._data = np.empty(maxlen)
@@ -547,8 +420,8 @@ class NumpyDeque(object):
         return ~np.any([self._mask[0], self._mask[-1]])
 
     def extend(
-        self,
-        other: Union[list, np.ndarray, np.ma.MaskedArray]
+            self,
+            other: Union[list, np.ndarray, np.ma.MaskedArray]
     ) -> None:
         """
         Put new data onto the right of the deque.
@@ -577,8 +450,8 @@ class NumpyDeque(object):
         self._mask[-other_length:] = mask_value
 
     def extendleft(
-        self,
-        other: Union[list, np.ndarray, np.ma.MaskedArray]
+            self,
+            other: Union[list, np.ndarray, np.ma.MaskedArray]
     ) -> None:
         """
         Put new data onto the left of the deque.
@@ -637,9 +510,9 @@ class NumpyDeque(object):
         self.extendleft([other])
 
     def insert(
-        self,
-        other: Union[list, np.ndarray, np.ma.MaskedArray],
-        index: int,
+            self,
+            other: Union[list, np.ndarray, np.ma.MaskedArray],
+            index: int,
     ) -> None:
         """
         Insert elements between a stop and start point of the deque.
@@ -707,6 +580,138 @@ class NumpyDeque(object):
             else:
                 self._data[index:stop] = other
                 self._mask[index:stop] = 0
+
+
+class Buffer(object):
+    """
+    Container for TraceBuffers.
+
+    Parameters
+    ----------
+    traces
+        Stream or List of TraceBuffers or Traces
+    maxlen
+        Maximum length for TraceBuffers in seconds.
+    """
+    def __init__(
+        self,
+        traces: Union[Stream, List[Union[Trace, TraceBuffer]]] = None,
+        maxlen: float = None
+    ):
+        assert traces or maxlen, "Requires at least maxlen or traces."
+        self.traces = []
+        self._maxlen = maxlen or max(
+            [tr.stats.npts * tr.stats.delta for tr in traces])
+        for tr in traces:
+            if isinstance(tr, Trace):
+                self.traces.append(TraceBuffer(
+                    data=tr.data, header=tr.stats,
+                    maxlen=int(tr.stats.sampling_rate * self._maxlen)))
+            elif isinstance(tr, TraceBuffer):
+                self.traces.append(tr)
+            else:
+                raise NotImplementedError(
+                    "traces must be either Trace or TraceBuffer")
+        self.sanitize_traces()
+
+    def __repr__(self):
+        return "Buffer({0} traces, maxlen={1})".format(
+            len(self.traces), self.maxlen)
+
+    def __iter__(self):
+        return self.traces.__iter__()
+
+    def __len__(self):
+        return len(self.traces)
+
+    @property
+    def maxlen(self):
+        return self._maxlen
+
+    @maxlen.setter
+    def maxlen(self, maxlen):
+        self._maxlen = maxlen
+        self.sanitize_traces()
+
+    def sanitize_traces(self):
+        """ Ensure all traces meet that maxlen criteria. """
+        _traces = []
+        for tr in self.traces:
+            _maxlen = int(self.maxlen * tr.stats.sampling_rate)
+            if not tr.data.maxlen == _maxlen:
+                # Need to make a new tracebuffer with the correct maxlen
+                _tr = tr.trace
+                _traces.append(TraceBuffer(
+                    data=_tr.data, header=_tr.stats, maxlen=_maxlen))
+            else:
+                _traces.append(tr)
+        self.traces = _traces
+
+    def add_stream(self, stream: Union[Trace, Stream]) -> None:
+        """
+        Add a stream or trace to the buffer.
+
+        Parameters
+        ----------
+        stream
+        """
+        if isinstance(stream, Trace):
+            stream = Stream([stream])
+        for tr in stream:
+            traces_in_buffer = self.select(id=tr.id)
+            if len(traces_in_buffer) > 0:
+                for trace_in_buffer in traces_in_buffer:
+                    trace_in_buffer.add_trace(tr)
+            else:
+                self.traces.append(TraceBuffer(
+                    data=tr.data, header=tr.stats,
+                    maxlen=int(self.maxlen * tr.stats.sampling_rate)))
+
+    def select(self, id: str) -> List:
+        """
+        Select traces from the buffer based on seed id
+
+        Parameters
+        ----------
+        id
+            Standard four-part seed id as
+            {network}.{station}.{location}.{channel}
+
+        Returns
+        -------
+        List of matching traces.
+        """
+        return [tr for tr in self.traces if tr.id == id]
+
+    @property
+    def stream(self) -> Stream:
+        """
+        Get a static Stream view of the buffer
+
+        Returns
+        -------
+        A stream representing the current state of the Buffer.
+        """
+        return Stream([tr.trace for tr in self.traces])
+
+    def is_full(self, strict=False) -> bool:
+        """
+        Check whether the buffer is full or not.
+
+        If strict=False (default) then only the start and end of the buffer
+        are checked.  Otherwise (strict=True) the whole buffer must contain
+        real data (e.g. the mask is all False)
+
+        Parameters
+        ----------
+        strict
+            Whether to check the whole deque (True), or just the start and end
+            (False: default).
+        """
+        for tr in self.traces:
+            if not tr.is_full(strict=strict):
+                return False
+        return True
 
 
 if __name__ == "__main__":
