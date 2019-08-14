@@ -219,7 +219,7 @@ class TraceBuffer(object):
         >>> print(trace_buffer.stats.endtime)
         2018-01-01T00:00:06.000000Z
         >>> print(trace_buffer.data) # doctest: +NORMALIZE_WHITESPACE
-        NumpyDeque(data=[1. 2. 3. 4. 5. 6. 7. 8. 6. 5. 4. 3. 2. 1. 0.], maxlen=15)
+        NumpyDeque(data=[0. 1. 2. 3. 4. 5. 6. 7. 6. 5. 4. 3. 2. 1. 0.], maxlen=15)
 
         Try adding a trace that is longer than the maxlen
 
@@ -276,9 +276,8 @@ class TraceBuffer(object):
         # If data are newer in trace than in self.
         if trace.stats.endtime > self.stats.endtime:
             # If there is overlap
-            if trace.stats.starttime < self.stats.endtime:
-                old_data = trace.slice(
-                    endtime=self.stats.endtime - self.stats.delta).data
+            if trace.stats.starttime <= self.stats.endtime:
+                old_data = trace.slice(endtime=self.stats.endtime).data
                 if len(old_data) > self.data.maxlen:
                     old_data_start = -self.data.maxlen
                     insert_start = 0
@@ -286,7 +285,8 @@ class TraceBuffer(object):
                     old_data_start = 0
                     insert_start = -len(old_data)
                 self.data.insert(old_data[old_data_start:], insert_start)
-                new_data = trace.slice(starttime=self.stats.endtime).data
+                new_data = trace.slice(
+                    starttime=self.stats.endtime + self.stats.delta).data
             # If there is a gap.
             elif trace.stats.starttime > self.stats.endtime + self.stats.delta:
                 new_data = np.empty(
