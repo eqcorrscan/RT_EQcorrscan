@@ -535,9 +535,13 @@ class RealTimeTribe(Tribe):
                 self._running = False  # Release lock
                 time.sleep((self.detect_interval - run_time) / self._speed_up)
                 if max_run_length and UTCDateTime.now() > run_start + max_run_length:
+                    Logger.info("Hit maximum run time, stopping.")
                     self.stop()
                 if minimum_rate and average_rate(self.detections) < minimum_rate:
-                    self.stop()
+                    if len(self.detections) > 0:
+                        Logger.info(
+                            "Rate has dropped below minimum rate, stopping.")
+                        self.stop()
                 gc.collect()
                 # Memory output
                 # sum1 = summary.summarize(muppy.get_objects())

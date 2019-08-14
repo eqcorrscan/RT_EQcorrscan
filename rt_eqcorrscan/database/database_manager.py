@@ -313,7 +313,7 @@ class TemplateBank(EventBank):
             self._write_update(self._prepare_dataframe(df), update_time)
         return self
 
-    def put_events(self, catalog: Union[Event, Catalog], update_index=True):
+    def put_events(self, catalog: Union[Event, Catalog], update_index=False):
         """
         Put an event into the database.
 

@@ -409,17 +409,15 @@ def define_plot(
             if new_samples == 0:
                 Logger.debug("No new data for {0}".format(_channel))
                 continue
+            _new_data = _tr.slice(
+                starttime=previous_timestamps[_channel])
             new_times = np.arange(
-                previous_timestamps[_channel],
+                _new_data.stats.starttime.datetime,
                 (_tr.stats.endtime + _tr.stats.delta).datetime,
                 step=dt.timedelta(seconds=_tr.stats.delta))
-            _new_data = _tr.slice(
-                starttime=previous_timestamps[_channel]).data
-            if isinstance(_new_data, np.ma.MaskedArray):
-                _new_data = _new_data.filled(0)
-            new_data = {'time': new_times[1:], 'data': _new_data[1:]}
-            Logger.debug("New times: {0}\t New data: {1}".format(
-                new_data["time"].shape, new_data["data"].shape))
+            new_data = {'time': new_times[1:], 'data': _new_data.data[1:]}
+            Logger.debug("Channl: {0}\tNew times: {1}\t New data: {2}".format(
+                _tr.id, new_data["time"].shape, new_data["data"].shape))
             trace_sources[_channel].stream(
                 new_data=new_data,
                 rollover=int(plot_length * _tr.stats.sampling_rate))
