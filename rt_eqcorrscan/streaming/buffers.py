@@ -41,7 +41,7 @@ class BufferStats(AttribDict):
         'channel': '',
     }
 
-    def __repr__(self):
+    def __repr__(self):  # pragma: no cover
         return self.__str__()
 
     def __init__(self, header: dict = None):
@@ -82,6 +82,7 @@ class BufferStats(AttribDict):
         # prevent a calibration factor of 0
         if key == 'calib' and value == 0:
             Logger.warning('Calibration factor set to 0.0!')
+            return
         # all other keys
         if isinstance(value, dict):
             super().__setitem__(key, AttribDict(value))
@@ -90,7 +91,7 @@ class BufferStats(AttribDict):
 
     __setattr__ = __setitem__
 
-    def __str__(self):
+    def __str__(self):  # pragma: no cover
         """
         Return better readable string representation of BufferStats object.
         """
@@ -99,7 +100,7 @@ class BufferStats(AttribDict):
                           'npts', 'calib']
         return self._pretty_str(priorized_keys)
 
-    def _repr_pretty_(self, p, cycle):
+    def _repr_pretty_(self, p, cycle):  # pragma: no cover
         p.text(str(self))
 
 
@@ -147,13 +148,22 @@ class TraceBuffer(object):
         self.stats = BufferStats(header)
         self.stats.npts = len(self.data.data)
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # pragma: no cover
         return "TraceBuffer(data={0}, header={1}, maxlen={2})".format(
             self.data, self.stats, self.data.maxlen)
 
     def __len__(self) -> int:
         """ Length of buffer in samples. """
         return len(self.data)
+
+    def __add__(self, other):
+        new = self.copy()
+        new.add_trace(other)
+        return new
+
+    def __iadd__(self, other):
+        self.add_trace(other)
+        return self
 
     @property
     def data_len(self) -> float:
@@ -348,7 +358,9 @@ class TraceBuffer(object):
         -------
         A deepcopy of the tracebuffer.
         """
-        return copy.deepcopy(self)
+        return TraceBuffer(
+            data=copy.deepcopy(self.data), header=copy.deepcopy(self.stats),
+            maxlen=copy.deepcopy(self.maxlen))
 
 
 class NumpyDeque(object):
@@ -592,6 +604,20 @@ class Buffer(object):
         Stream or List of TraceBuffers or Traces
     maxlen
         Maximum length for TraceBuffers in seconds.
+
+    Examples
+    --------
+
+    >>> from obspy import read
+    >>> st = read()
+    >>> print(st)
+    3 Trace(s) in Stream:
+    BW.RJOB..EHZ | 2009-08-24T00:20:03.000000Z - 2009-08-24T00:20:32.990000Z | 100.0 Hz, 3000 samples
+    BW.RJOB..EHN | 2009-08-24T00:20:03.000000Z - 2009-08-24T00:20:32.990000Z | 100.0 Hz, 3000 samples
+    BW.RJOB..EHE | 2009-08-24T00:20:03.000000Z - 2009-08-24T00:20:32.990000Z | 100.0 Hz, 3000 samples
+    >>> buffer = Buffer(st, maxlen=10.)
+    >>> print(buffer)
+    Buffer(3 traces, maxlen=10.0)
     """
     def __init__(
         self,
@@ -599,6 +625,9 @@ class Buffer(object):
         maxlen: float = None
     ):
         assert traces or maxlen, "Requires at least maxlen or traces."
+        assert isinstance(traces, (Stream, list))
+        for tr in traces:
+            assert isinstance(tr, (Trace, TraceBuffer))
         self.traces = []
         self._maxlen = maxlen or max(
             [tr.stats.npts * tr.stats.delta for tr in traces])
@@ -609,20 +638,30 @@ class Buffer(object):
                     maxlen=int(tr.stats.sampling_rate * self._maxlen)))
             elif isinstance(tr, TraceBuffer):
                 self.traces.append(tr)
-            else:
-                raise NotImplementedError(
-                    "traces must be either Trace or TraceBuffer")
         self.sanitize_traces()
 
     def __repr__(self):
         return "Buffer({0} traces, maxlen={1})".format(
-            len(self.traces), self.maxlen)
+            self.__len__(), self.maxlen)
 
     def __iter__(self):
         return self.traces.__iter__()
 
     def __len__(self):
         return len(self.traces)
+
+    def __add__(self, other: Union[Trace, Stream]):
+        new_buffer = self.copy()
+        new_buffer.add_stream(other)
+        return new_buffer
+
+    def __iadd__(self, other: Union[Trace, Stream]):
+        self.add_stream(other)
+        return self
+
+    def copy(self):
+        return Buffer(traces=[tr.trace for tr in self.traces],
+                      maxlen=self.maxlen)
 
     @property
     def maxlen(self):
@@ -651,12 +690,17 @@ class Buffer(object):
         """
         Add a stream or trace to the buffer.
 
+        Note that if `stream` is a Buffer, the maxlen of the initial Buffer
+        will be used.
+
         Parameters
         ----------
         stream
         """
         if isinstance(stream, Trace):
             stream = Stream([stream])
+        elif isinstance(stream, Buffer):
+            stream = stream.stream
         for tr in stream:
             traces_in_buffer = self.select(id=tr.id)
             if len(traces_in_buffer) > 0:
