@@ -274,6 +274,8 @@ class TraceBuffer(object):
         >>> print(trace_buffer.data) # doctest: +NORMALIZE_WHITESPACE
         NumpyDeque(data=[-- -- -- -- -- 0.0 1.0 2.0 3.0 4.0 0.0 1.0 2.0 3.0 4.0], maxlen=15)
         """
+        if isinstance(trace, TraceBuffer):
+            trace = trace.trace
         # Check that stats match
         assert self.id == trace.id, "IDs {0} and {1} differ".format(
             self.id, trace.id)
@@ -283,18 +285,16 @@ class TraceBuffer(object):
         assert self.stats.calib == trace.stats.calib, (
             "Calibration factors {0} and {1} differ".format(
                 self.stats.calib, trace.stats.calib))
+        # Remove older data than our minimum starttime - faster to if this.
+        if trace.stats.starttime < self.stats.starttime:
+            trace = trace.slice(starttime=self.stats.starttime)
         # If data are newer in trace than in self.
         if trace.stats.endtime > self.stats.endtime:
             # If there is overlap
             if trace.stats.starttime <= self.stats.endtime:
                 old_data = trace.slice(endtime=self.stats.endtime).data
-                if len(old_data) > self.data.maxlen:
-                    old_data_start = -self.data.maxlen
-                    insert_start = 0
-                else:
-                    old_data_start = 0
-                    insert_start = -len(old_data)
-                self.data.insert(old_data[old_data_start:], insert_start)
+                insert_start = -len(old_data)
+                self.data.insert(old_data, insert_start)
                 new_data = trace.slice(
                     starttime=self.stats.endtime + self.stats.delta).data
             # If there is a gap.
@@ -314,12 +314,11 @@ class TraceBuffer(object):
             self.data.extend(new_data)
             self.stats.endtime = trace.stats.endtime
         else:
-            trim_start = self.stats.endtime - (
-                    self.data.maxlen * self.stats.delta)
-            old_data = trace.slice(starttime=trim_start).data
-            insert_start = int(self.stats.sampling_rate * (
-                    self.stats.endtime - trim_start))
-            self.data.insert(old_data, insert_start)
+            # No new times covered - insert old data into array.
+            insert_start = (trace.stats.starttime -
+                            self.stats.starttime) * self.stats.sampling_rate
+            assert int(insert_start) == insert_start, "Traces are not sampled at the same base time-stamp"
+            self.data.insert(trace.data, int(insert_start))
         self.stats.npts = len(self.data.data)
 
     @property
@@ -359,8 +358,9 @@ class TraceBuffer(object):
         A deepcopy of the tracebuffer.
         """
         return TraceBuffer(
-            data=copy.deepcopy(self.data), header=copy.deepcopy(self.stats),
-            maxlen=copy.deepcopy(self.maxlen))
+            data=copy.deepcopy(self.data.data),
+            header=copy.deepcopy(self.stats.__dict__),
+            maxlen=copy.deepcopy(self.data.maxlen))
 
 
 class NumpyDeque(object):
@@ -402,6 +402,9 @@ class NumpyDeque(object):
 
     def __len__(self):
         return sum(~self._mask)
+
+    def __getitem__(self, item):
+        return self.data.__getitem__(item)
 
     @property
     def maxlen(self) -> int:

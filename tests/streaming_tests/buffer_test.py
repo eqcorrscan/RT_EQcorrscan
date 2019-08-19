@@ -175,7 +175,7 @@ class TestTraceBuffer(unittest.TestCase):
         trace_buffer += additional_trace
         self.assertEqual(len(trace_buffer), maxlen)
 
-    def test_add_without_chaning_original(self):
+    def test_add_without_changing_original(self):
         trace_buffer1 = TraceBuffer(
             data=self.st[0].data, header=self.st[0].stats,
             maxlen=5000)
@@ -184,6 +184,63 @@ class TestTraceBuffer(unittest.TestCase):
             maxlen=self.st[0].stats.npts)
         trace_buffer3 = trace_buffer1 + trace_buffer2
         self.assertNotEqual(trace_buffer3, trace_buffer1)
+
+
+class TestNumpyDeque(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.maxlen = 200
+
+    def test_extend_left(self):
+        deque_1 = NumpyDeque(np.arange(20), maxlen=self.maxlen)
+        deque_1.extendleft(np.arange(10))
+        self.assertEqual(len(deque_1), 20)
+        self.assertEqual(len(deque_1.data), 200)
+        self.assertTrue(deque_1.is_full())
+        self.assertFalse(deque_1.is_full(strict=True))
+        self.assertTrue(np.all(deque_1[0:10] == deque_1[-10:]))
+
+    def test_extend_left_with_masked(self):
+        deque_1 = NumpyDeque(np.arange(20), maxlen=self.maxlen)
+        masked_array = np.ma.MaskedArray(
+            data=np.arange(20), mask=np.ones(20))
+        masked_array.mask[0:10] = False
+        deque_1.extendleft(masked_array)
+        # There should now be only the 0-9 in the first 10 slots and nothing
+        # else
+        self.assertTrue(np.all(deque_1[0:10] == np.arange(10)))
+        self.assertTrue(np.all(deque_1.data.compressed() == np.arange(10)))
+
+    def test_extend_left_too_long(self):
+        deque_1 = NumpyDeque(np.arange(20), maxlen=30)
+        other = np.arange(40)
+        deque_1.extendleft(other)
+        self.assertTrue(np.all(deque_1.data == other[0:30]))
+
+    def test_append(self):
+        deque_1 = NumpyDeque(np.arange(20), maxlen=20)
+        deque_1.append(99)
+        self.assertEqual(deque_1[-1], 99)
+
+    def test_append_left(self):
+        deque_1 = NumpyDeque(np.arange(20), maxlen=20)
+        deque_1.appendleft(99)
+        self.assertEqual(deque_1[0], 99)
+
+    def test_append_with_list(self):
+        deque_1 = NumpyDeque(np.arange(20), maxlen=20)
+        with self.assertRaises(TypeError):
+            deque_1.append([99])
+
+    def test_append_left_with_list(self):
+        deque_1 = NumpyDeque(np.arange(20), maxlen=20)
+        with self.assertRaises(TypeError):
+            deque_1.appendleft([99])
+
+    def test_insert_single_item(self):
+        deque_1 = NumpyDeque(np.arange(20), maxlen=20)
+        deque_1.insert(99, 10)
+        self.assertEqual(deque_1[10], 99)
 
 
 if __name__ == "__main__":
