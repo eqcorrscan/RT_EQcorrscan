@@ -70,6 +70,18 @@ class TestConfig(unittest.TestCase):
         client = config.rt_match_filter.get_client()
         self.assertEqual(client, None)
 
+    def test_get_waveform_client(self):
+        config = read_config(
+            os.path.join(self.test_path, "default_config.yml"))
+        client = config.rt_match_filter.get_waveform_client()
+        self.assertEqual(client, None)
+        config.rt_match_filter.waveform_client_type = "FDSN"
+        client = config.rt_match_filter.get_waveform_client()
+        self.assertEqual(client, None)
+        config.rt_match_filter.waveform_client = "GEONET"
+        client = config.rt_match_filter.get_waveform_client()
+        self.assertIsInstance(client, Client)
+
     def test_bad_init(self):
         with self.assertRaises(NotImplementedError):
             Config(wilf="bob")

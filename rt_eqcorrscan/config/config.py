@@ -14,11 +14,10 @@ import sys
 from yaml import load, dump
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
-except ImportError:
+except ImportError:  # pragma: no cover
     from yaml import Loader, Dumper
 from logging.handlers import RotatingFileHandler
 
-from obspy import UTCDateTime
 from obspy.core.util import AttribDict
 
 
