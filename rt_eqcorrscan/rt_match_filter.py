@@ -19,7 +19,7 @@ from typing import Union, List
 
 from obspy import Stream, UTCDateTime, Inventory
 from matplotlib.figure import Figure
-from eqcorrscan import Tribe, Template, Party, Family, Detection
+from eqcorrscan import Tribe, Template, Party, Detection
 
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
 from rt_eqcorrscan.config.notification import Notifier
@@ -473,6 +473,8 @@ class RealTimeTribe(Tribe):
             Logger.info("Sleeping for {0:.2f}s while accumulating data".format(
                 sleep_step))
             time.sleep(sleep_step)
+        first_data = min([tr.stats.starttime
+                          for tr in self.rt_client.get_stream().merge()])
         try:
             while self.busy:
                 self._running = True  # Lock tribe
@@ -537,10 +539,15 @@ class RealTimeTribe(Tribe):
                 if max_run_length and UTCDateTime.now() > run_start + max_run_length:
                     Logger.info("Hit maximum run time, stopping.")
                     self.stop()
-                if minimum_rate and average_rate(self.detections) < minimum_rate:
-                    if len(self.detections) > 0:
+                if minimum_rate and len(self.detections) > 0:
+                    _rate = average_rate(
+                        self.detections,
+                        starttime=max(last_data - keep_detections, first_data),
+                        endtime=last_data)
+                    if _rate < minimum_rate:
                         Logger.info(
-                            "Rate has dropped below minimum rate, stopping.")
+                            "Rate ({0:.2f}) has dropped below minimum rate, "
+                            "stopping.".format(_rate))
                         self.stop()
                 gc.collect()
                 # Memory output

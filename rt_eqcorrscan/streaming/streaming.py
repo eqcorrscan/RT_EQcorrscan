@@ -128,14 +128,8 @@ class _StreamingClient(ABC):
         return self.buffer.stream
 
     def _bg_run(self):
-        e = None
         while self.busy:
-            try:
-                self.run()
-            except Exception as e:
-                break
-        if e is not None:
-            raise e
+            self.run()
 
     def background_run(self):
         """Run the seedlink client in the background."""

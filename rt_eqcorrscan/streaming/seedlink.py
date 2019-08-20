@@ -103,7 +103,7 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         self.close()
         self.started = False
 
-    def on_seedlink_error(self):
+    def on_seedlink_error(self):  # pragma: no cover
         """ Cope with seedlink errors."""
         self.on_error()
 

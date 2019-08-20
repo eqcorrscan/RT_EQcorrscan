@@ -9,9 +9,24 @@ License
 import numpy as np
 
 from obspy.core.event import Event
-from obspy import Stream, Trace
+from obspy import Stream, Trace, UTCDateTime
+from obspy.core.util import AttribDict
 
 from matplotlib.figure import Figure
+
+
+def _get_plot_starttime(event: Event, st: Stream) -> UTCDateTime:
+    """Get starttime of a plot given an event and a stream."""
+    try:
+        attribute_with_time = event.preferred_origin() or event.origins[0]
+    except (AttributeError, IndexError):
+        try:
+            attribute_with_time = AttribDict(
+                {"time": min([p.time for p in event.picks]) - 5})
+        except ValueError:
+            attribute_with_time = AttribDict(
+                {"time": min([tr.stats.starttime for tr in st])})
+    return attribute_with_time.time
 
 
 def plot_event(
@@ -47,28 +62,20 @@ def plot_event(
     import matplotlib.pyplot as plt
 
     event.picks.sort(key=lambda p: p.time)
-    try:
-        origin_time = event.preferred_origin().time or event.origins[0].time
-    except AttributeError:
-        # If there isn't an origin time, use the first pick time
-        try:
-            origin_time = event.picks[0].time - 5
-        except KeyError:
-            # No picks, so use the stream start time
-            origin_time = min([tr.stats.starttime for tr in st])
+    origin_time = _get_plot_starttime(event, st)
     _st = st.slice(origin_time, origin_time + length).copy()
     _st = _st.split().detrend().filter(
         "bandpass", freqmin=passband[0], freqmax=passband[1]).merge()
     # Trim the event around the origin time
     if fig is None:
         fig, axes = plt.subplots(len(_st), 1, sharex=True, figsize=size)
+        if len(_st) == 1:
+            axes = [axes]
     else:
         axes = [fig.add_subplot(len(_st), 1, 1)]
         if len(_st) > 1:
             for i in range(len(_st) - 1):
                 axes.append(fig.add_subplot(len(_st), 1, i + 2, sharex=axes[0]))
-    if len(_st) == 1:
-        axes = [axes]
     lines, labels = ([], [])
     min_x = []
     max_x = []
@@ -80,10 +87,10 @@ def plot_event(
         try:
             origin = event.preferred_origin() or event.origins[0]
             for arrival in origin.arrivals:
-                if arrival.pick_id.get_referred_object(
-                        ).waveform_id.station_code == tr.stats.station:
+                referenced_pick = arrival.pick_id.get_referred_object()
+                if referenced_pick.waveform_id.station_code == tr.stats.station:
                     arrivals.append(arrival)
-        except IndexError:
+        except IndexError: # pragma: no cover
             pass
         lines, labels, chan_min_x, chan_max_x = _plot_channel(
             ax=ax, tr=tr, picks=picks, arrivals=arrivals, lines=lines,
@@ -95,7 +102,7 @@ def plot_event(
     plt.tight_layout()
     plt.subplots_adjust(hspace=0)
     fig.legend(lines, labels)
-    if show:
+    if show: # pragma: no cover
         fig.show()
     del _st
     return fig

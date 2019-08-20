@@ -5,9 +5,12 @@ Test for event plotting in RT-eqcorrscan.
 import unittest
 import pytest
 
+from matplotlib.pyplot import Figure
+
+from obspy.core.event import Event
 from obspy.clients.fdsn import Client
 
-from rt_eqcorrscan.plotting.plot_event import plot_event
+from rt_eqcorrscan.plotting.plot_event import plot_event, _get_plot_starttime
 
 
 class EventPlottingMethods(unittest.TestCase):
@@ -29,6 +32,23 @@ class EventPlottingMethods(unittest.TestCase):
     def test_event_plotting(self):
         fig = plot_event(event=self.event, st=self.st, show=False)
         return fig
+
+    @pytest.mark.mpl_image_compare(baseline_dir="image_baseline")
+    def test_reusing_figure(self):
+        fig = plot_event(event=self.event, st=self.st, show=False,
+                         fig=Figure())
+        return fig
+
+    def test_get_plot_time(self):
+        origin_time = _get_plot_starttime(self.event, self.st)
+        self.assertEqual(self.event.preferred_origin().time, origin_time)
+        no_origins = Event(picks=self.event.picks)
+        first_pick_time = _get_plot_starttime(no_origins, self.st)
+        self.assertEqual(first_pick_time + 5,
+                         min([pick.time for pick in no_origins.picks]))
+        stream_starttime = _get_plot_starttime(Event(), self.st)
+        self.assertEqual(stream_starttime,
+                         min(tr.stats.starttime for tr in self.st))
 
 
 if __name__ == "__main__":

@@ -6,8 +6,9 @@ Author
 License
     GPL v3.0
 """
-from typing import Union, List
+from typing import Union, List, Optional
 
+from obspy import UTCDateTime
 from obspy.core.event import Catalog, Event
 from obspy.geodetics import locations2degrees
 
@@ -114,18 +115,28 @@ def inter_event_distance(
         lat2=origin_2.latitude, long2=origin_2.longitude)
 
 
-def average_rate(catalog: Union[List[Detection], Catalog]) -> float:
+def average_rate(
+    catalog: Union[List[Detection], Catalog],
+    starttime: Optional[UTCDateTime] = None,
+    endtime: Optional[UTCDateTime] = None
+) -> float:
     """
-    Compute mean rate of occurrence of events in catalog.
+    Compute mean rate (in events per day) of occurrence of events in catalog.
 
     Parameters
     ----------
-    catalog:
+    catalog
         Catalog of events, or list of detections
+    starttime
+        Start-time to calculate rate for, if not set will use the time of the
+        first event in the catalog
+    endtime
+        End-time to calculate rate for, if not set will use the time of the
+        last event in the catalog
 
     Returns
     -------
-    Average rate over duration of catalog.
+    Average rate over duration of catalog. Units: events / day
     """
     if len(catalog) <= 1:
         return 0.
@@ -136,10 +147,10 @@ def average_rate(catalog: Union[List[Detection], Catalog]) -> float:
     else:
         raise NotImplementedError(
             "catalog must be either a Catalog or list of Detections.")
-    rates = [
-        86400. / (event_times[i + 1] - event_times[i])
-        for i in range(len(event_times) - 1)]
-    return sum(rates) / len(rates)
+    starttime = starttime or event_times[0]
+    endtime = endtime or event_times[-1]
+    duration = (endtime - starttime) / 86400.
+    return len(event_times) / duration
 
 
 if __name__ == "__main__":

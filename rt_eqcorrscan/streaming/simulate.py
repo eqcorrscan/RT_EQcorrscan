@@ -70,10 +70,15 @@ class SimulateRealTimeClient(_StreamingClient):
         return
 
     def copy(self, empty_buffer: bool = True):
-        other = copy.deepcopy(self)
         if empty_buffer:
-            other.buffer = Stream()
-        return other
+            buffer = Stream()
+        else:
+            buffer = self.get_stream()
+        return SimulateRealTimeClient(
+            client=self.client, starttime=self.starttime,
+            query_interval=self.query_interval, speed_up=self.speed_up,
+            buffer=buffer, buffer_capacity=self.buffer_capacity,
+            wavebank=self.wavebank)
 
     @property
     def can_add_streams(self) -> bool:
@@ -98,6 +103,7 @@ class SimulateRealTimeClient(_StreamingClient):
             self.bulk.append(_bulk)
 
     def run(self) -> None:
+        assert len(self.bulk) > 0, "Select a stream first"
         self.streaming = True
         now = copy.deepcopy(self.starttime)
         last_query_start = now - self.query_interval

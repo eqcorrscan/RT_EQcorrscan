@@ -18,22 +18,56 @@ class FDSNTest(unittest.TestCase):
         cls.rt_client = SimulateRealTimeClient(
             client=cls.client, buffer_capacity=10,
             starttime=UTCDateTime(2017, 1, 1), speed_up=4., query_interval=5.)
-        cls.rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
 
     def test_background_streaming(self):
-        self.rt_client.background_run()
+        rt_client = self.rt_client.copy()
+        rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
+        rt_client.background_run()
         time.sleep(20)
-        self.rt_client.background_stop()
-        self.assertEqual(self.rt_client.buffer_length,
-                         self.rt_client.buffer_capacity)
+        rt_client.background_stop()
+        self.assertEqual(rt_client.buffer_length,
+                         rt_client.buffer_capacity)
 
     def test_full_buffer(self):
-        self.rt_client.clear_buffer()
-        self.rt_client.background_run()
-        self.assertFalse(self.rt_client.buffer_full)
+        rt_client = self.rt_client.copy()
+        rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
+        rt_client.background_run()
+        self.assertFalse(rt_client.buffer_full)
         time.sleep(20)  # GeoNet is slow
-        self.rt_client.background_stop()
-        self.assertTrue(self.rt_client.buffer_full)
+        rt_client.background_stop()
+        self.assertTrue(rt_client.buffer_full)
+
+    def test_always_started(self):
+        rt_client = self.rt_client.copy()
+        rt_client.start()
+        self.assertTrue(rt_client.started)
+        rt_client.stop()
+        self.assertFalse(rt_client.started)
+
+    def test_can_add_streams(self):
+        self.assertTrue(self.rt_client.can_add_streams)
+
+    def test_copy_with_buffer(self):
+        rt_client = self.rt_client.copy()
+        rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
+        rt_client.background_run()
+        time.sleep(7)
+        rt_client.background_stop()
+        new_client = rt_client.copy(empty_buffer=False)
+        new_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
+        self.assertEqual(new_client.get_stream(), rt_client.get_stream())
+        new_client.background_run()
+        time.sleep(10)
+        new_client.background_stop()
+        # Make sure that we don't change the old buffer.
+        self.assertNotEqual(new_client.get_stream(), rt_client.get_stream())
+
+    def test_reprint(self):
+        print_str = self.rt_client.__repr__()
+        self.assertEqual(print_str, "Client at http://service.geonet.org.nz, "
+                                    "status: Stopped, buffer capacity: 10.0s\n	"
+                                    "Current Buffer:\nBuffer(0 traces, "
+                                    "maxlen=10)")
 
 
 if __name__ == "__main__":

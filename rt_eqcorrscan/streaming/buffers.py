@@ -221,7 +221,7 @@ class TraceBuffer(object):
         ...         delta=1.),
         ...     maxlen=15)
         >>> print(trace_buffer.data) # doctest: +NORMALIZE_WHITESPACE
-        NumpyDeque(data=[-- -- -- -- -- 0.0 1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0], maxlen=15)
+        NumpyDeque(data=[-- -- -- -- -- 0 1 2 3 4 5 6 7 8 9], maxlen=15)
         >>> trace = Trace(
         ...     np.arange(7)[::-1], header=dict(
         ...         station="bob", starttime=UTCDateTime(2018, 1, 1), delta=1.))
@@ -229,7 +229,7 @@ class TraceBuffer(object):
         >>> print(trace_buffer.stats.endtime)
         2018-01-01T00:00:06.000000Z
         >>> print(trace_buffer.data) # doctest: +NORMALIZE_WHITESPACE
-        NumpyDeque(data=[0. 1. 2. 3. 4. 5. 6. 7. 6. 5. 4. 3. 2. 1. 0.], maxlen=15)
+        NumpyDeque(data=[0 1 2 3 4 5 6 7 6 5 4 3 2 1 0], maxlen=15)
 
         Try adding a trace that is longer than the maxlen
 
@@ -243,7 +243,7 @@ class TraceBuffer(object):
         >>> print(trace_buffer.stats.endtime)
         2018-01-01T00:00:25.000000Z
         >>> print(trace_buffer.data) # doctest: +NORMALIZE_WHITESPACE
-        NumpyDeque(data=[5.  6.  7.  8.  9. 10. 11. 12. 13. 14. 15. 16. 17. 18. 19.], maxlen=15)
+        NumpyDeque(data=[5 6 7 8 9 10 11 12 13 14 15 16 17 18 19], maxlen=15)
 
         Add a trace that starts after the current tracebuffer ends
 
@@ -257,7 +257,7 @@ class TraceBuffer(object):
         >>> print(trace_buffer.stats.endtime)
         2018-01-01T00:00:34.000000Z
         >>> print(trace_buffer.data) # doctest: +NORMALIZE_WHITESPACE
-        NumpyDeque(data=[15.0 16.0 17.0 18.0 19.0 -- -- -- -- -- 0.0 1.0 2.0 3.0 4.0], maxlen=15)
+        NumpyDeque(data=[15 16 17 18 19 -- -- -- -- -- 0 1 2 3 4], maxlen=15)
 
         Add a trace that starts one sample after the current trace ends
 
@@ -272,7 +272,7 @@ class TraceBuffer(object):
         2018-01-01T00:00:35.000000Z
         >>> trace_buffer.add_trace(trace)
         >>> print(trace_buffer.data) # doctest: +NORMALIZE_WHITESPACE
-        NumpyDeque(data=[-- -- -- -- -- 0.0 1.0 2.0 3.0 4.0 0.0 1.0 2.0 3.0 4.0], maxlen=15)
+        NumpyDeque(data=[-- -- -- -- -- 0 1 2 3 4 0 1 2 3 4], maxlen=15)
         """
         if isinstance(trace, TraceBuffer):
             trace = trace.trace
@@ -288,6 +288,8 @@ class TraceBuffer(object):
         # Remove older data than our minimum starttime - faster to if this.
         if trace.stats.starttime < self.stats.starttime:
             trace = trace.slice(starttime=self.stats.starttime)
+            if len(trace) == 0:
+                return
         # If data are newer in trace than in self.
         if trace.stats.endtime > self.stats.endtime:
             # If there is overlap
@@ -297,8 +299,9 @@ class TraceBuffer(object):
                 self.data.insert(old_data, insert_start)
                 new_data = trace.slice(
                     starttime=self.stats.endtime + self.stats.delta).data
-            # If there is a gap.
-            elif trace.stats.starttime > self.stats.endtime + self.stats.delta:
+            # If there is a gap - defined as more than 1.5 samples. Coping with
+            # rounding errors in UTCDateTime.
+            elif trace.stats.starttime >= self.stats.endtime + (1.5 * self.stats.delta):
                 new_data = np.empty(
                     trace.stats.npts +
                     int(self.stats.sampling_rate *
@@ -317,7 +320,9 @@ class TraceBuffer(object):
             # No new times covered - insert old data into array.
             insert_start = (trace.stats.starttime -
                             self.stats.starttime) * self.stats.sampling_rate
-            assert int(insert_start) == insert_start, "Traces are not sampled at the same base time-stamp"
+            assert int(insert_start) == insert_start, \
+                "Traces are not sampled at the same base time-stamp, {0} != {1}".format(
+                    int(insert_start), insert_start)
             self.data.insert(trace.data, int(insert_start))
         self.stats.npts = len(self.data.data)
 
@@ -381,7 +386,7 @@ class NumpyDeque(object):
             maxlen: int
     ):
         self._maxlen = maxlen
-        self._data = np.empty(maxlen)
+        self._data = np.empty(maxlen, dtype=type(data[0]))
         length = min(maxlen, len(data))
         if isinstance(data, np.ma.MaskedArray):
             mask_value = data.mask
@@ -549,32 +554,32 @@ class NumpyDeque(object):
         --------
         >>> np_deque = NumpyDeque(data=[0, 1, 2], maxlen=5)
         >>> print(np_deque) # doctest: +NORMALIZE_WHITESPACE
-        NumpyDeque(data=[-- -- 0.0 1.0 2.0], maxlen=5)
+        NumpyDeque(data=[-- -- 0 1 2], maxlen=5)
 
         Insert a single element list
 
         >>> np_deque.insert([6], 1)
         >>> print(np_deque) # doctest: +NORMALIZE_WHITESPACE
-        NumpyDeque(data=[-- 6.0 0.0 1.0 2.0], maxlen=5)
+        NumpyDeque(data=[-- 6 0 1 2], maxlen=5)
 
         Insert a numpy array
 
         >>> np_deque.insert(np.array([11, 12]), 3)
         >>> print(np_deque) # doctest: +NORMALIZE_WHITESPACE
-        NumpyDeque(data=[-- 6.0 0.0 11.0 12.0], maxlen=5)
+        NumpyDeque(data=[-- 6 0 11 12], maxlen=5)
 
         Insert a masked array - only the unmasked elements are used.
 
         >>> np_deque.insert(
         ...     np.ma.masked_array([99, 99], mask=[True, False]), 2)
         >>> print(np_deque) # doctest: +NORMALIZE_WHITESPACE
-        NumpyDeque(data=[-- 6.0 0.0 99.0 12.0], maxlen=5)
+        NumpyDeque(data=[-- 6 0 99 12], maxlen=5)
 
         Insert an array longer than maxlen
 
         >>> np_deque.insert(np.arange(10), 0)
         >>> print(np_deque) # doctest: +NORMALIZE_WHITESPACE
-        NumpyDeque(data=[5. 6. 7. 8. 9.], maxlen=5)
+        NumpyDeque(data=[5 6 7 8 9], maxlen=5)
         """
         if not isinstance(other, Sized):
             other = [other]
@@ -628,9 +633,9 @@ class Buffer(object):
         maxlen: float = None
     ):
         assert traces or maxlen, "Requires at least maxlen or traces."
-        assert isinstance(traces, (Stream, list))
+        assert isinstance(traces, (Stream, list)), "Must be either Stream or list"
         for tr in traces:
-            assert isinstance(tr, (Trace, TraceBuffer))
+            assert isinstance(tr, (Trace, TraceBuffer)), "Must be Trace or TraceBuffer"
         self.traces = []
         self._maxlen = maxlen or max(
             [tr.stats.npts * tr.stats.delta for tr in traces])
