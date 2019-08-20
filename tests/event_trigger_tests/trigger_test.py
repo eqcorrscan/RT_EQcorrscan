@@ -4,10 +4,12 @@ Tests for the standard trigger functions.
 
 import unittest
 
-from obspy import UTCDateTime
+from obspy import UTCDateTime, Catalog
 from obspy.clients.fdsn import Client
+from eqcorrscan import Detection
 
-from rt_eqcorrscan.event_trigger import magnitude_rate_trigger_func
+from rt_eqcorrscan.event_trigger import (
+    magnitude_rate_trigger_func, average_rate)
 
 
 class StaticTests(unittest.TestCase):
@@ -22,7 +24,7 @@ class StaticTests(unittest.TestCase):
         # Taupo swarm
         cls.high_rate_catalog = client.get_events(
             starttime=UTCDateTime(2019, 6, 20),
-            endtime=UTCDateTime(2019, 7, 1),
+            endtime=UTCDateTime(2019, 6, 21),
             latitude=-38.8, longitude=175.8, maxradius=0.2)
         # AF/Puysegur junction mainshock: mainshock eventid=2019p428761
         cls.mainshock_catalog = client.get_events(
@@ -59,6 +61,19 @@ class StaticTests(unittest.TestCase):
         missing_origin_cat[2].preferred_origin_id = None
         triggered_events = magnitude_rate_trigger_func(missing_origin_cat)
         self.assertTrue(len(triggered_events) > 1)
+
+    def test_rate_calculation_no_events(self):
+        self.assertEqual(average_rate(Catalog()), 0.)
+
+    def test_rate_for_list_of_events(self):
+        dets = [Detection(
+            detect_time=UTCDateTime() + (i * 100),
+            template_name="wilf", no_chans=10, detect_val=15,
+            threshold=3, threshold_type="MAD", threshold_input=5,
+            typeofdet="correlation")
+                for i in range(10)]
+        rate = average_rate(dets)
+        self.assertAlmostEqual(rate, 960, 1)
 
 
 if __name__ == "__main__":

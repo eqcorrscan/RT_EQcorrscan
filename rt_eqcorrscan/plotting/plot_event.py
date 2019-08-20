@@ -14,6 +14,8 @@ from obspy.core.util import AttribDict
 
 from matplotlib.figure import Figure
 
+PHASE_CMAP = {"P": ("red", "P-"), "S": ("blue", "S-")}
+
 
 def _get_plot_starttime(event: Event, st: Stream) -> UTCDateTime:
     """Get starttime of a plot given an event and a stream."""
@@ -123,53 +125,31 @@ def _plot_channel(
     arrivals = arrivals or []
     lines = lines or []
     labels = labels or []
-    x = np.arange(0, tr.stats.endtime - tr.stats.starttime + tr.stats.delta,
-                  tr.stats.delta)
     y = tr.data
-    if len(x) > len(y):
-        x = x[0:len(y)]
-    elif len(x) < len(y):
-        last_x = x[-1]
-        for i in range(len(y) - len(x)):
-            x.append(last_x + (tr.stats.delta * i))
+    x = np.arange(tr.stats.npts, dtype=np.float32)
+    x /= tr.stats.sampling_rate
     x = np.array([(tr.stats.starttime + _x).datetime for _x in x])
     min_x, max_x = (x[0], x[-1])
     ax.plot(x, y, 'k', linewidth=1.2)
     for pick in picks:
-        if not pick.phase_hint:
-            pcolor = 'k'
-            label = 'Unknown pick'
-        elif 'P' in pick.phase_hint.upper():
-            pcolor = 'red'
-            label = 'P-pick'
-        elif 'S' in pick.phase_hint.upper():
-            pcolor = 'blue'
-            label = 'S-pick'
-        else:
-            pcolor = 'k'
-            label = 'Unknown pick'
+        pick_hint = pick.phase_hint or "none"
+        pcolor, label = PHASE_CMAP.get(pick_hint.upper(),
+                                       ("k", "Unknown pick"))
+        if label.endswith('-'):
+            label += "pick"
         line = ax.axvline(x=pick.time.datetime, color=pcolor, linewidth=2,
                           linestyle='--', label=label)
         if label not in labels:
             lines.append(line)
             labels.append(label)
-        if pick.time.datetime > max_x:
-            max_x = pick.time.datetime
-        elif pick.time.datetime < min_x:
-            min_x = pick.time.datetime
+        max_x = max(pick.time.datetime, max_x)
+        min_x = min(pick.time.datetime, min_x)
     for arrival in arrivals:
-        if not arrival.phase:
-            pcolor = 'k'
-            label = 'Unknown arrival'
-        elif 'P' in arrival.phase.upper():
-            pcolor = 'red'
-            label = 'P-arrival'
-        elif 'S' in arrival.phase.upper():
-            pcolor = 'blue'
-            label = 'S-arrival'
-        else:
-            pcolor = 'k'
-            label = 'Unknown arrival'
+        arrival_hint = arrival.phase or "none"
+        pcolor, label = PHASE_CMAP.get(arrival_hint.upper(),
+                                       ("k", "Unknown arrival"))
+        if label.endswith('-'):
+            label += "arrival"
         arrival_time = (
             arrival.pick_id.get_referred_object().time + arrival.time_residual)
         line = ax.axvline(x=arrival_time.datetime, color=pcolor, linewidth=2,
@@ -177,10 +157,8 @@ def _plot_channel(
         if label not in labels:
             lines.append(line)
             labels.append(label)
-        if arrival_time.datetime > max_x:
-            max_x = arrival_time.datetime
-        elif arrival_time.datetime < min_x:
-            min_x = arrival_time.datetime
+        max_x = max(arrival_time.datetime, max_x)
+        min_x = min(arrival_time.datetime, min_x)
     ax.set_ylabel(tr.id, rotation=0, horizontalalignment="right")
     ax.yaxis.set_ticks([])
     return lines, labels, min_x, max_x

@@ -47,9 +47,9 @@ def get_nearby_events(
 def magnitude_rate_trigger_func(
         catalog: Catalog,
         magnitude_threshold: float = 5.5,
-        rate_threshold: float = 20.,
+        rate_threshold: float = 10.,
         rate_bin: float = .2,
-        minimum_events_in_bin: int = 10,
+        minimum_events_in_bin: int = 5,
 ) -> Catalog:
     """
     Function to turn triggered response on based on magnitude and rate.
@@ -140,13 +140,12 @@ def average_rate(
     """
     if len(catalog) <= 1:
         return 0.
+    assert isinstance(catalog, (Catalog, list))
     if isinstance(catalog, Catalog):
         event_times = sorted([event_time(e) for e in catalog])
     elif isinstance(catalog, list):
+        assert all([isinstance(d, Detection) for d in catalog])
         event_times = sorted([d.detect_time for d in catalog])
-    else:
-        raise NotImplementedError(
-            "catalog must be either a Catalog or list of Detections.")
     starttime = starttime or event_times[0]
     endtime = endtime or event_times[-1]
     duration = (endtime - starttime) / 86400.
