@@ -34,7 +34,7 @@ class SeedLinkTest(unittest.TestCase):
         rt_client.clear_buffer()
         rt_client.background_run()
         self.assertFalse(rt_client.buffer_full)
-        time.sleep(12)
+        time.sleep(18)
         rt_client.background_stop()
         self.assertTrue(rt_client.buffer_full)
 
@@ -74,17 +74,16 @@ class SeedLinkTest(unittest.TestCase):
         rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
         rt_client.wavebank = WaveBank(base_path="test_wavebank")
         rt_client.background_run()
-        time.sleep(10)
+        time.sleep(20)
         rt_client.background_stop()
+        self.assertTrue(rt_client.buffer_full)  # Need a full buffer to work
         wavebank_traces = rt_client.wavebank.get_waveforms()
         wavebank_stream = wavebank_traces.merge()
         buffer_stream = rt_client.get_stream()
         self.assertEqual(buffer_stream[0].stats.endtime,
                          wavebank_stream[0].stats.endtime)
-        self.assertTrue(np.all(
-            wavebank_stream.slice(
-                starttime=buffer_stream[0].stats.starttime
-            )[0].data == buffer_stream[0].data))
+        self.assertTrue(
+            np.all(wavebank_stream.slice(starttime=buffer_stream[0].stats.starttime)[0].data == buffer_stream[0].data))
         shutil.rmtree("test_wavebank")
 
 

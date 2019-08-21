@@ -10,6 +10,8 @@ from obspy.clients.fdsn import Client
 
 from rt_eqcorrscan.streaming.simulate import SimulateRealTimeClient
 
+SLEEP_STEP = 20
+
 
 class FDSNTest(unittest.TestCase):
     @classmethod
@@ -23,7 +25,7 @@ class FDSNTest(unittest.TestCase):
         rt_client = self.rt_client.copy()
         rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
         rt_client.background_run()
-        time.sleep(20)
+        time.sleep(SLEEP_STEP)
         rt_client.background_stop()
         self.assertEqual(rt_client.buffer_length,
                          rt_client.buffer_capacity)
@@ -33,7 +35,7 @@ class FDSNTest(unittest.TestCase):
         rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
         rt_client.background_run()
         self.assertFalse(rt_client.buffer_full)
-        time.sleep(20)  # GeoNet is slow
+        time.sleep(SLEEP_STEP)
         rt_client.background_stop()
         self.assertTrue(rt_client.buffer_full)
 
@@ -51,13 +53,13 @@ class FDSNTest(unittest.TestCase):
         rt_client = self.rt_client.copy()
         rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
         rt_client.background_run()
-        time.sleep(7)
+        time.sleep(SLEEP_STEP)
         rt_client.background_stop()
         new_client = rt_client.copy(empty_buffer=False)
         new_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
         self.assertEqual(new_client.get_stream(), rt_client.get_stream())
         new_client.background_run()
-        time.sleep(10)
+        time.sleep(SLEEP_STEP * 2)
         new_client.background_stop()
         # Make sure that we don't change the old buffer.
         self.assertNotEqual(new_client.get_stream(), rt_client.get_stream())

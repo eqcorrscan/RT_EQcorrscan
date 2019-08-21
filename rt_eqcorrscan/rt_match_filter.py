@@ -178,16 +178,18 @@ class RealTimeTribe(Tribe):
         plot_detections
             Whether to plot the detection waveform or not
         st
-            The stream the detection was made in - required for save_waveform and
-            plot_detection.
+            The stream the detection was made in - required for save_waveform
+            and plot_detection.
         """
         for family in new_party:
             if family is None:
                 continue
             self.party += family
         Logger.info("Removing duplicate detections")
-        # TODO: Decluster on pick time? Find matching picks and calc median pick time difference
-        self.party.decluster(trig_int=trig_int, timing="detect")
+        # TODO: Decluster on pick time? Find matching picks and calc median
+        #  pick time difference.
+        if len(self.party) > 0:
+            self.party.decluster(trig_int=trig_int, timing="detect")
         for family in self.party:
             family.detections = [
                 d for d in family.detections

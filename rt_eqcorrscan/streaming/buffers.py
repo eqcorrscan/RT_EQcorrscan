@@ -320,7 +320,8 @@ class TraceBuffer(object):
             # No new times covered - insert old data into array.
             insert_start = (trace.stats.starttime -
                             self.stats.starttime) * self.stats.sampling_rate
-            assert int(insert_start) == insert_start, \
+            # Cope with small shifts due to sampling time-stamp rounding
+            assert abs(insert_start - int(insert_start)) < .1, \
                 "Traces are not sampled at the same base time-stamp, {0} != {1}".format(
                     int(insert_start), insert_start)
             self.data.insert(trace.data, int(insert_start))
