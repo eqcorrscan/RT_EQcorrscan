@@ -289,7 +289,7 @@ class Config(object):
     def setup_logging(self, **kwargs):
         """Set up logging using the logging parameters."""
         file_log_args = dict(filename="rt_eqcorrscan.log", mode='a',
-                             maxBytes=512*1024, backupCount=2,
+                             maxBytes=20*1024*1024, backupCount=2,
                              encoding=None, delay=0)
         file_log_args.update(kwargs)
         rotating_handler = RotatingFileHandler(**file_log_args)
