@@ -593,7 +593,7 @@ def _get_data_for_event(
         path += ".ms"
         ppath = (Path(bank_path) / path).absolute()
         ppath.parent.mkdir(parents=True, exist_ok=True)
-        trimmed_stream.write(str(ppath), format="MSEED")
+        trimmed_stream.split().write(str(ppath), format="MSEED")
         Logger.debug("Saved raw data to {0}".format(ppath))
     return trimmed_stream
 
