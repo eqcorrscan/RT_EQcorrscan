@@ -342,7 +342,7 @@ class RealTimeTribe(Tribe):
                 for chan in self.expected_channels]
         st = self.rt_client.wavebank.get_waveforms_bulk(bulk)
         new_party = templates.detect(
-            stream=st, plotvar=False, threshold=threshold,
+            stream=st, plot=False, threshold=threshold,
             threshold_type=threshold_type, trig_int=trig_int,
             xcorr_func="fftw", concurrency="concurrent",
             process_cores=2, **kwargs)
@@ -500,7 +500,7 @@ class RealTimeTribe(Tribe):
                 Logger.info("Starting detection run")
                 try:
                     new_party = self.detect(
-                        stream=st, plotvar=False, threshold=threshold,
+                        stream=st, plot=False, threshold=threshold,
                         threshold_type=threshold_type, trig_int=trig_int,
                         xcorr_func="fftw", concurrency="concurrent",
                         process_cores=2, **kwargs)
