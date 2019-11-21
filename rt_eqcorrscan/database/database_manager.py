@@ -24,10 +24,8 @@ from obsplus import EventBank
 from obsplus.constants import (
     EVENT_NAME_STRUCTURE, EVENT_PATH_STRUCTURE, get_events_parameters)
 from obsplus.utils import compose_docstring
-from obsplus.interfaces import ProgressBar
 from obsplus.bank.utils import (
-    _get_path, _get_event_origin_time, _get_time_values, _summarize_event,
-    _try_read_catalog)
+    _get_path, _get_event_origin_time, _get_time_values, _summarize_event)
 
 from obspy import Catalog, Stream
 from obspy.core.event import Event
@@ -272,46 +270,6 @@ class TemplateBank(EventBank):
         paths = [path.replace(self.ext, self.template_ext) for path in paths]
         future = self.executor.map(_lazy_template_read, paths)
         return Tribe([t for t in future if t is not None])
-
-    # def update_index(
-    #     self, bar: Optional[ProgressBar] = None, paths: Optional[Iterable] = None
-    # ) -> "EventBank":
-    #     """
-    #     Iterate files in bank and add any modified since last update to index.
-    #
-    #     Parameters
-    #     ----------
-    #     {bar_parameter_description}
-    #     paths
-    #         Paths to update for - if not set, all paths will be scanned.
-    #     """
-    #
-    #     def func(path):
-    #         """ Function to yield events, update_time and paths. """
-    #         cat = _try_read_catalog(path, format=self.format)
-    #         update_time = getmtime(path)
-    #         path = path.replace(self.bank_path, "")
-    #         return cat, update_time, path
-    #
-    #     self._enforce_min_version()  # delete index if schema has changed
-    #     # create iterator  and lists for storing output
-    #     update_time = time.time()
-    #     iterator = paths or self._measured_unindexed_iterator(bar)
-    #     events, update_times, paths = [], [], []
-    #     for cat, mtime, path in self._map(func, iterator):
-    #         if cat is None:
-    #             continue
-    #         for event in cat:
-    #             events.append(event)
-    #             update_times.append(mtime)
-    #             paths.append(path)
-    #     # add new events to database
-    #     df = obsplus.events.pd._default_cat_to_df(Catalog(events=events))
-    #     df["updated"] = update_times
-    #     df["path"] = paths
-    #     if len(df):
-    #         self._write_update(self._prepare_dataframe(df), update_time)
-    #     return self
 
     def put_events(self, catalog: Union[Event, Catalog], update_index=True):
         """

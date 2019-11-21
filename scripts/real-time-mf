@@ -153,11 +153,11 @@ if __name__ == "__main__":
         required=False)
     parser.add_argument(
         "--template-starttime", type=str, required=False,
-        help="Start-time as UTCDateTime parable string to collect templates "
+        help="Start-time as UTCDateTime parsable string to collect templates "
              "from")
     parser.add_argument(
         "--template-endtime", type=str, required=False,
-        help="End-time as UTCDateTime parable string to collect templates "
+        help="End-time as UTCDateTime parsable string to collect templates "
              "up to.")
     parser.add_argument(
         "--starttime", type=str, required=False,

@@ -20,7 +20,7 @@ Real-time EQcorrscan: Real-time wrappers for EQcorrscan's earthquake detection
 methods.
 '''
 
-scriptfiles = glob.glob("scripts/*.py")
+scriptfiles = [f for f in glob.glob("scripts/*") if os.path.isfile(f)]
 
 
 def setup_package():

@@ -189,11 +189,11 @@ class RealTimeTribe(Tribe):
         # TODO: Decluster on pick time? Find matching picks and calc median
         #  pick time difference.
         if len(self.party) > 0:
-            self.party.decluster(trig_int=trig_int, timing="detect")
+            self.party.decluster(
+                trig_int=trig_int, timing="origin", metric="corr_sum")
         for family in self.party:
             family.detections = [
-                d for d in family.detections
-                if d.detect_time >= endtime]
+                d for d in family.detections if d.detect_time >= endtime]
         for f in self.party:
             for d in f:
                 if d in self.detections:
@@ -425,6 +425,11 @@ class RealTimeTribe(Tribe):
         The party created - will not contain detections expired by
         `keep_detections` threshold.
         """
+        try:
+            if kwargs.pop("plot"):
+                Logger.info("EQcorrscan plotting disabled")
+        except KeyError:
+            pass
         run_start = UTCDateTime.now()
         detection_iteration = 0  # Counter for number of detection loops run
         if not self.busy:
@@ -604,7 +609,8 @@ def _write_detection(
     detection.event.write("{0}.xml".format(_filename), format="QUAKEML")
     detection.event.picks.sort(key=lambda p: p.time)
     st = stream.slice(
-        detection.event.picks[0].time, detection.event.picks[-1].time).copy()
+        detection.event.picks[0].time - 10,
+        detection.event.picks[-1].time + 20).copy()
     if save_waveform:
         st.split().write("{0}.ms".format(_filename), format="MSEED")
     if plot_detection:
