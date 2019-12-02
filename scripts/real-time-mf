@@ -169,8 +169,8 @@ if __name__ == "__main__":
         "--debug", action="store_true", help="Flag to set log level to debug")
     parser.add_argument(
         "--local-archive", action="store_true",
-        help="Flag to use a local archive for waveform data, defined in this "
-             "script")
+        help="Flag to use a local archive for waveform data, defined in "
+             "config file ")
 
     args = parser.parse_args()
     if args.eventid is not None:

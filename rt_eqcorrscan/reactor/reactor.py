@@ -183,9 +183,9 @@ class Reactor(object):
             # tribes and add them.
             for tribe_region in self.running_tribes.values():
                 add_events = get_events(working_cat, **tribe_region["region"])
-                tribe_region["tribe"].add_templates(
+                tribe_region["tribe"].add_templates([
                     self.template_database.get_templates(
-                        [e.resource_id for e in add_events]),
+                        eventid=e.resource_id) for e in add_events],
                     maximum_backfill=maximum_backfill,
                     **self.real_time_tribe_kwargs)
                 for e in add_events:

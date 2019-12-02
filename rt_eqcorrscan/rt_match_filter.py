@@ -184,13 +184,15 @@ class RealTimeTribe(Tribe):
         for family in new_party:
             if family is None:
                 continue
+            for d in family:
+                d._calculate_event(template=family.template)
             self.party += family
         Logger.info("Removing duplicate detections")
         # TODO: Decluster on pick time? Find matching picks and calc median
         #  pick time difference.
         if len(self.party) > 0:
             self.party.decluster(
-                trig_int=trig_int, timing="origin", metric="corr_sum")
+                trig_int=trig_int, timing="origin", metric="cor_sum")
         for family in self.party:
             family.detections = [
                 d for d in family.detections if d.detect_time >= endtime]
