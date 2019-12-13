@@ -13,6 +13,7 @@ pytest-xdist
 pytest-rerunfailures
 pytest-mpl
 pyyaml
+pyproj<2
 codecov
 EQcorrscan>=0.3.0
 obsplus
