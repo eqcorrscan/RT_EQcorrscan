@@ -10,6 +10,7 @@
 [![Documentation Status](https://readthedocs.org/projects/rt-eqcorrscan/badge/?version=latest)](https://rt-eqcorrscan.readthedocs.io/en/latest/?badge=latest)
 [![Python 3.6+](https://img.shields.io/badge/python-3.6+-blue.svg)](https://www.python.org/downloads/release/python-360/)  
 
+**Failed tests may represent differences between obsplus added features and current obsplus release**
 
 # Contributing
 
