@@ -4,3 +4,4 @@ sphinx>=1.5.1
 numpydoc
 sphinx_autodoc_typehints
 nbsphinx
+obsplus
