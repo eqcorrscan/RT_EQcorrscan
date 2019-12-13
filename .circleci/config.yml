@@ -46,7 +46,7 @@ jobs:
             cd ..
             git clone https://github.com/niosh-mining/obsplus.git
             cd obsplus
-            python setup.py install
+            pip install .
             cd $eqcorrscan_dir
       - save_cache:
           key: deps1-{{ .Branch }}-{{ checksum "requirements.txt" }}

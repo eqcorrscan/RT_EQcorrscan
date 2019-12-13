@@ -16,5 +16,4 @@ pyyaml
 pyproj<2
 codecov
 EQcorrscan>=0.3.0
-obsplus
 notifiers

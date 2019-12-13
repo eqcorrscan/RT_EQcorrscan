@@ -43,7 +43,7 @@ install:
   - conda create -q -n test-environment python=$PYTHON_VERSION numpy scipy
   - source activate test-environment
   - conda install -c conda-forge eqcorrscan bokeh
-  - pip install pep8-naming pytest pytest-cov pytest-pep8 pytest-xdist pytest-rerunfailures pytest-mpl codecov Cython obsplus notifiers
+  - pip install pep8-naming pytest pytest-cov pytest-pep8 pytest-xdist pytest-rerunfailures pytest-mpl codecov Cython notifiers
   - pip freeze
   - conda list
   # Install obsplus source which has updates
@@ -51,7 +51,7 @@ install:
   - cd ..
   - git clone https://github.com/niosh-mining/obsplus.git
   - cd obsplus
-  - python setup.py install
+  - pip install .
   - cd $eqcorrscan_dir
   # done installing dependencies
   - git version
