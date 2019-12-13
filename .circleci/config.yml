@@ -45,6 +45,7 @@ jobs:
             cd ..
             git clone https://github.com/niosh-mining/obsplus.git
             cd obsplus
+            . venv/bin/activate
             python setup.py install
             cd $eqcorrscan_dir
       - save_cache:
