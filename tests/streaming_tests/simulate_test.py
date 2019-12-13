@@ -10,7 +10,7 @@ from obspy.clients.fdsn import Client
 
 from rt_eqcorrscan.streaming.simulate import SimulateRealTimeClient
 
-SLEEP_STEP = 20
+SLEEP_STEP = 40
 
 
 class FDSNTest(unittest.TestCase):
