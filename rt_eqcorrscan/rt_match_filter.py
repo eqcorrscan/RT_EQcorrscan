@@ -7,6 +7,7 @@ License
     GPL v3.0
 """
 import time
+import traceback
 import os
 import logging
 import copy
@@ -250,14 +251,8 @@ class RealTimeTribe(Tribe):
         return
 
     def _bg_run(self, *args, **kwargs):
-        e = None
         while self.busy:
-            try:
-                self.run(*args, **kwargs)
-            except Exception as e:
-                break
-        if e is not None:
-            raise e
+            self.run(*args, **kwargs)
 
     def background_run(self, *args, **kwargs):
         """
@@ -464,9 +459,13 @@ class RealTimeTribe(Tribe):
                 except IndexError:
                     continue
                 endtime = tr_in_buffer.stats.starttime
-                tr = backfill_client.get_waveforms(
-                    *tr_id.split('.'), starttime=backfill_to,
-                    endtime=endtime).merge()[0]
+                try:
+                    tr = backfill_client.get_waveforms(
+                        *tr_id.split('.'), starttime=backfill_to,
+                        endtime=endtime).merge()[0]
+                except Exception as e:
+                    Logger.error("Could not back fill due to: {0}".format(e))
+                    continue
                 Logger.debug("Downloaded backfill: {0}".format(tr))
                 self.rt_client.on_data(tr)
                 Logger.debug("Stream in buffer is now: {0}".format(
@@ -503,16 +502,17 @@ class RealTimeTribe(Tribe):
                 st.traces = [
                     tr for tr in st
                     if _numpy_len(tr.data) >= (.8 * self.minimum_data_for_detection)]
-                Logger.debug(st)
                 Logger.info("Starting detection run")
+                Logger.info("Using data: \n{0}".format(st.__str__(extended=True)))
                 try:
                     new_party = self.detect(
                         stream=st, plot=False, threshold=threshold,
                         threshold_type=threshold_type, trig_int=trig_int,
                         xcorr_func="fftw", concurrency="concurrent",
-                        process_cores=2, **kwargs)
+                        process_cores=2, ignore_bad_data=True, **kwargs)
                 except Exception as e:  # pragma: no cover
                     Logger.error(e)
+                    Logger.error(traceback.format_exc())
                     if "Cannot allocate memory" in str(e):
                         Logger.error("Out of memory, stopping this detector")
                         self.stop()

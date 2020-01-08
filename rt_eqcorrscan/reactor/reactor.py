@@ -134,8 +134,8 @@ class Reactor(object):
 
     @property
     def running_templates_ids(self):
-        return [t.name for tribe in self.running_tribes.values()
-                for t in tribe["tribe"]]
+        return {t.name for value in self.running_tribes.values()
+                for t in value["tribe"].templates}
 
     def get_up_time(self):
         return self._up_time
@@ -188,9 +188,8 @@ class Reactor(object):
                         eventid=e.resource_id) for e in add_events],
                     maximum_backfill=maximum_backfill,
                     **self.real_time_tribe_kwargs)
-                for e in add_events:
-                    working_cat.remove(e)
-
+                working_cat.events = [e for e in working_cat
+                                      if e not in add_events]
             trigger_events = self.trigger_func(working_cat)
             for trigger_event in trigger_events:
                 if trigger_event not in self.triggered_events:
@@ -256,7 +255,7 @@ class Reactor(object):
             or return it (False).
         """
         process_length = self.real_time_tribe_kwargs.get(
-            "process_length", None)
+            "process_len", None)
         min_stations = self.listener_kwargs.get("min_stations", None)
         region = estimate_region(triggering_event)
         if region is None:
