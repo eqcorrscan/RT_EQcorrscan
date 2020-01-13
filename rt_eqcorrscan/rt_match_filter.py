@@ -285,7 +285,7 @@ class RealTimeTribe(Tribe):
         maximum_backfill: float = None,
         endtime: UTCDateTime = None,
         **kwargs
-    ) -> None:
+    ) -> set:
         """
         Add templates to the tribe.
 
@@ -321,6 +321,10 @@ class RealTimeTribe(Tribe):
             started, then it will backfill to when the tribe started.
         endtime
             Time to stop the backfill, if None will run to now.
+
+        Returns
+        -------
+            Complete set of template names after addition
         """
         while self._running:
             time.sleep(1)  # Wait until the lock is released
@@ -338,18 +342,21 @@ class RealTimeTribe(Tribe):
         bulk = [tuple(chan.split('.').extend([starttime, endtime]))
                 for chan in self.expected_channels]
         st = self.rt_client.wavebank.get_waveforms_bulk(bulk)
-        new_party = templates.detect(
-            stream=st, plot=False, threshold=threshold,
-            threshold_type=threshold_type, trig_int=trig_int,
-            xcorr_func="fftw", concurrency="concurrent",
-            process_cores=2, **kwargs)
-        while self._running:
-            time.sleep(1)  # Wait until lock is released to add detections
-        self._handle_detections(
-            new_party=new_party, detect_directory=detect_directory,
-            endtime=endtime - keep_detections, plot_detections=plot_detections,
-            save_waveforms=save_waveforms, st=st, trig_int=trig_int)
-        return
+        Logger.info("Not running detections in debug state.")
+        Logger.info("Additional templates that would be run: \n{0} "
+                    "templates".format(len(templates)))
+        # new_party = templates.detect(
+        #     stream=st, plot=False, threshold=threshold,
+        #     threshold_type=threshold_type, trig_int=trig_int,
+        #     xcorr_func="fftw", concurrency="concurrent",
+        #     process_cores=2, **kwargs)
+        # while self._running:
+        #     time.sleep(1)  # Wait until lock is released to add detections
+        # self._handle_detections(
+        #     new_party=new_party, detect_directory=detect_directory,
+        #     endtime=endtime - keep_detections, plot_detections=plot_detections,
+        #     save_waveforms=save_waveforms, st=st, trig_int=trig_int)
+        return set(t.name for t in self.templates)
 
     def stop(self) -> None:
         """ Stop the real-time system. """
@@ -505,11 +512,14 @@ class RealTimeTribe(Tribe):
                 Logger.info("Starting detection run")
                 Logger.info("Using data: \n{0}".format(st.__str__(extended=True)))
                 try:
-                    new_party = self.detect(
-                        stream=st, plot=False, threshold=threshold,
-                        threshold_type=threshold_type, trig_int=trig_int,
-                        xcorr_func="fftw", concurrency="concurrent",
-                        process_cores=2, ignore_bad_data=True, **kwargs)
+                    Logger.info("Not running detections in debug state")
+                    Logger.info("Currently have {0} templates in tribe".format(
+                        len(self)))
+                    # new_party = self.detect(
+                    #     stream=st, plot=False, threshold=threshold,
+                    #     threshold_type=threshold_type, trig_int=trig_int,
+                    #     xcorr_func="fftw", concurrency="concurrent",
+                    #     process_cores=2, ignore_bad_data=True, **kwargs)
                 except Exception as e:  # pragma: no cover
                     Logger.error(e)
                     Logger.error(traceback.format_exc())
@@ -522,12 +532,12 @@ class RealTimeTribe(Tribe):
                         "better".format(self.detect_interval))
                     time.sleep(self.detect_interval)
                     continue
-                self._handle_detections(
-                    new_party, trig_int=trig_int,
-                    endtime=last_data - keep_detections,
-                    detect_directory=detect_directory,
-                    save_waveforms=save_waveforms,
-                    plot_detections=plot_detections, st=st)
+                # self._handle_detections(
+                #     new_party, trig_int=trig_int,
+                #     endtime=last_data - keep_detections,
+                #     detect_directory=detect_directory,
+                #     save_waveforms=save_waveforms,
+                #     plot_detections=plot_detections, st=st)
                 self._remove_old_detections(last_data - keep_detections)
                 Logger.info("Party now contains {0} detections".format(
                     len(self.detections)))

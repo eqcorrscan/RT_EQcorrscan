@@ -93,6 +93,7 @@ class Reactor(object):
     triggered_events = []
     _plotting = None  # Place to store the triggering_id of a plotting tribe.
     running_tribes = dict()
+    running_template_ids = set()
     max_station_distance = 1000
     n_stations = 10
     sleep_step = 15
@@ -131,11 +132,6 @@ class Reactor(object):
     @property
     def available_cores(self) -> int:
         return max(1, cpu_count() - 1)
-
-    @property
-    def running_templates_ids(self):
-        return {t.name for value in self.running_tribes.values()
-                for t in value["tribe"].templates}
 
     def get_up_time(self):
         return self._up_time
@@ -176,18 +172,19 @@ class Reactor(object):
                     eventid=working_ids)
             else:
                 working_cat = []
-            Logger.debug("Currently analysing a catalog of {0} events".format(
+            Logger.info("Currently analysing a catalog of {0} events".format(
                 len(working_cat)))
 
             # Check if new events should be in one of the already running
             # tribes and add them.
             for tribe_region in self.running_tribes.values():
                 add_events = get_events(working_cat, **tribe_region["region"])
-                tribe_region["tribe"].add_templates([
+                added_ids = tribe_region["tribe"].add_templates([
                     self.template_database.get_templates(
                         eventid=e.resource_id) for e in add_events],
                     maximum_backfill=maximum_backfill,
                     **self.real_time_tribe_kwargs)
+                self.running_template_ids.update(added_ids)
                 working_cat.events = [e for e in working_cat
                                       if e not in add_events]
             trigger_events = self.trigger_func(working_cat)
@@ -226,6 +223,7 @@ class Reactor(object):
             triggering_event=triggering_event, run=False)
         if real_time_tribe is None:
             return
+        Logger.info("Starting real-time tribe")
         real_time_tribe.background_run(**real_time_tribe_kwargs)
         self.detecting_threads.append(real_time_tribe._detecting_thread)
         Logger.info("Started detector thread - continuing listening")
@@ -261,16 +259,19 @@ class Reactor(object):
         if region is None:
             return None, None
         region.update(self.template_lookup_kwargs)
+        Logger.info("Getting templates within {0}".format(region))
         tribe = self.template_database.get_templates(**region)
+        Logger.info("Read in {0} templates".format(len(tribe)))
         tribe.templates = [t for t in tribe
-                           if t.name not in self.running_templates_ids]
+                           if t.name not in self.running_template_ids]
         if len(tribe) == 0:
             Logger.warning("No appropriate templates for event: {0}".format(
                 region))
             return None, None
-        Logger.debug("Checking tribe quality: removing templates with "
-                     "fewer than {0} stations".format(min_stations))
+        Logger.info("Checking tribe quality: removing templates with "
+                    "fewer than {0} stations".format(min_stations))
         tribe = check_tribe_quality(tribe, min_stations=min_stations)
+        Logger.info("Tribe now contains {0} templates".format(len(tribe)))
         # Enforce process-len
         if process_length is not None:
             warn = False
@@ -301,6 +302,8 @@ class Reactor(object):
             detect_interval=detect_interval, plot=plot,
             plot_options=self.plot_kwargs,
             name=triggering_event.resource_id.id.split('/')[-1])
+        Logger.info("Created real-time tribe with inventory:\n{0}".format(
+            inventory))
         real_time_tribe.notifier = self.notifier
 
         real_time_tribe_kwargs = {
@@ -311,6 +314,7 @@ class Reactor(object):
         self.running_tribes.update(
             {triggering_event.resource_id.id:
              {"tribe": real_time_tribe, "region": region}})
+        self.running_template_ids.update({t.name for t in real_time_tribe})
         if run:
             return real_time_tribe.run(**real_time_tribe_kwargs)
         else:
