@@ -12,7 +12,7 @@ import gc
 
 from collections import Counter
 from typing import Union, Callable
-from multiprocessing import cpu_count, Process
+from multiprocessing import cpu_count
 
 from obspy import Inventory, UTCDateTime
 from obspy.core.event import Event
@@ -99,7 +99,7 @@ class Reactor(object):
     sleep_step = 15
 
     # The threads that are detecting away!
-    detecting_threads = []
+    detecting_processes = []
     # TODO: Build in an AWS spin-up functionality - would need some communication...
 
     def __init__(
@@ -212,7 +212,7 @@ class Reactor(object):
         triggering_event: Event,
     ) -> None:
         """
-        Spin up a detection run in a background (daemon) thread.
+        Spin up a detection run in a background process.
 
         Parameters
         ----------
@@ -225,14 +225,14 @@ class Reactor(object):
             return
         Logger.info("Starting real-time tribe")
         real_time_tribe.background_run(**real_time_tribe_kwargs)
-        self.detecting_threads.append(real_time_tribe._detecting_thread)
+        self.detecting_processes.append(real_time_tribe._detecting_thread)
         Logger.info("Started detector thread - continuing listening")
 
     def stop(self) -> None:
         """Stop all the processes."""
         for event_id in self.running_tribes.keys():
             self.stop_tribe(event_id)
-        for detecting_thread in self.detecting_threads:
+        for detecting_thread in self.detecting_processes:
             detecting_thread.join()
         self.listener.background_stop()
 
@@ -335,7 +335,7 @@ class Reactor(object):
         tribe_to_stop.stop()
         # TODO: stop the detecting thread if it is running in the background.
         tribe_thread = [
-            thread for thread in self.detecting_threads
+            thread for thread in self.detecting_processes
             if thread.name.endswith(triggering_event_id.split('/')[-1])][0]
         tribe_thread.join()
         self.running_tribes.pop(triggering_event_id)
