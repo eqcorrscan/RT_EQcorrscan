@@ -13,7 +13,6 @@ import logging
 import copy
 import numpy
 import gc
-import multiprocessing as mp
 
 # from pympler import summary, muppy
 
@@ -21,13 +20,13 @@ from typing import Union, List
 
 from obspy import Stream, UTCDateTime, Inventory
 from matplotlib.figure import Figure
+from multiprocessing import Process
 from eqcorrscan import Tribe, Template, Party, Detection
 
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
 from rt_eqcorrscan.config.notification import Notifier
 from rt_eqcorrscan.event_trigger.triggers import average_rate
 
-mp.set_start_method("spawn")
 Logger = logging.getLogger(__name__)
 
 
@@ -262,14 +261,11 @@ class RealTimeTribe(Tribe):
 
         Takes the same arguments as `run`.
         """
-        from multiprocessing import Process
-
         self.busy = True
         detecting_thread = Process(
             target=self._bg_run,
             args=args, kwargs=kwargs,
             name="DetectingProcess_{0}".format(self.name))
-        # detecting_thread.daemon = True
         detecting_thread.start()
         self._detecting_thread = detecting_thread
         Logger.info("Started detecting")

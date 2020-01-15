@@ -75,7 +75,8 @@ class ReactorTests(unittest.TestCase):
             listener=self.listener, trigger_func=self.trigger_func,
             template_database=self.template_bank,
             template_lookup_kwargs=dict(),
-            real_time_tribe_kwargs=dict(),
+            real_time_tribe_kwargs=dict(
+                threshold=8, threshold_type="MAD", trig_int=2),
             plot_kwargs=dict(),
             listener_kwargs=dict(make_templates=False))
         trigger_event = Event(

@@ -172,7 +172,7 @@ class Reactor(object):
                     eventid=working_ids)
             else:
                 working_cat = []
-            Logger.info("Currently analysing a catalog of {0} events".format(
+            Logger.debug("Currently analysing a catalog of {0} events".format(
                 len(working_cat)))
 
             # Check if new events should be in one of the already running
@@ -184,9 +184,10 @@ class Reactor(object):
                         eventid=e.resource_id) for e in add_events],
                     maximum_backfill=maximum_backfill,
                     **self.real_time_tribe_kwargs)
-                self.running_template_ids.update(added_ids)
-                working_cat.events = [e for e in working_cat
-                                      if e not in add_events]
+                if added_ids:
+                    self.running_template_ids.update(added_ids)
+                    working_cat.events = [e for e in working_cat
+                                          if e not in add_events]
             trigger_events = self.trigger_func(working_cat)
             for trigger_event in trigger_events:
                 if trigger_event not in self.triggered_events:
@@ -252,8 +253,6 @@ class Reactor(object):
             Whether to run the real-time tribe immediately (True),
             or return it (False).
         """
-        process_length = self.real_time_tribe_kwargs.get(
-            "process_len", None)
         min_stations = self.listener_kwargs.get("min_stations", None)
         region = estimate_region(triggering_event)
         if region is None:
@@ -270,20 +269,10 @@ class Reactor(object):
             return None, None
         Logger.info("Checking tribe quality: removing templates with "
                     "fewer than {0} stations".format(min_stations))
-        tribe = check_tribe_quality(tribe, min_stations=min_stations)
+        tribe = check_tribe_quality(
+            tribe, min_stations=min_stations,
+            **self.listener_kwargs["template_kwargs"])
         Logger.info("Tribe now contains {0} templates".format(len(tribe)))
-        # Enforce process-len
-        if process_length is not None:
-            warn = False
-            for template in tribe:
-                if template.process_length != process_length:
-                    warn = True
-                    template.process_length = process_length
-            if warn:
-                Logger.warning(
-                    "Changing process-length to {0}, this may "
-                    "degrade correlations slightly.".format(
-                        process_length))
         inventory = get_inventory(
             self.client, tribe, triggering_event=triggering_event,
             max_distance=self.max_station_distance,

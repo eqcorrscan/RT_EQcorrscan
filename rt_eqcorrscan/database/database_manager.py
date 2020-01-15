@@ -565,6 +565,12 @@ def check_tribe_quality(
     tribe: Tribe,
     seed_ids: set = None,
     min_stations: int = None,
+    lowcut: float = None,
+    highcut: float = None,
+    filt_order: int = None,
+    samp_rate: float = None,
+    process_len: float = None,
+    *args, **kwargs
 ) -> Tribe:
     """
     Check that templates in the tribe have channels all the same length.
@@ -578,11 +584,25 @@ def check_tribe_quality(
         then all channels will be included
     min_stations
         Minimum number of stations for a template to be included.
+    lowcut
+        Desired template processing lowcut in Hz, if None, will not check
+    highcut
+        Desired template processing highcut in Hz, if None, will not check
+    filt_order
+        Desired template filter order, if None, will not check
+    samp_rate
+        Desired template sampling rate in Hz, if None, will not check
+    process_len
+        Desired template processing length in s, if None, will not check
 
     Returns
     -------
     A filtered tribe.
     """
+    processing_keys = dict(
+        lowcut=lowcut, highcut=highcut, filt_order=filt_order,
+        samp_rate=samp_rate, process_length=process_len)
+    Logger.info("Checking processing parameters: {0}".format(processing_keys))
     min_stations = min_stations or 0
     _templates = []
     # Perform length check
@@ -598,6 +618,19 @@ def check_tribe_quality(
                 if tr.stats.npts == counted_lengths.most_common(1)[0][0]:
                     _template.st += tr
             _templates.append(_template)
+        else:
+            _templates.append(template)
+    templates = _templates
+
+    # Check processing parameters
+    _templates = []
+    for template in tribe:
+        for processing_key, processing_value in processing_keys.items():
+            if processing_value and template.__dict__[processing_key] != processing_value:
+                Logger.warning("Template {0}: {1} does not match {2}".format(
+                    processing_key, template.__dict__[processing_key],
+                    processing_value))
+                break
         else:
             _templates.append(template)
     templates = _templates

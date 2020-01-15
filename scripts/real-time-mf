@@ -95,7 +95,8 @@ def run_real_time_matched_filter(**kwargs):
 
     tribe = check_tribe_quality(
         tribe=tribe, seed_ids=used_channels,
-        min_stations=config.database_manager.min_stations)
+        min_stations=config.database_manager.min_stations,
+        **config.template)
 
     Logger.info("After some QC there are {0} templates in the Tribe".format(
         len(tribe)))
