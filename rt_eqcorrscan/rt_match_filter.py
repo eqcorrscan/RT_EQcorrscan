@@ -507,9 +507,9 @@ class RealTimeTribe(Tribe):
                     tr for tr in st
                     if _numpy_len(tr.data) >= (.8 * self.minimum_data_for_detection)]
                 Logger.info("Starting detection run")
-                Logger.info("Using data: \n{0}".format(st.__str__(extended=True)))
+                Logger.debug("Using data: \n{0}".format(st.__str__(extended=True)))
                 try:
-                    Logger.info("Currently have {0} templates in tribe".format(
+                    Logger.debug("Currently have {0} templates in tribe".format(
                         len(self)))
                     new_party = self.detect(
                         stream=st, plot=False, threshold=threshold,

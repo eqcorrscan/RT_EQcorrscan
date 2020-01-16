@@ -302,11 +302,10 @@ class Config(object):
         console_handler.setFormatter(
             logging.Formatter(self.log_formatter))
         # logging.basicConfig(
-        #     level=self.log_level, format=self.log_formatter)
-        # logging.getLogger().addHandler(rotating_handler)
+        #     level=self.log_level, format=self.log_formatter,
+        #     handlers=[rotating_handler, console_handler])
         logging.basicConfig(
-            level=self.log_level, format=self.log_formatter,
-            handlers=[rotating_handler, console_handler])
+            level=self.log_level, format=self.log_formatter)
 
 
 def read_config(config_file=None) -> Config:

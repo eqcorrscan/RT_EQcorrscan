@@ -624,7 +624,7 @@ def check_tribe_quality(
 
     # Check processing parameters
     _templates = []
-    for template in tribe:
+    for template in templates:
         for processing_key, processing_value in processing_keys.items():
             if processing_value and template.__dict__[processing_key] != processing_value:
                 Logger.warning("Template {0}: {1} does not match {2}".format(
