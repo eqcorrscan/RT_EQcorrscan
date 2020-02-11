@@ -13,7 +13,7 @@ pytest-xdist
 pytest-rerunfailures
 pytest-mpl
 pyyaml
-pyfftw
+pyfftw>=0.12.0
 pyproj<2
 codecov
 EQcorrscan>=0.3.0
