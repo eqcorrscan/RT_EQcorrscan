@@ -425,7 +425,7 @@ def _download_and_make_template(
     template.name = event.resource_id.id.split('/')[-1]
     # Edit comment to reflect new template_name
     for comment in template.event.comments:
-        if comment.text.startswith("eqcorrscan_template_"):
+        if comment.text and comment.text.startswith("eqcorrscan_template_"):
             comment.text = "eqcorrscan_template_{0}".format(template.name)
     return template
 

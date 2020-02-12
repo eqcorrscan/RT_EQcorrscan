@@ -171,7 +171,7 @@ class Reactor(object):
                     eventid=working_ids)
             else:
                 working_cat = []
-            Logger.info("Currently analysing a catalog of {0} events".format(
+            Logger.debug("Currently analysing a catalog of {0} events".format(
                 len(working_cat)))
 
             # Check if new events should be in one of the already running
