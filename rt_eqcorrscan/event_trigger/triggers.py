@@ -6,6 +6,7 @@ Author
 License
     GPL v3.0
 """
+import logging
 from typing import Union, List, Optional
 
 from obspy import UTCDateTime
@@ -15,6 +16,8 @@ from obspy.geodetics import locations2degrees
 from eqcorrscan.core.match_filter import Detection
 
 from rt_eqcorrscan.event_trigger.listener import event_time
+
+Logger = logging.getLogger(__name__)
 
 
 def get_nearby_events(

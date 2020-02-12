@@ -27,6 +27,7 @@ Logger = logging.getLogger(__name__)
 def run(**kwargs):
     config = read_config(config_file=kwargs.get("config_file", None))
     debug = kwargs.get("debug", False)
+    update_bank = kwargs.get("update_bank", True)
     if debug:
         config.log_level = "DEBUG"
         print("Using the following configuration:\n{0}".format(config))
@@ -48,6 +49,10 @@ def run(**kwargs):
         event_format=config.database_manager.event_format,
         path_structure=config.database_manager.path_structure,
         event_ext=config.database_manager.event_ext)
+
+    if update_bank:
+        Logger.info("Updating bank before running")
+        template_bank.update_index()
 
     listener = CatalogListener(
         client=client,
@@ -85,8 +90,13 @@ if __name__ == "__main__":
         required=False)
     parser.add_argument(
         "--debug", action="store_true", help="Flag to set log level to debug")
+    parser.add_argument(
+        "-u", "--update-bank", action="store_true",
+        help="Flag to update template bank index before running, use if events"
+             " have been manually added")
 
     args = parser.parse_args()
 
-    kwargs.update({"debug": args.debug, "config_file": args.config})
+    kwargs.update({"debug": args.debug, "config_file": args.config,
+                   "update_bank": args.update_bank})
     run(**kwargs)

@@ -165,14 +165,13 @@ class Reactor(object):
         self._run_start = UTCDateTime.now()
         # Query the catalog in the listener every so often and check
         while True:
-            Logger.debug(self.listener)
             if len(self.listener.old_events) > 0:
                 working_ids = list(zip(*self.listener.old_events))[0]
                 working_cat = self.template_database.get_events(
                     eventid=working_ids)
             else:
                 working_cat = []
-            Logger.debug("Currently analysing a catalog of {0} events".format(
+            Logger.info("Currently analysing a catalog of {0} events".format(
                 len(working_cat)))
 
             # Check if new events should be in one of the already running
@@ -273,6 +272,8 @@ class Reactor(object):
             tribe, min_stations=min_stations,
             **self.listener_kwargs["template_kwargs"])
         Logger.info("Tribe now contains {0} templates".format(len(tribe)))
+        if len(tribe) == 0:
+            return None, None
         inventory = get_inventory(
             self.client, tribe, triggering_event=triggering_event,
             max_distance=self.max_station_distance,
