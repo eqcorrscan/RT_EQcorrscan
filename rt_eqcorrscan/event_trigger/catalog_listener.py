@@ -315,7 +315,7 @@ class CatalogListener(_Listener):
                         self.template_bank.put_events(new_events)
                     # Putting the events in the bank clears the catalog.
                     self.old_events.extend(event_info)
-                    Logger.info("Old events current state: {0}".format(
+                    Logger.debug("Old events current state: {0}".format(
                         self.old_events))
             self.previous_time = now
             time.sleep(self.interval)
