@@ -413,9 +413,13 @@ def _download_and_make_template(
         save_raw=save_raw)
     Logger.debug("Downloaded {0} traces for event {1}".format(
         len(st), event.resource_id))
-    tribe = Tribe().construct(
-        method="from_meta_file", meta_file=Catalog([event]), st=st,
-        process_len=download_data_len, **kwargs)
+    try:
+        tribe = Tribe().construct(
+            method="from_meta_file", meta_file=Catalog([event]), st=st,
+            process_len=download_data_len, **kwargs)
+    except Exception as e:
+        Logger.error(e)
+        return None
     try:
         template = tribe[0]
         Logger.info("Made template: {0}".format(template))
