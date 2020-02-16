@@ -491,7 +491,7 @@ class RealTimeTribe(Tribe):
             while self.busy:
                 self._running = True  # Lock tribe
                 start_time = UTCDateTime.now()
-                st = self.rt_client.get_stream().merge()
+                st = self.rt_client.get_stream().split().merge() # Split to remove trailing mask
                 if len(st) == 0:
                     Logger.warning("No data")
                     continue
