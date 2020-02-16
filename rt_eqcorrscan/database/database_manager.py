@@ -411,6 +411,8 @@ def _download_and_make_template(
         download_data_len=download_data_len, path_structure=path_structure,
         bank_path=bank_path, template_name_structure=template_name_structure,
         save_raw=save_raw)
+    if st is None:
+        return None
     Logger.debug("Downloaded {0} traces for event {1}".format(
         len(st), event.resource_id))
     try:
@@ -508,6 +510,9 @@ def _get_data_for_event(
         trimmed_stream += tr.slice(
             starttime=pick.time - (.45 * download_data_len),
             endtime=pick.time + (.55 * download_data_len)).copy()
+    if len(trimmed_stream) == 0:
+        Logger.error("No data downloaded, no template.")
+        return None
     if save_raw:
         path = _summarize_event(
             event=event, path_struct=path_structure,
