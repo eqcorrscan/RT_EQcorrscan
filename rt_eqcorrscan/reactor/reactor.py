@@ -14,6 +14,8 @@ from collections import Counter
 from typing import Union, Callable
 from multiprocessing import cpu_count
 
+from dask.distributed import Client as DaskClient
+
 from obspy import Inventory, UTCDateTime
 from obspy.core.event import Event
 from obspy.clients.fdsn.client import FDSNNoDataException
@@ -74,6 +76,9 @@ class Reactor(object):
         in `real_time_tribe_kwargs`.
     notifier
         Notifier that will send messages about triggers.
+    dask_client
+        Client for running real-time tribes on. Defaults to running on a local
+        machine-bound cluster
 
     Notes
     -----
@@ -97,6 +102,7 @@ class Reactor(object):
     max_station_distance = 1000
     n_stations = 10
     sleep_step = 15
+    dask_client_kwargs = dict()
 
     # The threads that are detecting away!
     detecting_processes = []
@@ -114,6 +120,7 @@ class Reactor(object):
         real_time_tribe_kwargs: dict,
         plot_kwargs: dict,
         notifier: Notifier = None,
+        dask_client: DaskClient = None,
     ):
         self.client = client
         self.rt_client = rt_client
@@ -125,6 +132,7 @@ class Reactor(object):
         self.plot_kwargs = plot_kwargs
         self.listener_kwargs = listener_kwargs
         self.notifier = notifier or Notifier()
+        self.dask_client = dask_client or DaskClient()
         # Time-keepers
         self._run_start = None
         self.up_time = 0
@@ -224,7 +232,9 @@ class Reactor(object):
         if real_time_tribe is None:
             return
         Logger.info("Starting real-time tribe")
-        real_time_tribe.background_run(**real_time_tribe_kwargs)
+        real_time_tribe.background_run(
+            client=self.dask_client, client_kwargs=self.dask_client_kwargs,
+            **real_time_tribe_kwargs)
         self.detecting_processes.append(real_time_tribe._detecting_thread)
         Logger.info("Started detector thread - continuing listening")
 

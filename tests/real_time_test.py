@@ -6,11 +6,14 @@ import unittest
 import os
 import shutil
 import glob
+import time
 
 from eqcorrscan import Tribe, Party
 from eqcorrscan.utils import catalog_utils
 from obspy import UTCDateTime
 from obspy.clients.fdsn import Client
+
+from dask.distributed import Client as DaskClient
 
 from rt_eqcorrscan.rt_match_filter import RealTimeTribe
 from rt_eqcorrscan.streaming import RealTimeClient
@@ -70,6 +73,23 @@ class RealTimeTribeTest(unittest.TestCase):
         party += rt_tribe.run(
             threshold=6, threshold_type="MAD", trig_int=3,
             max_run_length=20, detect_directory=self.detect_dir)
+
+    def test_background_run(self):
+        tribe = self.tribe.copy()
+        for template in tribe:
+            template.process_length = 60
+        rt_client = RealTimeClient(
+            server_url="link.geonet.org.nz", buffer_capacity=90,)
+        rt_tribe = RealTimeTribe(
+            tribe=tribe, rt_client=rt_client, detect_interval=5, plot=False)
+        rt_tribe.background_run(
+            client=DaskClient(),
+            threshold=6, threshold_type="MAD", trig_int=3, max_run_length=50,
+            detect_directory=self.detect_dir)
+        time.sleep(40)
+        self.assertFalse(rt_tribe._detecting_thread.done())
+        time.sleep(25)
+        self.assertTrue(rt_tribe._detecting_thread.done())
 
     def test_station_overlap(self):
         rt_client = RealTimeClient(

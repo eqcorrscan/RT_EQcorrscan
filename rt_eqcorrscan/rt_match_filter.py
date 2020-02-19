@@ -20,7 +20,8 @@ from typing import Union, List
 
 from obspy import Stream, UTCDateTime, Inventory
 from matplotlib.figure import Figure
-from multiprocessing import Process
+# from multiprocessing import Process
+from dask.distributed import Client as DaskClient
 from eqcorrscan import Tribe, Template, Party, Detection
 
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
@@ -255,19 +256,26 @@ class RealTimeTribe(Tribe):
         while self.busy:
             self.run(*args, **kwargs)
 
-    def background_run(self, *args, **kwargs):
+    def background_run(
+            self,
+            client: DaskClient,
+            client_kwargs: dict = None,
+            *args, **kwargs):
         """
         Run the RealTimeTribe in the background.
 
-        Takes the same arguments as `run`.
+        Takes the same arguments as `run`, alongside a Dask Distributed Client.
         """
         self.busy = True
-        detecting_thread = Process(
-            target=self._bg_run,
-            args=args, kwargs=kwargs,
-            name="DetectingProcess_{0}".format(self.name))
-        detecting_thread.start()
-        self._detecting_thread = detecting_thread
+        # detecting_thread = Process(
+        #     target=self._bg_run,
+        #     args=args, kwargs=kwargs,
+        #     name="DetectingProcess_{0}".format(self.name))
+        # detecting_thread.start()
+        client_kwargs = client_kwargs or dict()
+        client_kwargs.update({"key": f"DetectingProcess_{self.name}"})
+        self._detecting_thread = client.submit(
+            self._bg_run, *args, **client_kwargs, **kwargs)
         Logger.info("Started detecting")
 
     def add_templates(
@@ -363,7 +371,8 @@ class RealTimeTribe(Tribe):
         self.busy = False
         self._running = False
         if self._detecting_thread is not None:
-            self._detecting_thread.join()
+            # self._detecting_thread.join()
+            self._detecting_thread.cancel()
 
     def run(
         self,
@@ -515,7 +524,8 @@ class RealTimeTribe(Tribe):
                         stream=st, plot=False, threshold=threshold,
                         threshold_type=threshold_type, trig_int=trig_int,
                         xcorr_func="fftw", concurrency="concurrent",
-                        process_cores=2, ignore_bad_data=True, **kwargs)
+                        process_cores=None, parallel_process=False,
+                        ignore_bad_data=True, **kwargs)
                 except Exception as e:  # pragma: no cover
                     Logger.error(e)
                     Logger.error(traceback.format_exc())
