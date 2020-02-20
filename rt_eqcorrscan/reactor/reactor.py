@@ -207,35 +207,6 @@ class Reactor(object):
             gc.collect()
             time.sleep(self.sleep_step)
 
-    def background_spin_up(
-        self,
-        triggering_event: Event,
-    ) -> None:
-        """
-        Spin up a detection run in a background process.
-
-        Parameters
-        ----------
-        triggering_event
-            Event that triggered this run - needs to have at-least an origin.
-        """
-        real_time_tribe, real_time_tribe_kwargs = self.spin_up(
-            triggering_event=triggering_event, run=False)
-        if real_time_tribe is None:
-            return
-        Logger.info("Starting real-time tribe")
-        real_time_tribe.background_run(**real_time_tribe_kwargs)
-        self.detecting_processes.append(real_time_tribe._detecting_thread)
-        Logger.info("Started detector thread - continuing listening")
-
-    def stop(self) -> None:
-        """Stop all the processes."""
-        for event_id in self.running_tribes.keys():
-            self.stop_tribe(event_id)
-        for detecting_thread in self.detecting_processes:
-            detecting_thread.join()
-        self.listener.background_stop()
-
     def spin_up(
         self,
         triggering_event: Event,
@@ -310,6 +281,27 @@ class Reactor(object):
         else:
             return real_time_tribe, real_time_tribe_kwargs
 
+    def background_spin_up(
+        self,
+        triggering_event: Event,
+    ) -> None:
+        """
+        Spin up a detection run in a background process.
+
+        Parameters
+        ----------
+        triggering_event
+            Event that triggered this run - needs to have at-least an origin.
+        """
+        real_time_tribe, real_time_tribe_kwargs = self.spin_up(
+            triggering_event=triggering_event, run=False)
+        if real_time_tribe is None:
+            return
+        Logger.info("Starting real-time tribe")
+        real_time_tribe.background_run(**real_time_tribe_kwargs)
+        self.detecting_processes.append(real_time_tribe._detecting_thread)
+        Logger.info("Started detector thread - continuing listening")
+
     def stop_tribe(self, triggering_event_id: str = None) -> None:
         """
         Stop a specific tribe.
@@ -332,6 +324,14 @@ class Reactor(object):
         if self._plotting == triggering_event_id:
             self._plotting = None  # Allow new plots
         return None
+
+    def stop(self) -> None:
+        """Stop all the processes."""
+        for event_id in self.running_tribes.keys():
+            self.stop_tribe(event_id)
+        for detecting_thread in self.detecting_processes:
+            detecting_thread.join()
+        self.listener.background_stop()
 
 
 def get_inventory(
