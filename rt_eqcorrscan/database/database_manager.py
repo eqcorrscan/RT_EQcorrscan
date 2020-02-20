@@ -497,7 +497,11 @@ def _get_data_for_event(
             except Exception as e:
                 Logger.error(e)
     # Trim to expected length
-    st.merge()
+    try:
+        st.merge()
+    except Exception as e:
+        Logger.error(e)
+        return None
     # Cope with multiple picks on the same channel at different times.
     trimmed_stream = Stream()
     for pick in event.picks:
