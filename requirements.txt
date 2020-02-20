@@ -18,3 +18,4 @@ pyproj<2
 codecov
 EQcorrscan>=0.3.0
 notifiers
+urllib3>=1.24.3
