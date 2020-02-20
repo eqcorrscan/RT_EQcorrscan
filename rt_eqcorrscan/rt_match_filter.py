@@ -60,6 +60,7 @@ class RealTimeTribe(Tribe):
         Channels to exclude from plotting
     """
     notifier = Notifier()
+    process_cores = 2
     _running = False
     _detecting_thread = None
     busy = False
@@ -346,7 +347,7 @@ class RealTimeTribe(Tribe):
             stream=st, plot=False, threshold=threshold,
             threshold_type=threshold_type, trig_int=trig_int,
             xcorr_func="fftw", concurrency="concurrent",
-            process_cores=2, **kwargs)
+            process_cores=self.process_cores, **kwargs)
         while self._running:
             time.sleep(1)  # Wait until lock is released to add detections
         self._handle_detections(
@@ -515,7 +516,8 @@ class RealTimeTribe(Tribe):
                         stream=st, plot=False, threshold=threshold,
                         threshold_type=threshold_type, trig_int=trig_int,
                         xcorr_func="fftw", concurrency="concurrent",
-                        process_cores=2, ignore_bad_data=True, **kwargs)
+                        process_cores=self.process_cores,
+                        ignore_bad_data=True, **kwargs)
                 except Exception as e:  # pragma: no cover
                     Logger.error(e)
                     Logger.error(traceback.format_exc())
