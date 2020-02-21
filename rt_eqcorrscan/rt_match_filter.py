@@ -68,6 +68,7 @@ class RealTimeTribe(Tribe):
     # Speed-up for simulated runs - do not change for real-time!
     _max_wait_length = 60.
     _fig = None
+    _tribe_file = "tribe.tgz"
 
     def __init__(
         self,
@@ -252,25 +253,6 @@ class RealTimeTribe(Tribe):
             pass
         return
 
-    def background_run(self, *args, **kwargs):
-        """
-        Run the RealTimeTribe in the background.
-
-        Takes the same arguments as `run`.
-        """
-        self.busy = True
-        detecting_thread = Process(
-            target=self._bg_run,
-            args=args, kwargs=kwargs,
-            name="DetectingProcess_{0}".format(self.name))
-        detecting_thread.start()
-        self._detecting_thread = detecting_thread
-        Logger.info("Started detecting")
-
-    def _bg_run(self, *args, **kwargs):
-        while self.busy:
-            self.run(*args, **kwargs)
-
     def run(
         self,
         threshold: float,
@@ -444,6 +426,15 @@ class RealTimeTribe(Tribe):
                 self._remove_old_detections(last_data - keep_detections)
                 Logger.info("Party now contains {0} detections".format(
                     len(self.detections)))
+                self._running = False  # Release lock
+                # See if there are templates to be added and run.
+                self._add_templates_from_disk(
+                    threshold=threshold, threshold_type=threshold_type,
+                    trig_int=trig_int, keep_detections=keep_detections,
+                    detect_directory=detect_directory,
+                    plot_detections=plot_detections,
+                    save_waveforms=save_waveforms, maximum_backfill=first_data,
+                    endtime=None)
                 run_time = UTCDateTime.now() - start_time
                 Logger.info("Detection took {0:.2f}s".format(run_time))
                 if self.detect_interval <= run_time:
@@ -456,7 +447,6 @@ class RealTimeTribe(Tribe):
                 Logger.info("Waiting {0:.2f}s until next run".format(
                     self.detect_interval - run_time))
                 detection_iteration += 1
-                self._running = False  # Release lock
                 time.sleep((self.detect_interval - run_time) / self._speed_up)
                 if max_run_length and UTCDateTime.now() > run_start + max_run_length:
                     Logger.info("Hit maximum run time, stopping.")
@@ -478,6 +468,29 @@ class RealTimeTribe(Tribe):
         finally:
             self.stop()
         return self.party
+
+    def _add_templates_from_disk(
+        self,
+        threshold: float,
+        threshold_type: str,
+        trig_int: float,
+        keep_detections: float = 86400,
+        detect_directory: str = "{name}/detections",
+        plot_detections: bool = True,
+        save_waveforms: bool = True,
+        maximum_backfill: float = None,
+        endtime: UTCDateTime = None,
+        **kwargs
+    ):
+        if not os.path.isfile(self._tribe_file):
+            return
+        new_tribe = Tribe().read(self._tribe_file)
+        self.add_templates(
+            new_tribe, threshold=threshold, threshold_type=threshold_type,
+            trig_int=trig_int, keep_detections=keep_detections,
+            detect_directory=detect_directory, plot_detections=plot_detections,
+            save_waveforms=save_waveforms, maximum_backfill=maximum_backfill,
+            endtime=endtime, **kwargs)
 
     def add_templates(
         self,

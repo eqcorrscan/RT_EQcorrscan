@@ -71,14 +71,7 @@ def run(**kwargs):
     reactor = Reactor(
         client=client, rt_client=rt_client,
         listener=listener, trigger_func=trigger_func,
-        template_database=template_bank,
-        template_lookup_kwargs=dict(
-            starttime=config.database_manager.lookup_starttime),
-        real_time_tribe_kwargs=config.rt_match_filter,
-        plot_kwargs=config.plot,
-        listener_kwargs=dict(
-            min_stations=config.database_manager.min_stations,
-            template_kwargs=config.template))
+        template_database=template_bank, config=config)
     reactor.run()
     return
 

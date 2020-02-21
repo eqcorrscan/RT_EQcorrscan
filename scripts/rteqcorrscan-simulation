@@ -21,7 +21,7 @@ from concurrent.futures import ProcessPoolExecutor
 
 from rt_eqcorrscan import TemplateBank, RealTimeTribe
 from rt_eqcorrscan.config.config import TemplateConfig, PlotConfig
-from rt_eqcorrscan.reactor.reactor import get_inventory
+from rt_eqcorrscan.reactor.spin_up import get_inventory
 from rt_eqcorrscan.streaming.simulate import SimulateRealTimeClient
 from rt_eqcorrscan.database.database_manager import check_tribe_quality
 from rt_eqcorrscan.database.client_emulation import ClientBank
@@ -58,7 +58,7 @@ def synthesise_real_time(
 ):
     """
     """
-    bank = TemplateBank(database_path) #, executor=ProcessPoolExecutor())
+    bank = TemplateBank(database_path, executor=ProcessPoolExecutor())
     full_template_kwargs = TemplateConfig().__dict__
     full_template_kwargs.update(template_kwargs)
 
@@ -108,9 +108,9 @@ def synthesise_real_time(
                         endtime=detection_starttime + detection_runtime)
                 except Exception as e:
                     Logger.error(
-                        f"Could not download data for "
-                         "{network.code}.{station.code}."
-                         "{channel.location_code}.{channel.code}")
+                        "Could not download data for "
+                        f"{network.code}.{station.code}."
+                        f"{channel.location_code}.{channel.code}")
                     Logger.error(e)
                     continue
                 wavebank.put_waveforms(st)
@@ -128,6 +128,7 @@ def synthesise_real_time(
         plot_options=full_plot_kwargs,
         name=triggering_event.resource_id.id.split('/')[-1])
 
+    # TODO: Use the subprocess methods in Reactor - simulate a reactor...
     rt_tribe.background_run(
         threshold=threshold, threshold_type=threshold_type, trig_int=trig_int)
     
@@ -178,7 +179,6 @@ def synthesise_real_time(
         last_query_time = run_time
         run_time = run_time + (query_interval / speed_up)
     rt_tribe.stop()
-
 
 
 if __name__ == "__main__":
