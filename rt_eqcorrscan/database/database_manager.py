@@ -9,23 +9,21 @@ License
 
 import logging
 import os
-import time
 
 from pathlib import Path
 from collections import Counter
-from os.path import exists, getmtime
 
 from typing import Optional, Union, Callable, Iterable
 from concurrent.futures import Executor
 from functools import partial
 
-import obsplus
 from obsplus import EventBank
 from obsplus.constants import (
     EVENT_NAME_STRUCTURE, EVENT_PATH_STRUCTURE, get_events_parameters)
-from obsplus.utils import compose_docstring
-from obsplus.bank.utils import (
-    _get_path, _get_event_origin_time, _get_time_values, _summarize_event)
+from obsplus.utils.docs import compose_docstring
+from obsplus.utils.bank import _get_path, _get_time_values
+from obsplus.utils.events import _summarize_event
+from obsplus.utils.time import _get_event_origin_time
 
 from obspy import Catalog, Stream
 from obspy.core.event import Event
@@ -296,7 +294,13 @@ class TemplateBank(EventBank):
         for t in templates:
             assert(isinstance(t, Template))
         catalog = Catalog([t.event for t in templates])
+        # Temporary blocking of parallel processing in obsplus put_events,
+        # see https://github.com/niosh-mining/obsplus/issues/158
+        _exec = self.executor
+        self.executor = None
         self.put_events(catalog, update_index=update_index)
+        self.executor = _exec
+        # End of temporary blocking
         inner_put_template = partial(
             _put_template, path_structure=self.path_structure,
             template_name_structure=self.template_name_structure,
