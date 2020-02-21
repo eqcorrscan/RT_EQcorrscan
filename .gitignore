@@ -14,3 +14,4 @@ detections
 tests/database_tests/db
 .ipynb_checkpoints
 docs/examples/template_bank
+.index.db
