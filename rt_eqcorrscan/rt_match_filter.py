@@ -60,6 +60,7 @@ class RealTimeTribe(Tribe):
         Channels to exclude from plotting
     """
     notifier = Notifier()
+    process_cores = 2
     _running = False
     _detecting_thread = None
     busy = False
@@ -251,10 +252,6 @@ class RealTimeTribe(Tribe):
             pass
         return
 
-    def _bg_run(self, *args, **kwargs):
-        while self.busy:
-            self.run(*args, **kwargs)
-
     def background_run(self, *args, **kwargs):
         """
         Run the RealTimeTribe in the background.
@@ -270,100 +267,9 @@ class RealTimeTribe(Tribe):
         self._detecting_thread = detecting_thread
         Logger.info("Started detecting")
 
-    def add_templates(
-        self,
-        templates: Union[List[Template], Tribe],
-        threshold: float,
-        threshold_type: str,
-        trig_int: float,
-        keep_detections: float = 86400,
-        detect_directory: str = "{name}/detections",
-        plot_detections: bool = True,
-        save_waveforms: bool = True,
-        maximum_backfill: float = None,
-        endtime: UTCDateTime = None,
-        **kwargs
-    ) -> set:
-        """
-        Add templates to the tribe.
-
-        This method will run the new templates back in time, then append the
-        templates to the already running tribe.
-
-        Parameters
-        ----------
-        templates
-            New templates to add to the tribe.
-        threshold
-            Threshold for detection
-        threshold_type
-            Type of threshold to use. See
-            `eqcorrscan.core.match_filter.Tribe.detect` for options.
-        trig_int
-            Minimum inter-detection time in seconds.
-        keep_detections
-            Duration to store detection in memory for in seconds.
-        detect_directory
-            Relative path to directory for detections. This directory will be
-            created if it doesn't exist - tribe name will be appended to this
-            string to give the directory name.
-        plot_detections
-            Whether to plot detections or not - plots will be saved to the
-            `detect_directory` as png images.
-        save_waveforms
-            Whether to save waveforms of detections or not - waveforms
-            will be saved in the `detect_directory` as miniseed files.
-        maximum_backfill
-            Time in seconds to backfill to - if this is larger than the
-            difference between the time now and the time that the tribe
-            started, then it will backfill to when the tribe started.
-        endtime
-            Time to stop the backfill, if None will run to now.
-
-        Returns
-        -------
-            Complete set of template names after addition
-        """
-        while self._running:
-            time.sleep(1)  # Wait until the lock is released
-        self.templates.extend(templates)
-        if isinstance(templates, list):
-            templates = Tribe(templates)
-        # Get the stream
-        endtime = endtime or UTCDateTime.now()
-        if maximum_backfill is not None:
-            starttime = endtime - maximum_backfill
-        else:
-            starttime = UTCDateTime(0)
-        if starttime >= endtime or self.rt_client.wavebank is None:
-            return
-        bulk = [tuple(chan.split('.').extend([starttime, endtime]))
-                for chan in self.expected_channels]
-        st = self.rt_client.wavebank.get_waveforms_bulk(bulk)
-        Logger.debug("Additional templates to be run: \n{0} "
-                     "templates".format(len(templates)))
-        new_party = templates.detect(
-            stream=st, plot=False, threshold=threshold,
-            threshold_type=threshold_type, trig_int=trig_int,
-            xcorr_func="fftw", concurrency="concurrent",
-            process_cores=2, **kwargs)
-        while self._running:
-            time.sleep(1)  # Wait until lock is released to add detections
-        self._handle_detections(
-            new_party=new_party, detect_directory=detect_directory,
-            endtime=endtime - keep_detections, plot_detections=plot_detections,
-            save_waveforms=save_waveforms, st=st, trig_int=trig_int)
-        return set(t.name for t in self.templates)
-
-    def stop(self) -> None:
-        """ Stop the real-time system. """
-        if self.plotter is not None:  # pragma: no cover
-            self.plotter.background_stop()
-        self.rt_client.background_stop()
-        self.busy = False
-        self._running = False
-        if self._detecting_thread is not None:
-            self._detecting_thread.join()
+    def _bg_run(self, *args, **kwargs):
+        while self.busy:
+            self.run(*args, **kwargs)
 
     def run(
         self,
@@ -515,7 +421,8 @@ class RealTimeTribe(Tribe):
                         stream=st, plot=False, threshold=threshold,
                         threshold_type=threshold_type, trig_int=trig_int,
                         xcorr_func="fftw", concurrency="concurrent",
-                        process_cores=2, ignore_bad_data=True, **kwargs)
+                        process_cores=self.process_cores,
+                        ignore_bad_data=True, **kwargs)
                 except Exception as e:  # pragma: no cover
                     Logger.error(e)
                     Logger.error(traceback.format_exc())
@@ -571,6 +478,101 @@ class RealTimeTribe(Tribe):
         finally:
             self.stop()
         return self.party
+
+    def add_templates(
+        self,
+        templates: Union[List[Template], Tribe],
+        threshold: float,
+        threshold_type: str,
+        trig_int: float,
+        keep_detections: float = 86400,
+        detect_directory: str = "{name}/detections",
+        plot_detections: bool = True,
+        save_waveforms: bool = True,
+        maximum_backfill: float = None,
+        endtime: UTCDateTime = None,
+        **kwargs
+    ) -> set:
+        """
+        Add templates to the tribe.
+
+        This method will run the new templates back in time, then append the
+        templates to the already running tribe.
+
+        Parameters
+        ----------
+        templates
+            New templates to add to the tribe.
+        threshold
+            Threshold for detection
+        threshold_type
+            Type of threshold to use. See
+            `eqcorrscan.core.match_filter.Tribe.detect` for options.
+        trig_int
+            Minimum inter-detection time in seconds.
+        keep_detections
+            Duration to store detection in memory for in seconds.
+        detect_directory
+            Relative path to directory for detections. This directory will be
+            created if it doesn't exist - tribe name will be appended to this
+            string to give the directory name.
+        plot_detections
+            Whether to plot detections or not - plots will be saved to the
+            `detect_directory` as png images.
+        save_waveforms
+            Whether to save waveforms of detections or not - waveforms
+            will be saved in the `detect_directory` as miniseed files.
+        maximum_backfill
+            Time in seconds to backfill to - if this is larger than the
+            difference between the time now and the time that the tribe
+            started, then it will backfill to when the tribe started.
+        endtime
+            Time to stop the backfill, if None will run to now.
+
+        Returns
+        -------
+            Complete set of template names after addition
+        """
+        while self._running:
+            time.sleep(1)  # Wait until the lock is released
+        self.templates.extend(templates)
+        if isinstance(templates, list):
+            templates = Tribe(templates)
+        # Get the stream
+        endtime = endtime or UTCDateTime.now()
+        if maximum_backfill is not None:
+            starttime = endtime - maximum_backfill
+        else:
+            starttime = UTCDateTime(0)
+        if starttime >= endtime or self.rt_client.wavebank is None:
+            return
+        bulk = [tuple(chan.split('.').extend([starttime, endtime]))
+                for chan in self.expected_channels]
+        st = self.rt_client.wavebank.get_waveforms_bulk(bulk)
+        Logger.debug("Additional templates to be run: \n{0} "
+                     "templates".format(len(templates)))
+        new_party = templates.detect(
+            stream=st, plot=False, threshold=threshold,
+            threshold_type=threshold_type, trig_int=trig_int,
+            xcorr_func="fftw", concurrency="concurrent",
+            process_cores=self.process_cores, **kwargs)
+        while self._running:
+            time.sleep(1)  # Wait until lock is released to add detections
+        self._handle_detections(
+            new_party=new_party, detect_directory=detect_directory,
+            endtime=endtime - keep_detections, plot_detections=plot_detections,
+            save_waveforms=save_waveforms, st=st, trig_int=trig_int)
+        return set(t.name for t in self.templates)
+
+    def stop(self) -> None:
+        """ Stop the real-time system. """
+        if self.plotter is not None:  # pragma: no cover
+            self.plotter.background_stop()
+        self.rt_client.background_stop()
+        self.busy = False
+        self._running = False
+        if self._detecting_thread is not None:
+            self._detecting_thread.join()
 
 
 def _write_detection(
