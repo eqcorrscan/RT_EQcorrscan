@@ -61,7 +61,8 @@ def _lazy_template_read(path) -> Template:
 
 
 def _summarize_template(
-    template: Template,
+    template: Template = None,
+    event: Event = None,
     path: Optional[str] = None,
     name: Optional[str] = None,
     path_struct: Optional[str] = None,
@@ -74,6 +75,8 @@ def _summarize_template(
     ----------
     template
         The template object
+    event
+        The template event, give either this or the template.
     path
         Other Parameters to the file
     name
@@ -82,11 +85,14 @@ def _summarize_template(
         directory structure to create
     name_struct
     """
-    res_id = str(template.event.resource_id)
+    assert template or event
+    if template:
+        event = template.event
+    res_id = str(event.resource_id)
     out = {
         "ext": TEMPLATE_EXT, "event_id": res_id, "event_id_short": res_id[-5:],
         "event_id_end": res_id.split('/')[-1]}
-    t1 = _get_event_origin_time(template.event)
+    t1 = _get_event_origin_time(event)
     out.update(_get_time_values(t1))
     path_struct = path_struct or EVENT_PATH_STRUCTURE
     name_struct = name_struct or EVENT_NAME_STRUCTURE
@@ -305,6 +311,7 @@ class TemplateBank(EventBank):
         download_data_len: float = 90,
         save_raw: bool = True,
         update_index: bool = True,
+        rebuild: bool = True,
         **kwargs,
     ) -> Tribe:
         """
@@ -332,6 +339,10 @@ class TemplateBank(EventBank):
         update_index
             Flag to indicate whether or not to update the event index after
             writing the new events.
+        rebuild
+            Flag to indicate whether templates already existing in the
+            TemplateBank should be re-generated. `True` will overwrite existing
+            templates.
         kwargs
             Keyword arguments supported by EQcorrscan's `Template.construct`
             method. Requires at least:
@@ -360,7 +371,7 @@ class TemplateBank(EventBank):
                 path_structure=self.path_structure,
                 bank_path=self.bank_path,
                 template_name_structure=self.template_name_structure,
-                save_raw=save_raw, **kwargs)
+                save_raw=save_raw, rebuild=rebuild, **kwargs)
             template_iterable = self.executor.map(
                 inner_download_and_make_template, catalog)
             tribe = Tribe([t for t in template_iterable if t is not None])
@@ -396,10 +407,21 @@ def _download_and_make_template(
     bank_path: str,
     template_name_structure: str,
     save_raw: bool,
+    rebuild: bool,
     **kwargs,
 ) -> Template:
     """ Make the template using downloaded data"""
     Logger.debug("Making template for event {0}".format(event.resource_id))
+    if not rebuild:
+        path = _summarize_template(
+            event=event, path_struct=path_structure,
+            name_struct=template_name_structure)["path"]
+        ppath = (Path(bank_path) / path).absolute()
+        ppath.parent.mkdir(parents=True, exist_ok=True)
+        output_path = str(ppath)
+        if os.path.isfile(output_path):
+            Logger.debug("Template exists and rebuild=False, skipping")
+            return read_template(output_path)
     _process_len = kwargs.pop("process_len", download_data_len)
     if _process_len > download_data_len:
         Logger.info(

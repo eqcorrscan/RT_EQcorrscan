@@ -2,6 +2,10 @@
 """
 Script to run the real-time matched filter for a given region or earthquake.
 
+Author
+    Calum J Chamberlain
+License
+    GPL v3.0
 """
 
 import logging

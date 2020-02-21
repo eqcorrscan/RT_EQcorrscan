@@ -3,6 +3,10 @@
 Script to listen to an event service and start real-time matched-filter
 detection when triggered.
 
+Author
+    Calum J Chamberlain
+License
+    GPL v3.0
 """
 
 import logging
