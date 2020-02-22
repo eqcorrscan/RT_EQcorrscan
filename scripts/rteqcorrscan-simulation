@@ -22,7 +22,7 @@ from concurrent.futures import ProcessPoolExecutor
 from rt_eqcorrscan import TemplateBank, RealTimeTribe
 from rt_eqcorrscan.config.config import TemplateConfig, PlotConfig
 from rt_eqcorrscan.reactor.spin_up import get_inventory
-from rt_eqcorrscan.streaming.simulate import SimulateRealTimeClient
+from rt_eqcorrscan.streaming.clients.simulate import RealTimeClient
 from rt_eqcorrscan.database.database_manager import check_tribe_quality
 from rt_eqcorrscan.database.client_emulation import ClientBank
 
@@ -42,8 +42,8 @@ def synthesise_real_time(
     triggering_event: Event,
     database_path: str,
     detection_runtime: float = 3600.0,
-    template_kwargs: dict = dict(),
-    plot_kwargs: dict = dict(),
+    template_kwargs: dict = None,
+    plot_kwargs: dict = None,
     max_station_distance: float = 200.0,
     n_stations: int = 10,
     detect_interval: float = 10,
@@ -58,6 +58,9 @@ def synthesise_real_time(
 ):
     """
     """
+    template_kwargs = template_kwargs or dict()
+    plot_kwargs = plot_kwargs or dict()
+
     bank = TemplateBank(database_path, executor=ProcessPoolExecutor())
     full_template_kwargs = TemplateConfig().__dict__
     full_template_kwargs.update(template_kwargs)
@@ -117,8 +120,8 @@ def synthesise_real_time(
     client_bank = ClientBank(
         wave_bank=wavebank, event_bank=client, station_bank=client)
 
-    rt_client = SimulateRealTimeClient(
-        client=client_bank, query_interval=1,
+    rt_client = RealTimeClient(
+        server_url="Unreal-streamer", client=client_bank, query_interval=1,
         starttime=detection_starttime, speed_up=speed_up)
     
     Logger.info("Starting detection")

@@ -54,7 +54,8 @@ class RTMatchFilterConfig(_ConfigAttribDict):
     defaults = {
         "client": "GEONET",
         "client_type": "FDSN",
-        "seedlink_server_url": "link.geonet.org.nz",
+        "rt_client_url": "link.geonet.org.nz",
+        "rt_client_type": "seedlink",
         "n_stations": 10,
         "min_stations": 5,
         "max_distance": 1000.,
@@ -107,6 +108,25 @@ class RTMatchFilterConfig(_ConfigAttribDict):
             Logger.error(e)
             return None
         return client
+
+    def get_streaming_client(self):
+        """ Get the configured waveform streaming service. """
+        from rt_eqcorrscan.streaming import clients
+
+        try:
+            _client_module = clients.__getattribute__(
+                self.rt_client_type.lower())
+        except AttributeError as e:
+            Logger.error(e)
+            return None
+        try:
+            rt_client = _client_module.RealTimeClient(
+                server_url=self.rt_client_url,
+                buffer_capacity=self.buffer_capacity)
+        except Exception as e:
+            Logger.error(e)
+            return None
+        return rt_client
 
 
 class ReactorConfig(_ConfigAttribDict):

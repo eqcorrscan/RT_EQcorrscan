@@ -49,12 +49,12 @@ class _StreamingClient(ABC):
 
     def __init__(
         self,
-        client_name: str = None,
+        server_url: str = None,
         buffer: Union[Stream, Buffer] = None,
         buffer_capacity: float = 600.,
         wavebank: WaveBank = None,
     ) -> None:
-        self.client_name = client_name
+        self.server_url = server_url
         if buffer is None:
             buffer = Buffer(traces=[], maxlen=buffer_capacity)
         elif isinstance(buffer, Stream):
@@ -72,7 +72,7 @@ class _StreamingClient(ABC):
         print_str = (
             "Client at {0}, status: {1}, buffer capacity: {2:.1f}s\n"
             "\tCurrent Buffer:\n{3}".format(
-                self.client_name, status_map[self.busy],
+                self.server_url, status_map[self.busy],
                 self.buffer_capacity, self.buffer))
         return print_str
 
@@ -170,7 +170,8 @@ class _StreamingClient(ABC):
         Logger.info("Termination of {0}".format(self.__repr__()))
         return self.buffer
 
-    def on_error(self):  # pragma: no cover
+    @staticmethod
+    def on_error():  # pragma: no cover
         """
         Handle errors gracefully.
         """

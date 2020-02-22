@@ -12,7 +12,7 @@ import time
 import copy
 from numpy import random
 
-from obspy import Stream, UTCDateTime
+from obspy import Stream, UTCDateTime, clients
 
 from obsplus import WaveBank
 
@@ -22,16 +22,21 @@ from rt_eqcorrscan.streaming.streaming import _StreamingClient
 Logger = logging.getLogger(__name__)
 
 
-class SimulateRealTimeClient(_StreamingClient):
+class RealTimeClient(_StreamingClient):
     """
     Simulation of a real-time client for past data. Used for testing
 
     Parameters
     ----------
+    server_url
+        URL or mappabale name of the client, if not providing a Client, then
+        this should be the argument to set-up a client of `client_type`
     client
-        Any client that supports streaming data.
+        Any client or that supports waveform data queries.
     starttime
         Starttime for client (in the past)
+    client_type
+        Obspy client type to start-up, only used if `client=None`.
     query_interval
         Interval in seconds to query the client for new data
     speed_up
@@ -43,17 +48,26 @@ class SimulateRealTimeClient(_StreamingClient):
     """
     def __init__(
         self,
-        client,
+        server_url: str,
         starttime: UTCDateTime,
+        client=None,
+        client_type: str = "FDSN",
         query_interval: float = 10.,
         speed_up: float = 1.,
         buffer: Stream = None,
         buffer_capacity: float = 600.,
         wavebank: WaveBank = None,
     ) -> None:
+        if client is None:
+            try:
+                _client_module = clients.__getattribute__(client_type.lower())
+                client = _client_module.Client(server_url)
+            except Exception as e:
+                Logger.error("Could not instantiate simulated client")
+                raise e
         self.client = client
         super().__init__(
-            client_name=self.client.base_url, buffer=buffer,
+            server_url=self.client.base_url, buffer=buffer,
             buffer_capacity=buffer_capacity, wavebank=wavebank)
         self.starttime = starttime
         self.query_interval = query_interval
@@ -74,7 +88,8 @@ class SimulateRealTimeClient(_StreamingClient):
             buffer = Stream()
         else:
             buffer = self.get_stream()
-        return SimulateRealTimeClient(
+        return RealTimeClient(
+            server_url=self.client.base_url,
             client=self.client, starttime=self.starttime,
             query_interval=self.query_interval, speed_up=self.speed_up,
             buffer=buffer, buffer_capacity=self.buffer_capacity,

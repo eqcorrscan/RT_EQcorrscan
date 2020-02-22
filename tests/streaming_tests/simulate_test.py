@@ -5,10 +5,10 @@ Tests for simulating a real-time client.
 import unittest
 import time
 
-from obspy import Stream, UTCDateTime
+from obspy import UTCDateTime
 from obspy.clients.fdsn import Client
 
-from rt_eqcorrscan.streaming.simulate import SimulateRealTimeClient
+from rt_eqcorrscan.streaming.clients.simulate import SimulateRealTimeClient
 
 SLEEP_STEP = 40
 

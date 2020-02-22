@@ -19,8 +19,8 @@ from rt_eqcorrscan.reactor import estimate_region, get_inventory
 from rt_eqcorrscan.database import TemplateBank, check_tribe_quality
 from rt_eqcorrscan.database.client_emulation import ClientBank
 from rt_eqcorrscan.rt_match_filter import RealTimeTribe
-from rt_eqcorrscan.streaming import RealTimeClient
-from rt_eqcorrscan.streaming.simulate import SimulateRealTimeClient
+from rt_eqcorrscan.streaming.clients.seedlink import RealTimeClient
+from rt_eqcorrscan.streaming.clients.simulate import RealTimeClient as SimulateRealTimeClient
 
 
 Logger = logging.getLogger("real-time-mf")
@@ -117,7 +117,8 @@ def run_real_time_matched_filter(**kwargs):
         speed_up = kwargs.get("speed_up", 1.0)
         config.plot.offline = True
         rt_client = SimulateRealTimeClient(
-            client=client, starttime=rt_client_starttime,
+            server_url="Unreal-client", client=client,
+            starttime=rt_client_starttime,
             buffer_capacity=config.rt_match_filter.buffer_capacity,
             speed_up=speed_up)
     real_time_tribe = RealTimeTribe(

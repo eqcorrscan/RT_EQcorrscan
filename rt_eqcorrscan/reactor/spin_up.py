@@ -8,17 +8,6 @@ License
     GPL v3.0
 """
 
-"""
-Needs to be standalone as a subprocess.
-
-TODO:
-1. Read in configuration - read from file
-2. Read in tribe - read event-ids from a file, every loop, check for new events
-3. Write a "running-templates" file
-4. Set-up logging
-5. Run the detector.
-6. Run new templates through old data and add those detections.
-"""
 import os
 import logging
 
@@ -45,8 +34,7 @@ def _read_event_list(fname: str) -> List[str]:
     return event_ids
 
 
-# TODO: Make this work!
-def run(working_dir: str):
+def run(working_dir: str, cores: int = 1):
     os.chdir(working_dir)
     config = read_config('rt_eqcorrscan_config.yml')
     config.setup_logging(
@@ -72,7 +60,7 @@ def run(working_dir: str):
         return None, None
 
     client = config.rt_match_filter.get_client()
-    rt_client = "bob"  # TODO: How to make this work?
+    rt_client = config.rt_match_filter.get_streaming_client()
 
     inventory = get_inventory(
         client, tribe, triggering_event=triggering_event,
@@ -89,12 +77,25 @@ def run(working_dir: str):
     Logger.info("Created real-time tribe with inventory:\n{0}".format(
         inventory))
 
-    real_time_tribe.notifier = None  # TODO: How will this work?
+    # TODO: How will this work? Currently notifiers are not implemented
+    # real_time_tribe.notifier = None
 
     real_time_tribe_kwargs = {
         "backfill_to": event_time(triggering_event),
-        "backfill_client": config.listener.waveform_client,  # TODO: And this?
-        "cores": 1e99}  # TODO: How to make this work?
+        "backfill_client": config.rt_match_filter.get_waveform_client(),
+        "cores": cores}
+
+    real_time_tribe.run(
+        threshold=config.rt_match_filter.threshold,
+        threshold_type=config.rt_match_filter.threshold_type,
+        trig_int=config.rt_match_filter.trig_int,
+        keep_detections=86400,
+        detect_directory="{name}/detections",
+        plot_detections=config.rt_match_filter.plot_detections,
+        save_waveforms=config.rt_match_filter.save_waveforms,
+        max_run_length=config.rt_match_filter.max_run_length,
+        minimum_rate=config.rt_match_filter.minimum_rate,
+        **real_time_tribe_kwargs)
 
 
 def get_inventory(
@@ -205,3 +206,10 @@ if __name__ == "__main__":
         "-w", "--working-dir", type=str,
         help="Working directory containing configuration file, list of "
              "templates and place to store temporary files")
+    parser.add_argument(
+        "-n", "--n-processors", type=int, default=1,
+        help="Number of processors to use for detection")
+
+    args = parser.parse_args()
+
+    run(working_dir=args.working_dir, cores=args.n_processors)

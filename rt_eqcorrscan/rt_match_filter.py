@@ -20,7 +20,6 @@ from typing import Union, List
 
 from obspy import Stream, UTCDateTime, Inventory
 from matplotlib.figure import Figure
-from multiprocessing import Process
 from eqcorrscan import Tribe, Template, Party, Detection
 
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
@@ -564,6 +563,7 @@ class RealTimeTribe(Tribe):
         st = self.rt_client.wavebank.get_waveforms_bulk(bulk)
         Logger.debug("Additional templates to be run: \n{0} "
                      "templates".format(len(templates)))
+        # TODO: This could be in a non-blocking Process of it's own
         new_party = templates.detect(
             stream=st, plot=False, threshold=threshold,
             threshold_type=threshold_type, trig_int=trig_int,

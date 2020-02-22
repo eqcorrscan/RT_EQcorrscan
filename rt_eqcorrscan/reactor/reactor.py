@@ -55,8 +55,6 @@ class Reactor(object):
     ----------
     client
         An obspy or obsplus client that supports event and station queries.
-    rt_client
-        A client that supports real-time data streaming.
     listener
         Listener for checking current earthquake activity
     trigger_func:
@@ -92,6 +90,9 @@ class Reactor(object):
     n_stations = 10
     sleep_step = 15
 
+    # Maximum processors dedicated to one detection routine.
+    _max_detect_cores = 12
+
     # The processes that are detecting away!
     detecting_processes = dict()
     # TODO: Build in an AWS spin-up functionality - would need some communication...
@@ -99,7 +100,6 @@ class Reactor(object):
     def __init__(
         self,
         client,
-        rt_client: _StreamingClient,
         listener: CatalogListener,
         trigger_func: Callable,
         template_database: TemplateBank,
@@ -107,7 +107,6 @@ class Reactor(object):
         notifier: Notifier = None,
     ):
         self.client = client
-        self.rt_client = rt_client
         self.listener = listener
         self.trigger_func = trigger_func
         self.template_database = template_database
@@ -155,6 +154,7 @@ class Reactor(object):
             # tribes and add them.
             for triggering_event_id, tribe_region in self.running_regions.items():
                 add_events = get_events(working_cat, **tribe_region)
+                # TODO: Implement region growth based on new events added.
                 added_ids = [e.resource_id.split('/') for e in add_events]
                 if added_ids:
                     tribe = self.template_database.get_templates(
@@ -175,6 +175,9 @@ class Reactor(object):
                         message="Listener triggered by event {0}".format(
                             trigger_event),
                         level=5)
+                    if len(self.running_regions) >= self.available_cores:
+                        Logger.error("No more available processors")
+                        continue
                     self.triggered_events.append(trigger_event)
                     self.spin_up(trigger_event)
             self.set_up_time(UTCDateTime.now())
@@ -215,7 +218,9 @@ class Reactor(object):
             os.path.join(working_dir, 'triggering_event.xml'), format="QUAKEML")
         script_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "spin_up.py")
-        proc = subprocess.Popen(["python", script_path, "-w", working_dir])
+        proc = subprocess.Popen(
+            ["python", script_path, "-w", working_dir,
+             "-n", min(self.available_cores, self._max_detect_cores)])
         self.detecting_processes.update({triggering_event_id: proc})
         self.running_regions.update({triggering_event_id: region})
         Logger.info("Started detector subprocess - continuing listening")
@@ -233,6 +238,7 @@ class Reactor(object):
             return self.stop()
         self.detecting_processes[triggering_event_id].kill()
         self.detecting_processes.pop(triggering_event_id)
+        # TODO: Remove templates from that tribe from the set of running templates
         return None
 
     def stop(self) -> None:
