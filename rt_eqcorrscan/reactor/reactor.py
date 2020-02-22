@@ -83,9 +83,10 @@ class Reactor(object):
             rate_threshold=20, rate_bin=0.5)
     ```
     """
-    triggered_events = []
-    running_template_ids = set()
-    running_regions = dict()
+    _triggered_events = []
+    _running_templates = dict()
+    # Template events ids keyed by triggering-event-id
+    _running_regions = dict()  # Regions keyed by triggering-event-id
     max_station_distance = 1000
     n_stations = 10
     sleep_step = 15
@@ -123,6 +124,13 @@ class Reactor(object):
     def available_cores(self) -> int:
         return max(1, cpu_count() - 1)
 
+    @property
+    def running_template_ids(self) -> set:
+        _ids = set()
+        for value in self._running_templates.values():
+            _ids.update(value)
+        return _ids
+
     def get_up_time(self):
         return self._up_time
 
@@ -152,22 +160,23 @@ class Reactor(object):
                 len(working_cat)))
             # Check if new events should be in one of the already running
             # tribes and add them.
-            for triggering_event_id, tribe_region in self.running_regions.items():
+            for triggering_event_id, tribe_region in self._running_regions.items():
                 add_events = get_events(working_cat, **tribe_region)
                 # TODO: Implement region growth based on new events added.
-                added_ids = [e.resource_id.split('/') for e in add_events]
+                added_ids = {e.resource_id.split('/') for e in add_events}
                 if added_ids:
                     tribe = self.template_database.get_templates(
                         event_ids=added_ids)
                     tribe.write(os.path.join(
                         _get_triggered_working_dir(triggering_event_id),
                         "tribe.tgz"))
-                    self.running_template_ids.update(added_ids)
+                    self._running_templates[triggering_event_id].update(
+                        added_ids)
                     working_cat.events = [e for e in working_cat
                                           if e not in add_events]
             trigger_events = self.trigger_func(working_cat)
             for trigger_event in trigger_events:
-                if trigger_event not in self.triggered_events:
+                if trigger_event not in self._triggered_events:
                     Logger.warning(
                         "Listener triggered by event {0}".format(
                             trigger_event))
@@ -175,10 +184,10 @@ class Reactor(object):
                         message="Listener triggered by event {0}".format(
                             trigger_event),
                         level=5)
-                    if len(self.running_regions) >= self.available_cores:
+                    if len(self._running_regions) >= self.available_cores:
                         Logger.error("No more available processors")
                         continue
-                    self.triggered_events.append(trigger_event)
+                    self._triggered_events.append(trigger_event)
                     self.spin_up(trigger_event)
             self.set_up_time(UTCDateTime.now())
             time.sleep(self.sleep_step)
@@ -222,7 +231,10 @@ class Reactor(object):
             ["python", script_path, "-w", working_dir,
              "-n", min(self.available_cores, self._max_detect_cores)])
         self.detecting_processes.update({triggering_event_id: proc})
-        self.running_regions.update({triggering_event_id: region})
+        self._running_regions.update({triggering_event_id: region})
+        self._running_templates.update(
+            {triggering_event_id:
+                 {t.event.resource_id.split('/')[-1] for t in tribe}})
         Logger.info("Started detector subprocess - continuing listening")
 
     def stop_tribe(self, triggering_event_id: str = None) -> None:
@@ -238,7 +250,7 @@ class Reactor(object):
             return self.stop()
         self.detecting_processes[triggering_event_id].kill()
         self.detecting_processes.pop(triggering_event_id)
-        # TODO: Remove templates from that tribe from the set of running templates
+        self._running_templates.pop(triggering_event_id)
         return None
 
     def stop(self) -> None:
