@@ -6,7 +6,8 @@ reactor:
 rt match filter:
   client: "GEONET"
   client type: "FDSN"
-  seedlink server url: "link.geonet.org.nz"
+  rt client url: "link.geonet.org.nz"
+  rt client type: "seedlink"
   n stations: 10
   max distance: 1000
   buffer capacity: 300

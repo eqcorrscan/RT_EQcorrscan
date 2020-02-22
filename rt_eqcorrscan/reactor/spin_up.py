@@ -25,7 +25,7 @@ from rt_eqcorrscan.database.database_manager import check_tribe_quality
 from rt_eqcorrscan.event_trigger.listener import event_time
 
 
-Logger = logging.getLevelName(__file__)
+Logger = logging.getLogger(__file__)
 
 
 def _read_event_list(fname: str) -> List[str]:
@@ -152,8 +152,7 @@ def get_inventory(
         try:
             origin = (
                 triggering_event.preferred_origin() or
-                triggering_event.origins[0]
-            )
+                triggering_event.origins[0])
         except IndexError:
             Logger.error("Triggering event has no origin")
             return inv

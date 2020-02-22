@@ -35,8 +35,8 @@ class _StreamingClient(ABC):
     buffer_capacity
         Length of buffer in seconds. Old data are removed in a FIFO style.
     wavebank
-        Optional wavebank to save data to. Used for backfilling by
-        RealTimeTribe
+        WaveBank to save data to. Used for backfilling by RealTimeTribe.
+        Set to `None` to not use a WaveBank.
 
     Notes
     -----
@@ -52,7 +52,7 @@ class _StreamingClient(ABC):
         server_url: str = None,
         buffer: Union[Stream, Buffer] = None,
         buffer_capacity: float = 600.,
-        wavebank: WaveBank = None,
+        wavebank: WaveBank = WaveBank("Streaming_WaveBank"),
     ) -> None:
         self.server_url = server_url
         if buffer is None:
@@ -61,6 +61,7 @@ class _StreamingClient(ABC):
             buffer = Buffer(buffer.traces, maxlen=buffer_capacity)
         self._buffer = buffer
         self.buffer_capacity = buffer_capacity
+
         self.wavebank = wavebank
         self.threads = []
 
@@ -161,6 +162,9 @@ class _StreamingClient(ABC):
         self.buffer.add_stream(trace)
         if self.wavebank is not None:
             self.wavebank.put_waveforms(stream=Stream([trace]))
+            # Note that this should be undertaken by put_waveforms,
+            # but seems to get missed...
+            self.wavebank.update_index()
         Logger.debug("Buffer contains {0}".format(self.buffer))
 
     def on_terminate(self) -> Stream:  # pragma: no cover

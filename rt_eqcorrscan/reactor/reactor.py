@@ -142,9 +142,14 @@ class Reactor(object):
 
     up_time = property(get_up_time, set_up_time)
 
-    def run(self) -> None:
+    def run(self, max_run_length: float = None) -> None:
         """
         Run all the processes.
+
+        Parameters
+        ----------
+        max_run_length
+            Maximum run length in seconds, if None, will run indefinitely.
         """
         self.listener.background_run(**self._listener_kwargs)
         self._run_start = UTCDateTime.now()
@@ -163,7 +168,7 @@ class Reactor(object):
             for triggering_event_id, tribe_region in self._running_regions.items():
                 add_events = get_events(working_cat, **tribe_region)
                 # TODO: Implement region growth based on new events added.
-                added_ids = {e.resource_id.split('/') for e in add_events}
+                added_ids = {e.resource_id.id.split('/') for e in add_events}
                 if added_ids:
                     tribe = self.template_database.get_templates(
                         event_ids=added_ids)
@@ -190,6 +195,9 @@ class Reactor(object):
                     self._triggered_events.append(trigger_event)
                     self.spin_up(trigger_event)
             self.set_up_time(UTCDateTime.now())
+            if max_run_length is not None and self.up_time >= max_run_length:
+                self.stop()
+                break
             time.sleep(self.sleep_step)
 
     def spin_up(
@@ -204,7 +212,7 @@ class Reactor(object):
         triggering_event
             Event that triggered this run - needs to have at-least an origin.
         """
-        triggering_event_id = triggering_event.resource_id.split('/')[-1]
+        triggering_event_id = triggering_event.resource_id.id.split('/')[-1]
         region = estimate_region(triggering_event)
         if region is None:
             return None, None
@@ -234,7 +242,7 @@ class Reactor(object):
         self._running_regions.update({triggering_event_id: region})
         self._running_templates.update(
             {triggering_event_id:
-                 {t.event.resource_id.split('/')[-1] for t in tribe}})
+                 {t.event.resource_id.id.split('/')[-1] for t in tribe}})
         Logger.info("Started detector subprocess - continuing listening")
 
     def stop_tribe(self, triggering_event_id: str = None) -> None:

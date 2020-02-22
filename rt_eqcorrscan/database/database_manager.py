@@ -269,7 +269,7 @@ class TemplateBank(EventBank):
 
         {get_event_params}
         """
-        paths = self.bank_path + self.read_index(
+        paths = str(self.bank_path) + self.read_index(
             columns=["path", "latitude", "longitude"], **kwargs).path
         paths = [path.replace(self.ext, self.template_ext) for path in paths]
         future = self.executor.map(_lazy_template_read, paths)
@@ -294,13 +294,7 @@ class TemplateBank(EventBank):
         for t in templates:
             assert(isinstance(t, Template))
         catalog = Catalog([t.event for t in templates])
-        # Temporary blocking of parallel processing in obsplus put_events,
-        # see https://github.com/niosh-mining/obsplus/issues/158
-        _exec = self.executor
-        self.executor = None
         self.put_events(catalog, update_index=update_index)
-        self.executor = _exec
-        # End of temporary blocking
         inner_put_template = partial(
             _put_template, path_structure=self.path_structure,
             template_name_structure=self.template_name_structure,

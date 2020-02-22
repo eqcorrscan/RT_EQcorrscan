@@ -8,6 +8,7 @@ License
 
 """
 import logging
+import importlib
 import os
 import sys
 
@@ -50,6 +51,11 @@ class RTMatchFilterConfig(_ConfigAttribDict):
     A holder for configuration values for real-time matched-filtering.
 
     Works like a dictionary and can have anything added to it.
+
+    To enable you to provide your own streaming service you should
+    write your own class subclassing
+    `rt_eqcorrscan.streaming.streaming._StreamingClient`, and set the
+    parameter `rt_client_base` to be the import path for your class.
     """
     defaults = {
         "client": "GEONET",
@@ -73,16 +79,32 @@ class RTMatchFilterConfig(_ConfigAttribDict):
     }
     readonly = []
 
+    client_base = "obspy.clients"
+    rt_client_base = "rt_eqcorrscan.streaming.clients"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    @property
+    def client_module(self):
+        return importlib.import_module(
+            f"{self.client_base}.{self.client_type.lower()}")
+
+    @property
+    def waveform_client_module(self):
+        return importlib.import_module(
+            f"{self.client_base}.{self.waveform_client_type.lower()}")
+
+    @property
+    def rt_client_module(self):
+        return importlib.import_module(
+            f"{self.rt_client_base}.{self.rt_client_type.lower()}")
+
     def get_client(self):
         """ Get the client instance given the set parameters. """
-        from obspy import clients
-
         try:
-            _client_module = clients.__getattribute__(self.client_type.lower())
-        except AttributeError as e:
+            _client_module = self.client_module
+        except ModuleNotFoundError as e:
             Logger.error(e)
             return None
         try:
@@ -94,13 +116,13 @@ class RTMatchFilterConfig(_ConfigAttribDict):
 
     def get_waveform_client(self):
         """ Get the waveform client instance given the set parameters. """
-        from obspy import clients
-
         try:
-            _client_module = clients.__getattribute__(
-                self.waveform_client_type.lower())
-        except AttributeError as e:
+            _client_module = self.waveform_client_module
+        except ModuleNotFoundError as e:
             Logger.error(e)
+            return None
+        except AttributeError:
+            Logger.error("No waveform-client specified")
             return None
         try:
             client = _client_module.Client(self.waveform_client)
@@ -111,12 +133,9 @@ class RTMatchFilterConfig(_ConfigAttribDict):
 
     def get_streaming_client(self):
         """ Get the configured waveform streaming service. """
-        from rt_eqcorrscan.streaming import clients
-
         try:
-            _client_module = clients.__getattribute__(
-                self.rt_client_type.lower())
-        except AttributeError as e:
+            _client_module = self.rt_client_module
+        except ModuleNotFoundError as e:
             Logger.error(e)
             return None
         try:

@@ -10,7 +10,7 @@ import numpy as np
 from obspy import Stream
 from obsplus import WaveBank
 
-from rt_eqcorrscan.streaming import RealTimeClient
+from rt_eqcorrscan.streaming.clients.seedlink import RealTimeClient
 
 
 class SeedLinkTest(unittest.TestCase):

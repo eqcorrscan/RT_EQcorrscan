@@ -104,7 +104,7 @@ class RealTimeTribe(Tribe):
 
         .. rubric:: Example
 
-        >>> from rt_eqcorrscan.streaming import RealTimeClient
+        >>> from rt_eqcorrscan.streaming.clients.seedlink import RealTimeClient
         >>> rt_client = RealTimeClient(server_url="geofon.gfz-potsdam.de")
         >>> tribe = RealTimeTribe(
         ...     tribe=Tribe([Template(name='a', process_length=60)]),
