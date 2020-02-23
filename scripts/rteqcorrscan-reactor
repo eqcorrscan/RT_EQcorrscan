@@ -15,6 +15,8 @@ import faulthandler
 faulthandler.enable()
 
 from functools import partial
+from concurrent.futures import ProcessPoolExecutor
+
 from obspy import Catalog
 
 from rt_eqcorrscan.config import read_config
@@ -51,7 +53,8 @@ def run(**kwargs):
         event_name_structure=config.database_manager.event_name_structure,
         event_format=config.database_manager.event_format,
         path_structure=config.database_manager.path_structure,
-        event_ext=config.database_manager.event_ext)
+        event_ext=config.database_manager.event_ext,
+        executor=ProcessPoolExecutor())
 
     if update_bank:
         Logger.info("Updating bank before running")
