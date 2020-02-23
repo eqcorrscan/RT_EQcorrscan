@@ -226,7 +226,7 @@ class Reactor(object):
         if len(event_ids) == 0:
             return
         working_dir = _get_triggered_working_dir(
-            triggering_event_id, exist_ok=False)
+            triggering_event_id, exist_ok=True)
         tribe = self.template_database.get_templates(event_ids=event_ids)
         tribe.write(os.path.join(working_dir, "tribe.tgz"))
         self.config.write(
@@ -235,9 +235,10 @@ class Reactor(object):
             os.path.join(working_dir, 'triggering_event.xml'), format="QUAKEML")
         script_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "spin_up.py")
-        proc = subprocess.Popen(
-            ["python", script_path, "-w", working_dir,
-             "-n", min(self.available_cores, self._max_detect_cores)])
+        _call = ["python", script_path, "-w", working_dir,
+                 "-n", str(min(self.available_cores, self._max_detect_cores))]
+        Logger.info(f"Running {_call}")
+        proc = subprocess.Popen(_call)
         self.detecting_processes.update({triggering_event_id: proc})
         self._running_regions.update({triggering_event_id: region})
         self._running_templates.update(
