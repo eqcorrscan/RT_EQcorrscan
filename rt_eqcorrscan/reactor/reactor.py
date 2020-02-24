@@ -163,6 +163,7 @@ class Reactor(object):
                 working_cat = []
             Logger.debug("Currently analysing a catalog of {0} events".format(
                 len(working_cat)))
+            # TODO: Abstract out into "process_events" method, which simulate can call.
             # Check if new events should be in one of the already running
             # tribes and add them.
             for triggering_event_id, tribe_region in self._running_regions.items():
