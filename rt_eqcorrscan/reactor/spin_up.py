@@ -39,9 +39,10 @@ def run(working_dir: str, cores: int = 1):
     config = read_config('rt_eqcorrscan_config.yml')
     config.setup_logging(
         screen=False, file=True,
-        filename="rt_eqcorrscan_{0}.log".format(
+        filename="{0}/rt_eqcorrscan_{1}.log".format(
+            working_dir,
             os.path.split(working_dir)[-1]))
-    triggering_event = read_events('triggering_event.xml')
+    triggering_event = read_events('triggering_event.xml')[0]
     min_stations = config.rt_match_filter.get("min_stations", None)
     tribe = Tribe().read("tribe.tgz")
     # Remove file to avoid re-reading it

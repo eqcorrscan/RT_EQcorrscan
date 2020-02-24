@@ -169,7 +169,7 @@ class Reactor(object):
             for triggering_event_id, tribe_region in self._running_regions.items():
                 add_events = get_events(working_cat, **tribe_region)
                 # TODO: Implement region growth based on new events added.
-                added_ids = {e.resource_id.id.split('/')[-1] for e in add_events}
+                added_ids = {e.resource_id.id for e in add_events}
                 if added_ids:
                     tribe = self.template_database.get_templates(
                         event_ids=added_ids)
@@ -221,14 +221,18 @@ class Reactor(object):
             {"starttime": self.config.database_manager.lookup_starttime})
         Logger.info("Getting templates within {0}".format(region))
         df = self.template_database.get_event_summary(**region)
-        event_ids = {e.split('/')[-1] for e in df["event_id"]}
+        event_ids = {e for e in df["event_id"]}
         event_ids = event_ids.difference(self.running_template_ids)
+        Logger.debug(f"event-ids in region: {event_ids}")
         # Write file of event id's
         if len(event_ids) == 0:
             return
+        tribe = self.template_database.get_templates(eventid=event_ids)
+        Logger.info(f"Found {len(tribe)} templates")
+        if len(tribe) == 0:
+            Logger.info("No templates, not running")
         working_dir = _get_triggered_working_dir(
             triggering_event_id, exist_ok=True)
-        tribe = self.template_database.get_templates(event_ids=event_ids)
         tribe.write(os.path.join(working_dir, "tribe.tgz"))
         self.config.write(
             os.path.join(working_dir, 'rt_eqcorrscan_config.yml'))
@@ -244,7 +248,7 @@ class Reactor(object):
         self._running_regions.update({triggering_event_id: region})
         self._running_templates.update(
             {triggering_event_id:
-                 {t.event.resource_id.id.split('/')[-1] for t in tribe}})
+             {t.event.resource_id.id for t in tribe}})
         Logger.info("Started detector subprocess - continuing listening")
 
     def stop_tribe(self, triggering_event_id: str = None) -> None:
