@@ -168,7 +168,7 @@ class Reactor(object):
             for triggering_event_id, tribe_region in self._running_regions.items():
                 add_events = get_events(working_cat, **tribe_region)
                 # TODO: Implement region growth based on new events added.
-                added_ids = {e.resource_id.id.split('/') for e in add_events}
+                added_ids = {e.resource_id.id.split('/')[-1] for e in add_events}
                 if added_ids:
                     tribe = self.template_database.get_templates(
                         event_ids=added_ids)
