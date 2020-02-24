@@ -108,25 +108,17 @@ def run_real_time_matched_filter(**kwargs):
     for t in tribe:
         t.process_length = config.rt_match_filter.buffer_capacity
 
-    if rt_client_starttime is None:
-        speed_up = 1.0
-        rt_client = RealTimeClient(
-            server_url=config.rt_match_filter.seedlink_server_url,
-            buffer_capacity=config.rt_match_filter.buffer_capacity)
-    else:
-        speed_up = kwargs.get("speed_up", 1.0)
+    if rt_client_starttime is not None:
+        config.streaming.starttime = rt_client_starttime
+        config.streaming.speed_up = kwargs.get("speed_up", 1.0)
         config.plot.offline = True
-        rt_client = SimulateRealTimeClient(
-            server_url="Unreal-client", client=client,
-            starttime=rt_client_starttime,
-            buffer_capacity=config.rt_match_filter.buffer_capacity,
-            speed_up=speed_up)
+    rt_client = config.streaming.get_streaming_client()
     real_time_tribe = RealTimeTribe(
         tribe=tribe, inventory=inventory, rt_client=rt_client,
         detect_interval=config.rt_match_filter.detect_interval,
         plot=config.rt_match_filter.plot, name=tribe_name,
         plot_options=config.plot)
-    real_time_tribe._speed_up = speed_up
+    real_time_tribe._speed_up = config.streaming.speed_up
 
     party = None
     try:

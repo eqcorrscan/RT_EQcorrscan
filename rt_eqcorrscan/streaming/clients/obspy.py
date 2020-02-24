@@ -1,5 +1,5 @@
 """
-Data handling to simulate a real-time client from old data via FDSN
+Data handling to simulate a real-time client from old data via ObsPy clients
 for testing of real-time matched-filter detection.
 
 Author
@@ -11,8 +11,9 @@ import logging
 import time
 import copy
 from numpy import random
+import importlib
 
-from obspy import Stream, UTCDateTime, clients
+from obspy import Stream, UTCDateTime
 
 from obsplus import WaveBank
 
@@ -46,6 +47,8 @@ class RealTimeClient(_StreamingClient):
     buffer_capacity
         Length of buffer in seconds. Old data are removed in a FIFO style.
     """
+    client_base = "obspy.clients"
+
     def __init__(
         self,
         server_url: str,
@@ -60,7 +63,8 @@ class RealTimeClient(_StreamingClient):
     ) -> None:
         if client is None:
             try:
-                _client_module = clients.__getattribute__(client_type.lower())
+                _client_module = importlib.import_module(
+                    f"{self.client_base}.{client_type.lower()}")
                 client = _client_module.Client(server_url)
             except Exception as e:
                 Logger.error("Could not instantiate simulated client")

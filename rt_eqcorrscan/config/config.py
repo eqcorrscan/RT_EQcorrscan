@@ -60,12 +60,9 @@ class RTMatchFilterConfig(_ConfigAttribDict):
     defaults = {
         "client": "GEONET",
         "client_type": "FDSN",
-        "rt_client_url": "link.geonet.org.nz",
-        "rt_client_type": "seedlink",
         "n_stations": 10,
         "min_stations": 5,
         "max_distance": 1000.,
-        "buffer_capacity": 300.,
         "detect_interval": 120.,
         "max_run_length": None,
         "minimum_rate": None,
@@ -73,14 +70,12 @@ class RTMatchFilterConfig(_ConfigAttribDict):
         "threshold": .5,
         "threshold_type": "av_chan_corr",
         "trig_int": 2.0,
-        "local_wave_bank": None,
         "save_waveforms": False,
         "plot_detections": False,
     }
     readonly = []
 
     client_base = "obspy.clients"
-    rt_client_base = "rt_eqcorrscan.streaming.clients"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -94,11 +89,6 @@ class RTMatchFilterConfig(_ConfigAttribDict):
     def waveform_client_module(self):
         return importlib.import_module(
             f"{self.client_base}.{self.waveform_client_type.lower()}")
-
-    @property
-    def rt_client_module(self):
-        return importlib.import_module(
-            f"{self.rt_client_base}.{self.rt_client_type.lower()}")
 
     def get_client(self):
         """ Get the client instance given the set parameters. """
@@ -131,6 +121,35 @@ class RTMatchFilterConfig(_ConfigAttribDict):
             return None
         return client
 
+
+class StreamingConfig(_ConfigAttribDict):
+    defaults = {
+        "rt_client_url": "link.geonet.org.nz",
+        "rt_client_type": "seedlink",
+        "buffer_capacity": 300.,
+        "local_wave_bank": None,
+    }
+    readonly = []
+    rt_client_base = "rt_eqcorrscan.streaming.clients"
+    _known_keys = {"starttime", "query_interval", "speed_up", "client_type"}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    @property
+    def rt_client_module(self):
+        return importlib.import_module(
+            f"{self.rt_client_base}.{self.rt_client_type.lower()}")
+
+    @property
+    def known_kwargs(self):
+        out = {}
+        for key in self._known_keys:
+            value = self.get(key, None)
+            if value is not None:
+                out.update({key: value})
+        return out
+
     def get_streaming_client(self):
         """ Get the configured waveform streaming service. """
         try:
@@ -139,9 +158,12 @@ class RTMatchFilterConfig(_ConfigAttribDict):
             Logger.error(e)
             return None
         try:
+            kwargs = self.known_kwargs
             rt_client = _client_module.RealTimeClient(
                 server_url=self.rt_client_url,
-                buffer_capacity=self.buffer_capacity)
+                buffer_capacity=self.buffer_capacity,
+                wavebank=self.local_wave_bank,
+                **kwargs)
         except Exception as e:
             Logger.error(e)
             return None
@@ -235,6 +257,7 @@ KEY_MAPPER = {
     "plot": PlotConfig,
     "database_manager": DatabaseManagerConfig,
     "template": TemplateConfig,
+    "streaming": StreamingConfig,
 }
 
 
@@ -258,6 +281,8 @@ class Config(object):
         Config values for the database manager.
     template
         Config values for template creation.
+    streaming
+        Config values for real-time streaming
     """
     def __init__(
         self,
@@ -270,6 +295,7 @@ class Config(object):
         self.plot = PlotConfig()
         self.database_manager = DatabaseManagerConfig()
         self.template = TemplateConfig()
+        self.streaming = StreamingConfig()
         self.log_level = log_level
         self.log_formatter = log_formatter
 

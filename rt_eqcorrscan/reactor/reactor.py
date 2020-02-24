@@ -8,21 +8,19 @@ License
 """
 import logging
 import time
-import gc
 import os
 import subprocess
 
-from typing import Callable, Iterable
+from typing import Callable
 from multiprocessing import cpu_count
 
-from obspy import UTCDateTime
+from obspy import UTCDateTime, Catalog
 from obspy.core.event import Event
 
 from obsplus.events import get_events
 
 from rt_eqcorrscan.database.database_manager import TemplateBank
 from rt_eqcorrscan.event_trigger.catalog_listener import CatalogListener
-from rt_eqcorrscan.streaming.streaming import _StreamingClient
 from rt_eqcorrscan.config import Notifier, Config
 
 
@@ -45,11 +43,12 @@ class Reactor(object):
 
     The real-time instance will be triggered by the listener when set
     conditions are met. Appropriate templates will be extracted from the
-    template database on disk and used a Tribe for the real-time detection.
+    template database on disk and used as a Tribe for the real-time detection.
 
     Once triggered, the listener will keep listening, but will not trigger in
     the same region again while the real-time detector is running. The real-time
-    detector has to be stopped manually.
+    detector has to be stopped manually, or when rate or maximum-duration
+    conditions are met.
 
     Parameters
     ----------
@@ -163,48 +162,57 @@ class Reactor(object):
                 working_cat = []
             Logger.debug("Currently analysing a catalog of {0} events".format(
                 len(working_cat)))
-            # TODO: Abstract out into "process_events" method, which simulate can call.
-            # Check if new events should be in one of the already running
-            # tribes and add them.
-            for triggering_event_id, tribe_region in self._running_regions.items():
-                add_events = get_events(working_cat, **tribe_region)
-                # TODO: Implement region growth based on new events added.
-                added_ids = {e.resource_id.id for e in add_events}
-                if added_ids:
-                    tribe = self.template_database.get_templates(
-                        event_ids=added_ids)
-                    tribe.write(os.path.join(
-                        _get_triggered_working_dir(triggering_event_id),
-                        "tribe.tgz"))
-                    self._running_templates[triggering_event_id].update(
-                        added_ids)
-                    working_cat.events = [e for e in working_cat
-                                          if e not in add_events]
-            trigger_events = self.trigger_func(working_cat)
-            for trigger_event in trigger_events:
-                if trigger_event not in self._triggered_events:
-                    Logger.warning(
-                        "Listener triggered by event {0}".format(
-                            trigger_event))
-                    self.notifier.notify(
-                        message="Listener triggered by event {0}".format(
-                            trigger_event),
-                        level=5)
-                    if len(self._running_regions) >= self.available_cores:
-                        Logger.error("No more available processors")
-                        continue
-                    self._triggered_events.append(trigger_event)
-                    self.spin_up(trigger_event)
+            self.process_new_events(new_events=working_cat)
             self.set_up_time(UTCDateTime.now())
             if max_run_length is not None and self.up_time >= max_run_length:
                 self.stop()
                 break
             time.sleep(self.sleep_step)
 
-    def spin_up(
-        self,
-        triggering_event: Event,
-    ):
+    def process_new_events(self, new_events: Catalog) -> None:
+        """
+        Process any new events in the system.
+
+        Check if new events should be in one of the already running
+        tribes and add them. Check all other events for possible triggers and
+        spin-up a detector instance for triggers.
+
+        Parameters
+        ----------
+        new_events
+            Catalog of new-events to be assessed.
+        """
+        for triggering_event_id, tribe_region in self._running_regions.items():
+            add_events = get_events(new_events, **tribe_region)
+            # TODO: Implement region growth based on new events added.
+            added_ids = {e.resource_id.id for e in add_events}
+            if added_ids:
+                tribe = self.template_database.get_templates(
+                    event_ids=added_ids)
+                tribe.write(os.path.join(
+                    _get_triggered_working_dir(triggering_event_id),
+                    "tribe.tgz"))
+                self._running_templates[triggering_event_id].update(
+                    added_ids)
+                new_events.events = [e for e in new_events
+                                     if e not in add_events]
+        trigger_events = self.trigger_func(new_events)
+        for trigger_event in trigger_events:
+            if trigger_event not in self._triggered_events:
+                Logger.warning(
+                    "Listener triggered by event {0}".format(
+                        trigger_event))
+                self.notifier.notify(
+                    message="Listener triggered by event {0}".format(
+                        trigger_event),
+                    level=5)
+                if len(self._running_regions) >= self.available_cores:
+                    Logger.error("No more available processors")
+                    continue
+                self._triggered_events.append(trigger_event)
+                self.spin_up(trigger_event)
+
+    def spin_up(self, triggering_event: Event) -> None:
         """
         Run the reactors response function as a subprocess.
 
@@ -216,7 +224,7 @@ class Reactor(object):
         triggering_event_id = triggering_event.resource_id.id.split('/')[-1]
         region = estimate_region(triggering_event)
         if region is None:
-            return None, None
+            return
         region.update(
             {"starttime": self.config.database_manager.lookup_starttime})
         Logger.info("Getting templates within {0}".format(region))
@@ -265,7 +273,6 @@ class Reactor(object):
         self.detecting_processes[triggering_event_id].kill()
         self.detecting_processes.pop(triggering_event_id)
         self._running_templates.pop(triggering_event_id)
-        return None
 
     def stop(self) -> None:
         """Stop all the processes."""

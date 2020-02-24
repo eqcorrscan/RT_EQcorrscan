@@ -8,27 +8,28 @@ This script has 3 main steps:
     3. Start the RealTimeTribe
 """
 import logging
-import time
 
 from obspy import UTCDateTime
-from obspy.core.event import Event
 from obspy.clients.fdsn import Client
 
 from obsplus import WaveBank
 
 from collections import namedtuple
 from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 
-from rt_eqcorrscan import TemplateBank, RealTimeTribe
-from rt_eqcorrscan.config.config import TemplateConfig, PlotConfig
+from rt_eqcorrscan import TemplateBank, Reactor, read_config
 from rt_eqcorrscan.reactor.spin_up import get_inventory
-from rt_eqcorrscan.streaming.clients.simulate import RealTimeClient
-from rt_eqcorrscan.database.database_manager import check_tribe_quality
-from rt_eqcorrscan.database.client_emulation import ClientBank
+from rt_eqcorrscan.config.config import Config
+from rt_eqcorrscan.event_trigger import (
+    CatalogListener, magnitude_rate_trigger_func)
 
 Logger = logging.getLogger(__name__)
 
-DATABASE_BASE = "/home/chambeca/Desktop/Temporary_databases"
+KNOWN_QUAKES = {
+    "eketahuna": "2014p051675",
+    "cook-strait": "2013p543824",  # M 6.5 preceeded by two 5.7 and 5.8
+}
 
 Region = namedtuple("Region", ["latitude", "longitude", "radius"])
 
@@ -38,32 +39,36 @@ def synthesise_real_time(
     database_endtime: UTCDateTime,
     database_region: Region,
     detection_starttime: UTCDateTime,
-    client: Client,
-    triggering_event: Event,
-    database_path: str,
+    config: Config,
     detection_runtime: float = 3600.0,
-    template_kwargs: dict = None,
-    plot_kwargs: dict = None,
-    max_station_distance: float = 200.0,
-    n_stations: int = 10,
-    detect_interval: float = 10,
-    plot: bool = True,
-    threshold: float = 10.0,
-    threshold_type: str = "MAD",
-    trig_int: float = 2.0,
-    min_stations: int = 5,
     make_templates: bool = True,
-    query_interval: float = 30,
     speed_up: float = 1,
+    debug: bool = False,
+    query_interval: float = 600,
 ):
     """
     """
-    template_kwargs = template_kwargs or dict()
-    plot_kwargs = plot_kwargs or dict()
+    if debug:
+        config.log_level = "DEBUG"
+        print("Using the following configuration:\n{0}".format(config))
+    config.setup_logging()
 
-    bank = TemplateBank(database_path, executor=ProcessPoolExecutor())
-    full_template_kwargs = TemplateConfig().__dict__
-    full_template_kwargs.update(template_kwargs)
+    client = config.rt_match_filter.get_client()
+
+    trigger_func = partial(
+        magnitude_rate_trigger_func,
+        magnitude_threshold=config.reactor.magnitude_threshold,
+        rate_threshold=config.reactor.rate_threshold,
+        rate_bin=config.reactor.rate_radius,
+        minimum_events_in_bin=config.reactor.minimum_events_in_bin)
+
+    template_bank = TemplateBank(
+        config.database_manager.event_path,
+        event_name_structure=config.database_manager.event_name_structure,
+        event_format=config.database_manager.event_format,
+        path_structure=config.database_manager.path_structure,
+        event_ext=config.database_manager.event_ext,
+        executor=ProcessPoolExecutor())
 
     if make_templates:
         Logger.info("Downloading template events")
@@ -74,30 +79,25 @@ def synthesise_real_time(
             maxradius=database_region.radius)
         
         Logger.info("Building template database")
-        tribe = bank.make_templates(
-            catalog=catalog, client=client, **full_template_kwargs)
-    else:
-        tribe = bank.get_templates(
-            starttime=database_starttime, endtime=database_endtime,
-            latitude=database_region.latitude, 
-            longitude=database_region.longitude,
-            maxradius=database_region.radius)
-    
-    Logger.info("Removing dodgy templates")
-    tribe = check_tribe_quality(
-        tribe, min_stations=min_stations, **full_template_kwargs)
-    
+        template_bank.make_templates(
+            catalog=catalog, client=client, **config.template)
+    tribe = template_bank.get_templates(
+        starttime=database_starttime, endtime=database_endtime,
+        latitude=database_region.latitude,
+        longitude=database_region.longitude,
+        maxradius=database_region.radius)
     inventory = get_inventory(
-        client, tribe, triggering_event=triggering_event,
-        max_distance=max_station_distance,
-        n_stations=n_stations)
+        client=client, tribe=tribe, starttime=detection_starttime,
+        location={"latitude": database_region.latitude,
+                  "longitude": database_region.longitude},
+        duration=detection_runtime / 86400.,
+        max_distance=config.rt_match_filter.max_distance,
+        n_stations=config.rt_match_filter.n_stations)
 
-    full_plot_kwargs = PlotConfig().__dict__
-    full_plot_kwargs.update(plot_kwargs)
-    full_plot_kwargs.update({"offline": True}) # Use to use data time-stamps
+    config.plot.update({"offline": True})  # Use to use data time-stamps
 
     Logger.info("Downloading data")
-    wavebank = WaveBank(f"{database_path}_wave")
+    wavebank = WaveBank(f"{config.database_manager.event_path}_wave")
     for network in inventory:
         for station in network:
             for channel in station:
@@ -117,90 +117,44 @@ def synthesise_real_time(
                     Logger.error(e)
                     continue
                 wavebank.put_waveforms(st)
-    client_bank = ClientBank(
-        wave_bank=wavebank, event_bank=client, station_bank=client)
 
-    rt_client = RealTimeClient(
-        server_url="Unreal-streamer", client=client_bank, query_interval=1,
-        starttime=detection_starttime, speed_up=speed_up)
-    
-    Logger.info("Starting detection")
-    rt_tribe = RealTimeTribe(
-        tribe=tribe, inventory=inventory, rt_client=rt_client,
-        detect_interval=detect_interval, plot=plot,
-        plot_options=full_plot_kwargs,
-        name=triggering_event.resource_id.id.split('/')[-1])
+    # Set up config to use the wavebank rather than FDSN.
+    config.streaming.update(
+        {"rt_client_url": str(wavebank.bank_path),
+         "rt_client_type": "obsplus",
+         "starttime": detection_starttime,
+         "speed_up": speed_up,
+         "query_interval": 1.0})
 
-    # TODO: Use the subprocess methods in Reactor - simulate a reactor...
-    rt_tribe.background_run(
-        threshold=threshold, threshold_type=threshold_type, trig_int=trig_int)
-    
-    # TODO: Streamline these variables - lots of crap flying around!
-    last_query_time = detection_starttime
-    run_time = detection_starttime + query_interval
-    detection_endtime = detection_starttime + detection_runtime
-    time.sleep(query_interval / speed_up)
-    while run_time < detection_endtime:
-        _loop_starttime = UTCDateTime.now()
-        Logger.debug(
-            f"Checking for events between {last_query_time} and {run_time}")
-        try:
-            new_catalog = client.get_events(
-                starttime=last_query_time, endtime=run_time,
-                latitude=database_region.latitude, 
-                longitude=database_region.longitude,
-                maxradius=database_region.radius)
-        except Exception:
-            time.sleep(query_interval / speed_up)
-            run_time += query_interval
-            continue
-        if len(new_catalog) == 0:
-            time.sleep(query_interval / speed_up)
-            run_time += query_interval
-            continue
-        Logger.info("Adding {0} new templates to database".format(
-            len(new_catalog)))
-        new_tribe = bank.make_templates(
-            catalog=new_catalog, client=client, **full_template_kwargs)
-        rt_tribe.add_templates(
-            new_tribe, threshold=threshold, threshold_type=threshold_type, 
-            trig_int=trig_int)
-        Logger.info(f"Tribe is now at {rt_tribe}")
-        _loop_endtime = UTCDateTime.now()
-        _loop_duration = (_loop_endtime - _loop_starttime) * speed_up
-        Logger.debug(f"Template loop took {_loop_duration}s")
+    catalog_lookup_kwargs = database_region._asdict()
+    radius = catalog_lookup_kwargs.pop("radius")
+    catalog_lookup_kwargs.update({"maxradius": radius})
+    listener = CatalogListener(
+        client=client, catalog_lookup_kwargs=catalog_lookup_kwargs,
+        template_bank=template_bank, interval=query_interval, keep=86400,
+        catalog=None, waveform_client=client)
+    listener._speed_up = speed_up
+    listener._test_start_step = UTCDateTime.now() - detection_starttime
 
-        sleep_step = (query_interval / speed_up) - _loop_duration
-        if sleep_step > 0:
-            Logger.debug(f"Sleeping for {sleep_step}s")
-            time.sleep(sleep_step)
-        else:
-            Logger.debug(
-                "Loop took longer than query-interval, setting query "
-                f"interval to {_loop_duration}")
-            query_interval = _loop_duration
-        last_query_time = run_time
-        run_time = run_time + (query_interval / speed_up)
-    rt_tribe.stop()
+    reactor = Reactor(
+        client=client,
+        listener=listener, trigger_func=trigger_func,
+        template_database=template_bank, config=config)
+    Logger.info("Starting reactor")
+    reactor.run()
 
 
 if __name__ == "__main__":
-    import os
     import argparse
-
-    logging.basicConfig(
-        level="INFO",
-        format="%(asctime)s\t[%(processName)s:%(threadName)s]: %(name)s\t%(levelname)s\t%(message)s")
-
-    KNOWN_QUAKES = {
-        "eketahuna": "2014p051675",
-        "cook-strait": "2013p543824",  # M 6.5 preceeded by two 5.7 and 5.8
-    }
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--quake", type=str, 
-        help="Earthquake to synthesise real-time, either the event-id or a known key")
+        "--quake", type=str, required=True,
+        help="Earthquake to synthesise real-time, either the event-id or a "
+             f"known key.\n Known events are: \n{KNOWN_QUAKES}")
+    parser.add_argument(
+        "--config", "-c", type=str, default=None,
+        help="Path to configuration file", required=False)
     parser.add_argument(
         "--db-duration", type=int, default=365,
         help="Number of days to generate the database for prior to the chosen event")
@@ -208,11 +162,14 @@ if __name__ == "__main__":
         "--radius", type=float, default=0.5,
         help="Radius in degrees to build database for")
     parser.add_argument(
-        "--client", type=str, default="GEONET",
+        "--client", type=str, required=True,
         help="Client to get data from, must have an FDSN waveform and event service")
     parser.add_argument(
         "--templates-made", action="store_false",
         help="Flag to not make new templates - use if re-running an old DB")
+    parser.add_argument(
+        "--debug", action="store_true",
+        help="Flag to run in debug mode, with lots of output to screen")
     
     args = parser.parse_args()
 
@@ -222,6 +179,7 @@ if __name__ == "__main__":
         Logger.warning(e)
         client = Client(args.client)
 
+    config = read_config(args.config)
     quake_id = KNOWN_QUAKES.get(args.quake, args.quake)
     trigger_event = client.get_events(eventid=quake_id)[0]
     trigger_origin = trigger_event.preferred_origin() or trigger_event.origins[0]
@@ -234,6 +192,5 @@ if __name__ == "__main__":
         database_endtime=trigger_origin.time,
         database_starttime=trigger_origin.time - (args.db_duration * 86400),
         database_region=region, detection_starttime=trigger_origin.time,
-        client=client, triggering_event=trigger_event,
-        database_path=os.path.join(DATABASE_BASE, quake_id),
-        make_templates=args.templates_made)
+        config=config, make_templates=args.templates_made,
+        debug=args.debug)

@@ -61,7 +61,7 @@ def run(working_dir: str, cores: int = 1):
         return None, None
 
     client = config.rt_match_filter.get_client()
-    rt_client = config.rt_match_filter.get_streaming_client()
+    rt_client = config.streaming.get_streaming_client()
 
     inventory = get_inventory(
         client, tribe, triggering_event=triggering_event,
@@ -71,7 +71,7 @@ def run(working_dir: str, cores: int = 1):
         "detect_interval", 60)
     plot = config.rt_match_filter.get("plot", False)
     real_time_tribe = RealTimeTribe(
-        tribe=tribe, inventory=inventory, rt_client=rt_client.copy(),
+        tribe=tribe, inventory=inventory, rt_client=rt_client,
         detect_interval=detect_interval, plot=plot,
         plot_options=config.plot,
         name=triggering_event.resource_id.id.split('/')[-1])
