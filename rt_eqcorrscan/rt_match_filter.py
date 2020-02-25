@@ -427,6 +427,7 @@ class RealTimeTribe(Tribe):
                     len(self.detections)))
                 self._running = False  # Release lock
                 # See if there are templates to be added and run.
+                # TODO: This should run more frequently
                 self._add_templates_from_disk(
                     threshold=threshold, threshold_type=threshold_type,
                     trig_int=trig_int, keep_detections=keep_detections,
@@ -481,9 +482,14 @@ class RealTimeTribe(Tribe):
         endtime: UTCDateTime = None,
         **kwargs
     ):
+        Logger.info(f"Checking for events in {self._tribe_file}")
         if not os.path.isfile(self._tribe_file):
             return
         new_tribe = Tribe().read(self._tribe_file)
+        if len(new_tribe) == 0:
+            return
+        Logger.info(
+            f"Adding {len(new_tribe)} templates to already running tribe.")
         self.add_templates(
             new_tribe, threshold=threshold, threshold_type=threshold_type,
             trig_int=trig_int, keep_detections=keep_detections,

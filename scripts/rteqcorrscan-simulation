@@ -44,7 +44,7 @@ def synthesise_real_time(
     make_templates: bool = True,
     speed_up: float = 1,
     debug: bool = False,
-    query_interval: float = 600,
+    query_interval: float = 60,
 ):
     """
     """
@@ -68,7 +68,7 @@ def synthesise_real_time(
         event_format=config.database_manager.event_format,
         path_structure=config.database_manager.path_structure,
         event_ext=config.database_manager.event_ext,
-        executor=ProcessPoolExecutor())
+        executor=None)
 
     if make_templates:
         Logger.info("Downloading template events")
@@ -97,7 +97,7 @@ def synthesise_real_time(
     config.plot.update({"offline": True})  # Use to use data time-stamps
 
     Logger.info("Downloading data")
-    wavebank = WaveBank(f"{config.database_manager.event_path}_wave")
+    wavebank = WaveBank("simulation_wavebank")
     for network in inventory:
         for station in network:
             for channel in station:

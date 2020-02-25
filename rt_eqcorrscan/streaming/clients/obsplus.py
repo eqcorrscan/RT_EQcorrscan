@@ -54,15 +54,14 @@ class RealTimeClient(OBSRTCli):
     ) -> None:
         if client is None:
             try:
-                wavebank = WaveBank(server_url)
-                client = ClientBank(wave_bank=wavebank)
+                client = ClientBank(wave_bank=WaveBank(server_url))
             except Exception as e:
                 Logger.error("Could not instantiate simulated client")
                 raise e
         super().__init__(
             server_url=server_url, starttime=starttime, client=client,
             query_interval=query_interval, speed_up=speed_up, buffer=buffer,
-            buffer_capacity=buffer_capacity, wavebank=wavebank)
+            buffer_capacity=buffer_capacity, wavebank=None)
 
 
 if __name__ == "__main__":

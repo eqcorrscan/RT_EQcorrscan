@@ -373,7 +373,9 @@ class TemplateBank(EventBank):
             template_iterable = self.executor.map(
                 inner_download_and_make_template, catalog)
             tribe = Tribe([t for t in template_iterable if t is not None])
+        Logger.info(f"Putting {len(tribe)} templates into database")
         self.put_templates(tribe, update_index=update_index)
+        Logger.info("Finished putting templates into database.")
         return tribe
 
 

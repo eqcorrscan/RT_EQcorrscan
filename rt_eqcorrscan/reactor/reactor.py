@@ -184,18 +184,22 @@ class Reactor(object):
         """
         for triggering_event_id, tribe_region in self._running_regions.items():
             add_events = get_events(new_events, **tribe_region)
+            # Don't trigger on events now running in another tribe.
+            new_events.events = [e for e in new_events
+                                 if e not in add_events]
             # TODO: Implement region growth based on new events added.
-            added_ids = {e.resource_id.id for e in add_events}
+            added_ids = {e.resource_id.id for e in add_events}.difference(
+                self.running_template_ids)
             if added_ids:
                 tribe = self.template_database.get_templates(
-                    event_ids=added_ids)
-                tribe.write(os.path.join(
-                    _get_triggered_working_dir(triggering_event_id),
-                    "tribe.tgz"))
-                self._running_templates[triggering_event_id].update(
-                    added_ids)
-                new_events.events = [e for e in new_events
-                                     if e not in add_events]
+                    eventid=added_ids)
+                if len(tribe) > 0:
+                    Logger.info(f"Adding {len(tribe)} events to {triggering_event_id}")
+                    tribe.write(os.path.join(
+                        _get_triggered_working_dir(triggering_event_id),
+                        "tribe.tgz"))
+                    self._running_templates[triggering_event_id].update(
+                        added_ids)
         trigger_events = self.trigger_func(new_events)
         for trigger_event in trigger_events:
             if trigger_event not in self._triggered_events:
