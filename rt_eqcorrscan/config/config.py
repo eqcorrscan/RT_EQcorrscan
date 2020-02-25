@@ -215,7 +215,7 @@ class DatabaseManagerConfig(_ConfigAttribDict):
     defaults = {
         "event_path": ".",
         "event_format": "QUAKEML",
-        "event_name_structure": "{event_id_end}",
+        "name_structure": "{event_id_end}",
         "path_structure": "{year}/{month}/{event_id_end}",
         "event_ext": ".xml",
         "min_stations": 5,

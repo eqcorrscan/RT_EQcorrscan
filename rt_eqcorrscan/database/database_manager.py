@@ -205,16 +205,12 @@ class TemplateBank(EventBank):
             event_id_short
         If no structure is provided it will be read from the index, if no
         index exists the default is {year}/{month}/{day}
-    event_name_structure : str
-        The same as path structure but for the event file name. Supports the
-        same variables and a slash cannot be used in a file name on most
-        operating systems. The default extension (.xml) will be added.
-        The default is {time}_{event_id_short}.
-    template_name_structure
-        The same as path structure but for the template file name. Supports the
-        same variables and a slash cannot be used in a file name on most
-        operating systems. The default extension (.tgz) will be added.
-        The default is to use the same naming as event_name_structure.
+    name_structure : str
+        The same as path structure but for the event, template and waveform
+        file names. Supports the same variables and a slash cannot be used
+        in a file name on most operating systems. The default extension
+        (.xml, .tgz, .ms) will be added for events, templates and waveforms
+        respectively. The default is {time}_{event_id_short}.
     event_format
         The anticipated format of the event files. Any format supported by the
         obspy.read_events function is permitted.
@@ -239,8 +235,7 @@ class TemplateBank(EventBank):
         self,
         base_path: Union[str, Path, "EventBank"] = ".",
         path_structure: Optional[str] = None,
-        event_name_structure: Optional[str] = None,
-        template_name_structure: Optional[str] = None,
+        name_structure: Optional[str] = None,
         cache_size: int = 5,
         event_format="quakeml",
         event_ext=".xml",
@@ -250,13 +245,9 @@ class TemplateBank(EventBank):
         """Initialize the bank."""
         super().__init__(
             base_path=base_path, path_structure=path_structure,
-            name_structure=event_name_structure, cache_size=cache_size,
+            name_structure=name_structure, cache_size=cache_size,
             format=event_format, ext=event_ext)
         self.template_ext = template_ext
-        # get waveform structure based on structures of path and filename
-        wns = (template_name_structure or self._name_structure or
-               EVENT_NAME_STRUCTURE)
-        self.template_name_structure = wns
         self.executor = executor or _SerialExecutor()
 
     @compose_docstring(get_events_params=get_events_parameters)
@@ -297,7 +288,7 @@ class TemplateBank(EventBank):
         self.put_events(catalog, update_index=update_index)
         inner_put_template = partial(
             _put_template, path_structure=self.path_structure,
-            template_name_structure=self.template_name_structure,
+            template_name_structure=self.name_structure,
             bank_path=self.bank_path)
         _ = [_ for _ in self.executor.map(inner_put_template, templates)]
 
@@ -368,7 +359,7 @@ class TemplateBank(EventBank):
                 download_data_len=download_data_len,
                 path_structure=self.path_structure,
                 bank_path=self.bank_path,
-                template_name_structure=self.template_name_structure,
+                template_name_structure=self.name_structure,
                 save_raw=save_raw, rebuild=rebuild, **kwargs)
             template_iterable = self.executor.map(
                 inner_download_and_make_template, catalog)

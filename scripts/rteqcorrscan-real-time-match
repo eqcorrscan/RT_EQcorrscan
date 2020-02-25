@@ -19,8 +19,6 @@ from rt_eqcorrscan.reactor import estimate_region, get_inventory
 from rt_eqcorrscan.database import TemplateBank, check_tribe_quality
 from rt_eqcorrscan.database.client_emulation import ClientBank
 from rt_eqcorrscan.rt_match_filter import RealTimeTribe
-from rt_eqcorrscan.streaming.clients.seedlink import RealTimeClient
-from rt_eqcorrscan.streaming.clients.simulate import RealTimeClient as SimulateRealTimeClient
 
 
 Logger = logging.getLogger("real-time-mf")
@@ -71,7 +69,7 @@ def run_real_time_matched_filter(**kwargs):
         region.update({"endtime": rt_client_starttime})
     bank = TemplateBank(
         base_path=config.database_manager.event_path,
-        event_name_structure=config.database_manager.event_name_structure,
+        name_structure=config.database_manager.name_structure,
         event_format=config.database_manager.event_format,
         path_structure=config.database_manager.path_structure,
         event_ext=config.database_manager.event_ext)
