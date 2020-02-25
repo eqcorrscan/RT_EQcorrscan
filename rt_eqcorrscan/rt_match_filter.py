@@ -60,6 +60,7 @@ class RealTimeTribe(Tribe):
     """
     notifier = Notifier()
     process_cores = 2
+    _parallel_processing = True  # This seems unstable for subprocessing.
     _running = False
     _detecting_thread = None
     busy = False
@@ -144,6 +145,15 @@ class RealTimeTribe(Tribe):
     def minimum_data_for_detection(self) -> float:
         """ Get the minimum required data length (in seconds) for detection. """
         return max(template.process_length for template in self.templates)
+
+    @property
+    def running_templates(self) -> set:
+        """
+        Get a set of the names of the running templates.
+
+        Note that names are not guaranteed to be unique.
+        """
+        return {t.name for t in self.templates}
 
     def _remove_old_detections(self, endtime: UTCDateTime) -> None:
         """ Remove detections older than keep duration. Works in-place. """
@@ -403,6 +413,7 @@ class RealTimeTribe(Tribe):
                         threshold_type=threshold_type, trig_int=trig_int,
                         xcorr_func="fftw", concurrency="concurrent",
                         process_cores=self.process_cores,
+                        parallel_process=self._parallel_processing,
                         ignore_bad_data=True, **kwargs)
                 except Exception as e:  # pragma: no cover
                     Logger.error(e)
@@ -486,6 +497,9 @@ class RealTimeTribe(Tribe):
         if not os.path.isfile(self._tribe_file):
             return
         new_tribe = Tribe().read(self._tribe_file)
+        os.remove(self._tribe_file)  # Remove file once done with it.
+        new_tribe.templates = [t for t in new_tribe
+                               if t.name not in self.running_templates]
         if len(new_tribe) == 0:
             return
         Logger.info(
@@ -574,6 +588,7 @@ class RealTimeTribe(Tribe):
             stream=st, plot=False, threshold=threshold,
             threshold_type=threshold_type, trig_int=trig_int,
             xcorr_func="fftw", concurrency="concurrent",
+            parallel_process=self._parallel_processing,
             process_cores=self.process_cores, **kwargs)
         while self._running:
             time.sleep(1)  # Wait until lock is released to add detections

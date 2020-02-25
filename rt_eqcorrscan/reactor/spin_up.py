@@ -75,6 +75,8 @@ def run(working_dir: str, cores: int = 1):
         detect_interval=detect_interval, plot=plot,
         plot_options=config.plot,
         name=triggering_event.resource_id.id.split('/')[-1])
+    real_time_tribe._parallel_processing = False
+    # Disable parallel processing for subprocess
     Logger.info("Created real-time tribe with inventory:\n{0}".format(
         inventory))
 
