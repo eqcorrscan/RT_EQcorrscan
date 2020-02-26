@@ -42,7 +42,7 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         EasySeedLinkClient.__init__(
             self, server_url=server_url, autoconnect=False)
         _StreamingClient.__init__(
-            self, client_name=server_url, buffer=buffer,
+            self, server_url=server_url, buffer=buffer,
             buffer_capacity=buffer_capacity, wavebank=wavebank)
         Logger.debug("Instantiated RealTime client: {0}".format(self))
 

@@ -20,7 +20,6 @@ from typing import Union, List
 
 from obspy import Stream, UTCDateTime, Inventory
 from matplotlib.figure import Figure
-from multiprocessing import Process
 from eqcorrscan import Tribe, Template, Party, Detection
 
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
@@ -61,6 +60,7 @@ class RealTimeTribe(Tribe):
     """
     notifier = Notifier()
     process_cores = 2
+    _parallel_processing = True  # This seems unstable for subprocessing.
     _running = False
     _detecting_thread = None
     busy = False
@@ -68,6 +68,7 @@ class RealTimeTribe(Tribe):
     # Speed-up for simulated runs - do not change for real-time!
     _max_wait_length = 60.
     _fig = None
+    _tribe_file = "tribe.tgz"
 
     def __init__(
         self,
@@ -104,7 +105,7 @@ class RealTimeTribe(Tribe):
 
         .. rubric:: Example
 
-        >>> from rt_eqcorrscan.streaming import RealTimeClient
+        >>> from rt_eqcorrscan.streaming.clients.seedlink import RealTimeClient
         >>> rt_client = RealTimeClient(server_url="geofon.gfz-potsdam.de")
         >>> tribe = RealTimeTribe(
         ...     tribe=Tribe([Template(name='a', process_length=60)]),
@@ -144,6 +145,15 @@ class RealTimeTribe(Tribe):
     def minimum_data_for_detection(self) -> float:
         """ Get the minimum required data length (in seconds) for detection. """
         return max(template.process_length for template in self.templates)
+
+    @property
+    def running_templates(self) -> set:
+        """
+        Get a set of the names of the running templates.
+
+        Note that names are not guaranteed to be unique.
+        """
+        return {t.name for t in self.templates}
 
     def _remove_old_detections(self, endtime: UTCDateTime) -> None:
         """ Remove detections older than keep duration. Works in-place. """
@@ -234,42 +244,38 @@ class RealTimeTribe(Tribe):
             **plot_options)
         self.plotter.background_run()
 
-    def _wait(self) -> None:
+    def _wait(self, wait: float = None, detection_kwargs: dict = None) -> None:
+        """ Wait for `wait` seconds, or until all channels are available. """
         Logger.info("Waiting for data.")
         max_wait = min(self._max_wait_length, self.rt_client.buffer_capacity)
         wait_length = 0.
-        while len(self.rt_client.buffer) < len(self.expected_channels):
-            if wait_length >= max_wait:
-                Logger.warning("Starting operation without the full dataset")
-                break
+        while True:
+            tic = time.time()
             # Wait until we have some data
             Logger.debug(
                 "Waiting for data, currently have {0} channels of {1} "
                 "expected channels".format(
                     len(self.rt_client.buffer), len(self.expected_channels)))
-            wait_length += self.sleep_step
+            if detection_kwargs:
+                self._add_templates_from_disk(**detection_kwargs)
+            else:
+                new_tribe = self._read_templates_from_disk()
+                if len(new_tribe) > 0:
+                    self.templates.extend(new_tribe.templates)
             time.sleep(self.sleep_step)
+            toc = time.time()
+            wait_length += (toc - tic)
+            if wait is None:
+                if len(self.rt_client.buffer) >= len(self.expected_channels):
+                    break
+                if wait_length >= max_wait:
+                    Logger.warning(
+                        "Starting operation without the full dataset")
+                    break
+            elif wait_length >= wait:
+                break
             pass
         return
-
-    def background_run(self, *args, **kwargs):
-        """
-        Run the RealTimeTribe in the background.
-
-        Takes the same arguments as `run`.
-        """
-        self.busy = True
-        detecting_thread = Process(
-            target=self._bg_run,
-            args=args, kwargs=kwargs,
-            name="DetectingProcess_{0}".format(self.name))
-        detecting_thread.start()
-        self._detecting_thread = detecting_thread
-        Logger.info("Started detecting")
-
-    def _bg_run(self, *args, **kwargs):
-        while self.busy:
-            self.run(*args, **kwargs)
 
     def run(
         self,
@@ -390,7 +396,7 @@ class RealTimeTribe(Tribe):
                 self.rt_client.buffer_length + 5) / self._speed_up
             Logger.info("Sleeping for {0:.2f}s while accumulating data".format(
                 sleep_step))
-            time.sleep(sleep_step)
+            self._wait(sleep_step)
         first_data = min([tr.stats.starttime
                           for tr in self.rt_client.get_stream().merge()])
         try:
@@ -422,6 +428,7 @@ class RealTimeTribe(Tribe):
                         threshold_type=threshold_type, trig_int=trig_int,
                         xcorr_func="fftw", concurrency="concurrent",
                         process_cores=self.process_cores,
+                        parallel_process=self._parallel_processing,
                         ignore_bad_data=True, **kwargs)
                 except Exception as e:  # pragma: no cover
                     Logger.error(e)
@@ -444,6 +451,7 @@ class RealTimeTribe(Tribe):
                 self._remove_old_detections(last_data - keep_detections)
                 Logger.info("Party now contains {0} detections".format(
                     len(self.detections)))
+                self._running = False  # Release lock
                 run_time = UTCDateTime.now() - start_time
                 Logger.info("Detection took {0:.2f}s".format(run_time))
                 if self.detect_interval <= run_time:
@@ -456,8 +464,16 @@ class RealTimeTribe(Tribe):
                 Logger.info("Waiting {0:.2f}s until next run".format(
                     self.detect_interval - run_time))
                 detection_iteration += 1
-                self._running = False  # Release lock
-                time.sleep((self.detect_interval - run_time) / self._speed_up)
+                self._wait(
+                    wait=(self.detect_interval - run_time) / self._speed_up,
+                    detection_kwargs=dict(
+                        threshold=threshold, threshold_type=threshold_type,
+                        trig_int=trig_int, keep_detections=keep_detections,
+                        detect_directory=detect_directory,
+                        plot_detections=plot_detections,
+                        save_waveforms=save_waveforms,
+                        maximum_backfill=first_data,
+                        endtime=None))
                 if max_run_length and UTCDateTime.now() > run_start + max_run_length:
                     Logger.info("Hit maximum run time, stopping.")
                     self.stop()
@@ -478,6 +494,42 @@ class RealTimeTribe(Tribe):
         finally:
             self.stop()
         return self.party
+
+    def _read_templates_from_disk(self):
+        if not os.path.isfile(self._tribe_file):
+            return []
+        Logger.info(f"Checking for events in {self._tribe_file}")
+        new_tribe = Tribe().read(self._tribe_file)
+        os.remove(self._tribe_file)  # Remove file once done with it.
+        new_tribe.templates = [t for t in new_tribe
+                               if t.name not in self.running_templates]
+        Logger.info(f"Read in {len(new_tribe)} new templates from disk")
+        return new_tribe
+
+    def _add_templates_from_disk(
+        self,
+        threshold: float,
+        threshold_type: str,
+        trig_int: float,
+        keep_detections: float = 86400,
+        detect_directory: str = "{name}/detections",
+        plot_detections: bool = True,
+        save_waveforms: bool = True,
+        maximum_backfill: float = None,
+        endtime: UTCDateTime = None,
+        **kwargs
+    ):
+        new_tribe = self._read_templates_from_disk()
+        if len(new_tribe) == 0:
+            return
+        Logger.info(
+            f"Adding {len(new_tribe)} templates to already running tribe.")
+        self.add_templates(
+            new_tribe, threshold=threshold, threshold_type=threshold_type,
+            trig_int=trig_int, keep_detections=keep_detections,
+            detect_directory=detect_directory, plot_detections=plot_detections,
+            save_waveforms=save_waveforms, maximum_backfill=maximum_backfill,
+            endtime=endtime, **kwargs)
 
     def add_templates(
         self,
@@ -551,10 +603,12 @@ class RealTimeTribe(Tribe):
         st = self.rt_client.wavebank.get_waveforms_bulk(bulk)
         Logger.debug("Additional templates to be run: \n{0} "
                      "templates".format(len(templates)))
+        # TODO: This could be in a non-blocking Process of it's own
         new_party = templates.detect(
             stream=st, plot=False, threshold=threshold,
             threshold_type=threshold_type, trig_int=trig_int,
             xcorr_func="fftw", concurrency="concurrent",
+            parallel_process=self._parallel_processing,
             process_cores=self.process_cores, **kwargs)
         while self._running:
             time.sleep(1)  # Wait until lock is released to add detections

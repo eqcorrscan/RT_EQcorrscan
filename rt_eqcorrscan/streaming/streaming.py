@@ -35,8 +35,8 @@ class _StreamingClient(ABC):
     buffer_capacity
         Length of buffer in seconds. Old data are removed in a FIFO style.
     wavebank
-        Optional wavebank to save data to. Used for backfilling by
-        RealTimeTribe
+        WaveBank to save data to. Used for backfilling by RealTimeTribe.
+        Set to `None` to not use a WaveBank.
 
     Notes
     -----
@@ -49,18 +49,19 @@ class _StreamingClient(ABC):
 
     def __init__(
         self,
-        client_name: str = None,
+        server_url: str = None,
         buffer: Union[Stream, Buffer] = None,
         buffer_capacity: float = 600.,
-        wavebank: WaveBank = None,
+        wavebank: WaveBank = WaveBank("Streaming_WaveBank"),
     ) -> None:
-        self.client_name = client_name
+        self.server_url = server_url
         if buffer is None:
             buffer = Buffer(traces=[], maxlen=buffer_capacity)
         elif isinstance(buffer, Stream):
             buffer = Buffer(buffer.traces, maxlen=buffer_capacity)
         self._buffer = buffer
         self.buffer_capacity = buffer_capacity
+
         self.wavebank = wavebank
         self.threads = []
 
@@ -72,7 +73,7 @@ class _StreamingClient(ABC):
         print_str = (
             "Client at {0}, status: {1}, buffer capacity: {2:.1f}s\n"
             "\tCurrent Buffer:\n{3}".format(
-                self.client_name, status_map[self.busy],
+                self.server_url, status_map[self.busy],
                 self.buffer_capacity, self.buffer))
         return print_str
 
@@ -161,6 +162,9 @@ class _StreamingClient(ABC):
         self.buffer.add_stream(trace)
         if self.wavebank is not None:
             self.wavebank.put_waveforms(stream=Stream([trace]))
+            # Note that this should be undertaken by put_waveforms,
+            # but seems to get missed...
+            self.wavebank.update_index()
         Logger.debug("Buffer contains {0}".format(self.buffer))
 
     def on_terminate(self) -> Stream:  # pragma: no cover
@@ -170,7 +174,8 @@ class _StreamingClient(ABC):
         Logger.info("Termination of {0}".format(self.__repr__()))
         return self.buffer
 
-    def on_error(self):  # pragma: no cover
+    @staticmethod
+    def on_error():  # pragma: no cover
         """
         Handle errors gracefully.
         """

@@ -14,6 +14,7 @@ from rt_eqcorrscan.config import Config
 def run(outfile):
     config = Config()
     config.write(outfile)
+    print(f"Written config file: {outfile}")
 
 
 if __name__ == "__main__":

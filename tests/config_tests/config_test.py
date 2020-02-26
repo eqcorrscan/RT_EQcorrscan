@@ -21,7 +21,7 @@ class TestConfig(unittest.TestCase):
         # Check that we can get attributes
         self.assertIsInstance(config.rt_match_filter.n_stations, int)
         self.assertIsInstance(config.rt_match_filter.plot, bool)
-        self.assertIsInstance(config.rt_match_filter.seedlink_server_url, str)
+        self.assertIsInstance(config.rt_match_filter.rt_client_url, str)
         client = config.rt_match_filter.get_client()
         self.assertTrue(hasattr(client, "get_events"))
 
@@ -81,6 +81,12 @@ class TestConfig(unittest.TestCase):
         config.rt_match_filter.waveform_client = "GEONET"
         client = config.rt_match_filter.get_waveform_client()
         self.assertIsInstance(client, Client)
+
+    def test_get_streaming_client(self):
+        config = Config()
+        rt_client = config.rt_match_filter.get_streaming_client()
+        self.assertEqual(
+            rt_client.server_url, config.rt_match_filter.rt_client_url)
 
     def test_bad_init(self):
         with self.assertRaises(NotImplementedError):

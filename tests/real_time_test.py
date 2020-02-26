@@ -13,7 +13,7 @@ from obspy import UTCDateTime
 from obspy.clients.fdsn import Client
 
 from rt_eqcorrscan.rt_match_filter import RealTimeTribe
-from rt_eqcorrscan.streaming import RealTimeClient
+from rt_eqcorrscan.streaming.clients.seedlink import RealTimeClient
 from rt_eqcorrscan.reactor import get_inventory
 
 

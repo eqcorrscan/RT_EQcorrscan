@@ -134,6 +134,8 @@ class CatalogListener(_Listener):
     """
     busy = False
     _test_start_step = 0  # Number of seconds prior to `now` used for testing.
+    _speed_up = 1  # Multiplier for query intervals, used for synthesising
+                   # previous sequences, not general purpose.
 
     def __init__(
         self,
@@ -178,6 +180,10 @@ class CatalogListener(_Listener):
             "interval={2}, **kwargs)".format(
                 self.client.base_url, len(self.old_events), self.interval))
         return print_str
+
+    @property
+    def sleep_interval(self):
+        return self.interval / self._speed_up
 
     def _remove_old_events(self, endtime: UTCDateTime) -> None:
         """
@@ -248,7 +254,19 @@ class CatalogListener(_Listener):
         self.busy = True
         self.previous_time -= self._test_start_step
         template_kwargs = template_kwargs or dict()
+        loop_duration = 0  # Timer for loop, used in synthesising speed-ups
         while self.busy:
+            tic = time.time()  # Timer for loop, used in synthesising speed-ups
+            if self._test_start_step > 0:
+                # Still processing past data
+                self._test_start_step -= loop_duration * self._speed_up
+                self._test_start_step += loop_duration
+                # Account for UTCDateTime.now() already including loop_
+                # duration once.
+            elif self._test_start_step < 0:
+                # We have gone into the future!
+                raise NotImplementedError(
+                    "Trying to access future data: spoilers not allowed")
             now = UTCDateTime.now() - self._test_start_step
             # Remove old events from dict
             self._remove_old_events(now)
@@ -269,7 +287,9 @@ class CatalogListener(_Listener):
                         "Could not download data between {0} and {1}".format(
                             self.previous_time, now))
                     Logger.error(e)
-                time.sleep(self.interval)
+                time.sleep(self.sleep_interval)
+                toc = time.time()  # Timer for loop, used in synthesising speed-ups
+                loop_duration = toc - tic
                 continue
             if new_events is not None:
                 if filter_func is not None:
@@ -318,7 +338,9 @@ class CatalogListener(_Listener):
                     Logger.debug("Old events current state: {0}".format(
                         self.old_events))
             self.previous_time = now
-            time.sleep(self.interval)
+            time.sleep(self.sleep_interval)
+            toc = time.time()  # Timer for loop, used in synthesising speed-ups
+            loop_duration = toc - tic
 
 
 if __name__ == "__main__":

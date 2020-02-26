@@ -16,11 +16,11 @@ from obspy.clients.fdsn import Client
 
 from eqcorrscan.core.match_filter import read_tribe
 
+from rt_eqcorrscan.config import Config
 from rt_eqcorrscan.reactor import get_inventory, estimate_region, Reactor
 from rt_eqcorrscan.event_trigger import CatalogListener
 from rt_eqcorrscan.database import TemplateBank
 from rt_eqcorrscan.event_trigger import magnitude_rate_trigger_func
-from rt_eqcorrscan.streaming import RealTimeClient
 
 
 class ReactorTests(unittest.TestCase):
@@ -39,52 +39,46 @@ class ReactorTests(unittest.TestCase):
         cls.trigger_func = partial(
             magnitude_rate_trigger_func, magnitude_threshold=4,
             rate_threshold=20, rate_bin=0.5)
+        config = Config()
+        config.rt_match_filter.rt_client_url = "link.geonet.org.nz"
+        config.rt_match_filter.rt_client_type = "seedlink"
+        config.rt_match_filter.threshold = 8
+        config.rt_match_filter.threshold_type = "MAD"
+        config.rt_match_filter.trig_int = 2
+        config.rt_match_filter.plot = False
+        cls.config = config
 
     def test_up_time(self):
-        rt_client = RealTimeClient(server_url="link.geonet.org.nz")
         reactor = Reactor(
-            client=Client("GEONET"), rt_client=rt_client,
+            client=Client("GEONET"),
             listener=self.listener, trigger_func=self.trigger_func,
             template_database=self.template_bank,
-            template_lookup_kwargs=dict(),
-            real_time_tribe_kwargs=dict(),
-            plot_kwargs=dict(),
-            listener_kwargs=dict(make_templates=False))
+            config=self.config)
         self.assertEqual(reactor.up_time, 0)
         reactor._run_start = UTCDateTime(2000, 1, 1)
         reactor.up_time = UTCDateTime(2000, 1, 2)
         self.assertEqual(reactor.up_time, 86400)
 
     def test_run(self):
-        rt_client = RealTimeClient(server_url="link.geonet.org.nz")
         reactor = Reactor(
-            client=Client("GEONET"), rt_client=rt_client,
+            client=Client("GEONET"),
             listener=self.listener, trigger_func=self.trigger_func,
-            template_database=self.template_bank,
-            template_lookup_kwargs=dict(),
-            real_time_tribe_kwargs=dict(),
-            plot_kwargs=dict(),
-            listener_kwargs=dict(make_templates=False))
+            template_database=self.template_bank, config=self.config)
         reactor.run(max_run_length=30)
         self.assertGreaterEqual(reactor.up_time, 30)
 
     def test_reactor_spin_up(self):
-        rt_client = RealTimeClient(server_url="link.geonet.org.nz")
         reactor = Reactor(
-            client=Client("GEONET"), rt_client=rt_client,
+            client=Client("GEONET"),
             listener=self.listener, trigger_func=self.trigger_func,
             template_database=self.template_bank,
-            template_lookup_kwargs=dict(),
-            real_time_tribe_kwargs=dict(
-                threshold=8, threshold_type="MAD", trig_int=2),
-            plot_kwargs=dict(),
-            listener_kwargs=dict(make_templates=False))
+            config=self.config)
         trigger_event = Event(
             origins=[Origin(
                 time=UTCDateTime(2019, 1, 1), latitude=-45.,
                 longitude=178.0, depth=10000.)],
             magnitudes=[Magnitude(mag=7.4)])
-        reactor.background_spin_up(triggering_event=trigger_event)
+        reactor.spin_up(triggering_event=trigger_event)
         time.sleep(10)
         reactor.stop()
 

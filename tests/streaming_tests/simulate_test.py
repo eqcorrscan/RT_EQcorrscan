@@ -5,10 +5,10 @@ Tests for simulating a real-time client.
 import unittest
 import time
 
-from obspy import Stream, UTCDateTime
+from obspy import UTCDateTime
 from obspy.clients.fdsn import Client
 
-from rt_eqcorrscan.streaming.simulate import SimulateRealTimeClient
+from rt_eqcorrscan.streaming.clients.simulate import RealTimeClient
 
 SLEEP_STEP = 40
 
@@ -17,7 +17,8 @@ class FDSNTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = Client("GEONET")
-        cls.rt_client = SimulateRealTimeClient(
+        cls.rt_client = RealTimeClient(
+            server_url="Unreal-streamer",
             client=cls.client, buffer_capacity=10,
             starttime=UTCDateTime(2017, 1, 1), speed_up=4., query_interval=5.)
 

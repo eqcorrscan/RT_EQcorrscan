@@ -8,6 +8,7 @@ License
 
 """
 import logging
+import importlib
 import os
 import sys
 
@@ -50,15 +51,18 @@ class RTMatchFilterConfig(_ConfigAttribDict):
     A holder for configuration values for real-time matched-filtering.
 
     Works like a dictionary and can have anything added to it.
+
+    To enable you to provide your own streaming service you should
+    write your own class subclassing
+    `rt_eqcorrscan.streaming.streaming._StreamingClient`, and set the
+    parameter `rt_client_base` to be the import path for your class.
     """
     defaults = {
         "client": "GEONET",
         "client_type": "FDSN",
-        "seedlink_server_url": "link.geonet.org.nz",
         "n_stations": 10,
         "min_stations": 5,
         "max_distance": 1000.,
-        "buffer_capacity": 300.,
         "detect_interval": 120.,
         "max_run_length": None,
         "minimum_rate": None,
@@ -66,22 +70,31 @@ class RTMatchFilterConfig(_ConfigAttribDict):
         "threshold": .5,
         "threshold_type": "av_chan_corr",
         "trig_int": 2.0,
-        "local_wave_bank": None,
         "save_waveforms": False,
         "plot_detections": False,
     }
     readonly = []
 
+    client_base = "obspy.clients"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    @property
+    def client_module(self):
+        return importlib.import_module(
+            f"{self.client_base}.{self.client_type.lower()}")
+
+    @property
+    def waveform_client_module(self):
+        return importlib.import_module(
+            f"{self.client_base}.{self.waveform_client_type.lower()}")
+
     def get_client(self):
         """ Get the client instance given the set parameters. """
-        from obspy import clients
-
         try:
-            _client_module = clients.__getattribute__(self.client_type.lower())
-        except AttributeError as e:
+            _client_module = self.client_module
+        except ModuleNotFoundError as e:
             Logger.error(e)
             return None
         try:
@@ -93,13 +106,13 @@ class RTMatchFilterConfig(_ConfigAttribDict):
 
     def get_waveform_client(self):
         """ Get the waveform client instance given the set parameters. """
-        from obspy import clients
-
         try:
-            _client_module = clients.__getattribute__(
-                self.waveform_client_type.lower())
-        except AttributeError as e:
+            _client_module = self.waveform_client_module
+        except ModuleNotFoundError as e:
             Logger.error(e)
+            return None
+        except AttributeError:
+            Logger.error("No waveform-client specified")
             return None
         try:
             client = _client_module.Client(self.waveform_client)
@@ -107,6 +120,54 @@ class RTMatchFilterConfig(_ConfigAttribDict):
             Logger.error(e)
             return None
         return client
+
+
+class StreamingConfig(_ConfigAttribDict):
+    defaults = {
+        "rt_client_url": "link.geonet.org.nz",
+        "rt_client_type": "seedlink",
+        "buffer_capacity": 300.,
+        "local_wave_bank": None,
+    }
+    readonly = []
+    rt_client_base = "rt_eqcorrscan.streaming.clients"
+    _known_keys = {"starttime", "query_interval", "speed_up", "client_type"}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    @property
+    def rt_client_module(self):
+        return importlib.import_module(
+            f"{self.rt_client_base}.{self.rt_client_type.lower()}")
+
+    @property
+    def known_kwargs(self):
+        out = {}
+        for key in self._known_keys:
+            value = self.get(key, None)
+            if value is not None:
+                out.update({key: value})
+        return out
+
+    def get_streaming_client(self):
+        """ Get the configured waveform streaming service. """
+        try:
+            _client_module = self.rt_client_module
+        except ModuleNotFoundError as e:
+            Logger.error(e)
+            return None
+        try:
+            kwargs = self.known_kwargs
+            rt_client = _client_module.RealTimeClient(
+                server_url=self.rt_client_url,
+                buffer_capacity=self.buffer_capacity,
+                wavebank=self.local_wave_bank,
+                **kwargs)
+        except Exception as e:
+            Logger.error(e)
+            return None
+        return rt_client
 
 
 class ReactorConfig(_ConfigAttribDict):
@@ -154,7 +215,7 @@ class DatabaseManagerConfig(_ConfigAttribDict):
     defaults = {
         "event_path": ".",
         "event_format": "QUAKEML",
-        "event_name_structure": "{event_id_end}",
+        "name_structure": "{event_id_end}",
         "path_structure": "{year}/{month}/{event_id_end}",
         "event_ext": ".xml",
         "min_stations": 5,
@@ -196,6 +257,7 @@ KEY_MAPPER = {
     "plot": PlotConfig,
     "database_manager": DatabaseManagerConfig,
     "template": TemplateConfig,
+    "streaming": StreamingConfig,
 }
 
 
@@ -219,6 +281,8 @@ class Config(object):
         Config values for the database manager.
     template
         Config values for template creation.
+    streaming
+        Config values for real-time streaming
     """
     def __init__(
         self,
@@ -231,6 +295,7 @@ class Config(object):
         self.plot = PlotConfig()
         self.database_manager = DatabaseManagerConfig()
         self.template = TemplateConfig()
+        self.streaming = StreamingConfig()
         self.log_level = log_level
         self.log_formatter = log_formatter
 
@@ -286,26 +351,35 @@ class Config(object):
                 _dict.update({key: value})
         return _dict
 
-    def setup_logging(self, **kwargs):
+    def setup_logging(
+        self,
+        screen: bool = True,
+        file: bool = True,
+        filename: str = "rt_eqcorrscan.log",
+        **kwargs
+    ):
         """Set up logging using the logging parameters."""
-        file_log_args = dict(filename="rt_eqcorrscan.log", mode='a',
-                             maxBytes=20*1024*1024, backupCount=2,
-                             encoding=None, delay=0)
-        file_log_args.update(kwargs)
-        rotating_handler = RotatingFileHandler(**file_log_args)
-        rotating_handler.setFormatter(
-            logging.Formatter(self.log_formatter))
-        rotating_handler.setLevel(logging.DEBUG)
-        # Console handler
-        console_handler = logging.StreamHandler(stream=sys.stdout)
-        console_handler.setLevel(self.log_level)
-        console_handler.setFormatter(
-            logging.Formatter(self.log_formatter))
-        # logging.basicConfig(
-        #     level=self.log_level, format=self.log_formatter,
-        #     handlers=[rotating_handler, console_handler])
+        handlers = []
+        if file:
+            file_log_args = dict(filename=filename, mode='a',
+                                 maxBytes=20*1024*1024, backupCount=2,
+                                 encoding=None, delay=0)
+            file_log_args.update(kwargs)
+            rotating_handler = RotatingFileHandler(**file_log_args)
+            rotating_handler.setFormatter(
+                logging.Formatter(self.log_formatter))
+            rotating_handler.setLevel(self.log_level)
+            handlers.append(rotating_handler)
+        if screen:
+            # Console handler
+            console_handler = logging.StreamHandler(stream=sys.stdout)
+            console_handler.setLevel(self.log_level)
+            console_handler.setFormatter(
+                logging.Formatter(self.log_formatter))
+            handlers.append(console_handler)
         logging.basicConfig(
-            level=self.log_level, format=self.log_formatter)
+            level=self.log_level, format=self.log_formatter,
+            handlers=handlers)
 
 
 def read_config(config_file=None) -> Config:

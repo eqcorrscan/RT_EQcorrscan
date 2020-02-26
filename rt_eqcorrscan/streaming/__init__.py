@@ -7,5 +7,4 @@ License
     GPL v3.0
 """
 
-from .seedlink import RealTimeClient
 from .buffers import Buffer
