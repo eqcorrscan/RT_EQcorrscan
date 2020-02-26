@@ -244,21 +244,36 @@ class RealTimeTribe(Tribe):
             **plot_options)
         self.plotter.background_run()
 
-    def _wait(self) -> None:
+    def _wait(self, wait: float = None, detection_kwargs: dict = None) -> None:
+        """ Wait for `wait` seconds, or until all channels are available. """
         Logger.info("Waiting for data.")
         max_wait = min(self._max_wait_length, self.rt_client.buffer_capacity)
         wait_length = 0.
-        while len(self.rt_client.buffer) < len(self.expected_channels):
-            if wait_length >= max_wait:
-                Logger.warning("Starting operation without the full dataset")
-                break
+        while True:
+            tic = time.time()
             # Wait until we have some data
             Logger.debug(
                 "Waiting for data, currently have {0} channels of {1} "
                 "expected channels".format(
                     len(self.rt_client.buffer), len(self.expected_channels)))
-            wait_length += self.sleep_step
+            if detection_kwargs:
+                self._add_templates_from_disk(**detection_kwargs)
+            else:
+                new_tribe = self._read_templates_from_disk()
+                if len(new_tribe) > 0:
+                    self.templates.extend(new_tribe.templates)
             time.sleep(self.sleep_step)
+            toc = time.time()
+            wait_length += (toc - tic)
+            if wait is None:
+                if len(self.rt_client.buffer) >= len(self.expected_channels):
+                    break
+                if wait_length >= max_wait:
+                    Logger.warning(
+                        "Starting operation without the full dataset")
+                    break
+            elif wait_length >= wait:
+                break
             pass
         return
 
@@ -381,7 +396,7 @@ class RealTimeTribe(Tribe):
                 self.rt_client.buffer_length + 5) / self._speed_up
             Logger.info("Sleeping for {0:.2f}s while accumulating data".format(
                 sleep_step))
-            time.sleep(sleep_step)
+            self._wait(sleep_step)
         first_data = min([tr.stats.starttime
                           for tr in self.rt_client.get_stream().merge()])
         try:
@@ -437,15 +452,6 @@ class RealTimeTribe(Tribe):
                 Logger.info("Party now contains {0} detections".format(
                     len(self.detections)))
                 self._running = False  # Release lock
-                # See if there are templates to be added and run.
-                # TODO: This should run more frequently
-                self._add_templates_from_disk(
-                    threshold=threshold, threshold_type=threshold_type,
-                    trig_int=trig_int, keep_detections=keep_detections,
-                    detect_directory=detect_directory,
-                    plot_detections=plot_detections,
-                    save_waveforms=save_waveforms, maximum_backfill=first_data,
-                    endtime=None)
                 run_time = UTCDateTime.now() - start_time
                 Logger.info("Detection took {0:.2f}s".format(run_time))
                 if self.detect_interval <= run_time:
@@ -458,7 +464,16 @@ class RealTimeTribe(Tribe):
                 Logger.info("Waiting {0:.2f}s until next run".format(
                     self.detect_interval - run_time))
                 detection_iteration += 1
-                time.sleep((self.detect_interval - run_time) / self._speed_up)
+                self._wait(
+                    wait=(self.detect_interval - run_time) / self._speed_up,
+                    detection_kwargs=dict(
+                        threshold=threshold, threshold_type=threshold_type,
+                        trig_int=trig_int, keep_detections=keep_detections,
+                        detect_directory=detect_directory,
+                        plot_detections=plot_detections,
+                        save_waveforms=save_waveforms,
+                        maximum_backfill=first_data,
+                        endtime=None))
                 if max_run_length and UTCDateTime.now() > run_start + max_run_length:
                     Logger.info("Hit maximum run time, stopping.")
                     self.stop()
@@ -480,6 +495,17 @@ class RealTimeTribe(Tribe):
             self.stop()
         return self.party
 
+    def _read_templates_from_disk(self):
+        if not os.path.isfile(self._tribe_file):
+            return []
+        Logger.info(f"Checking for events in {self._tribe_file}")
+        new_tribe = Tribe().read(self._tribe_file)
+        os.remove(self._tribe_file)  # Remove file once done with it.
+        new_tribe.templates = [t for t in new_tribe
+                               if t.name not in self.running_templates]
+        Logger.info(f"Read in {len(new_tribe)} new templates from disk")
+        return new_tribe
+
     def _add_templates_from_disk(
         self,
         threshold: float,
@@ -493,13 +519,7 @@ class RealTimeTribe(Tribe):
         endtime: UTCDateTime = None,
         **kwargs
     ):
-        Logger.info(f"Checking for events in {self._tribe_file}")
-        if not os.path.isfile(self._tribe_file):
-            return
-        new_tribe = Tribe().read(self._tribe_file)
-        os.remove(self._tribe_file)  # Remove file once done with it.
-        new_tribe.templates = [t for t in new_tribe
-                               if t.name not in self.running_templates]
+        new_tribe = self._read_templates_from_disk()
         if len(new_tribe) == 0:
             return
         Logger.info(
