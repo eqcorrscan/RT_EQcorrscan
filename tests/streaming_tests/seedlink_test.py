@@ -80,6 +80,8 @@ class SeedLinkTest(unittest.TestCase):
         wavebank_traces = rt_client.wavebank.get_waveforms()
         wavebank_stream = wavebank_traces.merge()
         buffer_stream = rt_client.get_stream()
+        wavebank_stream.sort()
+        buffer_stream.sort()
         self.assertEqual(buffer_stream[0].stats.endtime,
                          wavebank_stream[0].stats.endtime)
         self.assertTrue(
