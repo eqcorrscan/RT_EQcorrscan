@@ -81,6 +81,8 @@ def synthesise_real_time(
         Logger.info("Building template database")
         template_bank.make_templates(
             catalog=catalog, client=client, **config.template)
+    else:
+        template_bank.update_index()
     tribe = template_bank.get_templates(
         starttime=database_starttime, endtime=database_endtime,
         latitude=database_region.latitude,
