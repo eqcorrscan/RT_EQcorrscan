@@ -63,15 +63,15 @@ class RTMatchFilterConfig(_ConfigAttribDict):
         "n_stations": 10,
         "min_stations": 5,
         "max_distance": 1000.,
-        "detect_interval": 120.,
+        "detect_interval": 60.,
         "max_run_length": None,
         "minimum_rate": None,
         "plot": True,
-        "threshold": .5,
-        "threshold_type": "av_chan_corr",
+        "threshold": 8,
+        "threshold_type": "MAD",
         "trig_int": 2.0,
-        "save_waveforms": False,
-        "plot_detections": False,
+        "save_waveforms": True,
+        "plot_detections": True,
     }
     readonly = []
 
