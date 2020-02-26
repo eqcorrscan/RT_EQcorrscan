@@ -27,8 +27,7 @@ class TestTemplateBank(unittest.TestCase):
         os.makedirs(cls.test_path)
         logging.debug("Making the bank")
         cls.bank = TemplateBank(
-            base_path=cls.test_path, event_name_structure="{event_id_short}",
-            template_name_structure="{event_id_short}")
+            base_path=cls.test_path, name_structure="{event_id_short}")
         cls.client = Client("GEONET")
         logging.debug("Downloading the catalog")
         catalog = cls.client.get_events(

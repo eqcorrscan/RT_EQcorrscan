@@ -8,7 +8,7 @@ import time
 from obspy import UTCDateTime
 from obspy.clients.fdsn import Client
 
-from rt_eqcorrscan.streaming.clients.simulate import RealTimeClient
+from rt_eqcorrscan.streaming.clients.obspy import RealTimeClient
 
 SLEEP_STEP = 40
 
