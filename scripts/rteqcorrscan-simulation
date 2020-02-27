@@ -130,6 +130,7 @@ def synthesise_real_time(
         catalog=None, waveform_client=client)
     listener._speed_up = speed_up
     listener._test_start_step = UTCDateTime.now() - trigger_origin.time
+    listener._test_start_step += 180  # Start up 3 minutes before the event
 
     reactor = Reactor(
         client=client,

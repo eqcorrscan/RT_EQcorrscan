@@ -1,10 +1,5 @@
 """
 RT_EQcorrscan: Near real-time matched-filtering for earthquake detection
-
-Author
-    Calum J Chamberlain
-License
-    GPL v3.0
 """
 
 __version__ = '0.0.1a'

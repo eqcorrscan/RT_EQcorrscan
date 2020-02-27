@@ -19,7 +19,8 @@ from obspy.core.event import Event
 
 from obsplus.events import get_events
 
-from rt_eqcorrscan.database.database_manager import TemplateBank
+from rt_eqcorrscan.database.database_manager import (
+    TemplateBank, check_tribe_quality)
 from rt_eqcorrscan.event_trigger.catalog_listener import CatalogListener
 from rt_eqcorrscan.config import Notifier, Config
 
@@ -193,6 +194,10 @@ class Reactor(object):
             if added_ids:
                 tribe = self.template_database.get_templates(
                     eventid=added_ids)
+                tribe = check_tribe_quality(
+                    tribe,
+                    min_stations=self.config.rt_match_filter.min_stations,
+                    **self.config.template)
                 if len(tribe) > 0:
                     Logger.info(f"Adding {len(tribe)} events to {triggering_event_id}")
                     tribe_file = os.path.join(
