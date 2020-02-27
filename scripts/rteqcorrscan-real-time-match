@@ -103,9 +103,6 @@ def run_real_time_matched_filter(**kwargs):
     Logger.info("After some QC there are {0} templates in the Tribe".format(
         len(tribe)))
 
-    for t in tribe:
-        t.process_length = config.rt_match_filter.buffer_capacity
-
     if rt_client_starttime is not None:
         config.streaming.starttime = rt_client_starttime
         config.streaming.speed_up = kwargs.get("speed_up", 1.0)
@@ -116,7 +113,10 @@ def run_real_time_matched_filter(**kwargs):
         detect_interval=config.rt_match_filter.detect_interval,
         plot=config.rt_match_filter.plot, name=tribe_name,
         plot_options=config.plot)
-    real_time_tribe._speed_up = config.streaming.speed_up
+    try:
+        real_time_tribe._speed_up = config.streaming.speed_up
+    except AttributeError:
+        real_time_tribe._speed_up = 1
 
     party = None
     try:
