@@ -68,7 +68,7 @@ class RTMatchFilterConfig(_ConfigAttribDict):
         "minimum_rate": None,
         "plot": True,
         "threshold": 0.3,
-        "threshold_type": "av_chann_corr",
+        "threshold_type": "av_chan_corr",
         "trig_int": 2.0,
         "save_waveforms": True,
         "plot_detections": True,
