@@ -32,7 +32,8 @@ Logger = logging.getLogger(__name__)
 class RealTimeTribe(Tribe):
     sleep_step = 1.0
     plotter = None
-    exclude_channels = ["EHE", "EHN", "EH1", "EH2", "HHE", "HHN", "HH1", "HH2"]
+    plotting_exclude_channels = [
+        "EHE", "EHN", "EH1", "EH2", "HHE", "HHN", "HH1", "HH2"]
     """
     Real-Time tribe for real-time matched-filter detection.
 
@@ -55,7 +56,7 @@ class RealTimeTribe(Tribe):
     
     sleep_step
         Default sleep-step in seconds while waiting for data. Defaults to 1.0
-    exclude_channels
+    plotting_exclude_channels
         Channels to exclude from plotting
     """
     notifier = Notifier()
@@ -121,12 +122,12 @@ class RealTimeTribe(Tribe):
             self.__len__(), self.rt_client)
 
     @property
-    def template_channels(self) -> set:
+    def template_seed_ids(self) -> set:
         """ Channel-ids used in the templates. """
         return set(tr.id for template in self.templates for tr in template.st)
 
     @property
-    def used_stations(self) -> set:
+    def used_seed_ids(self) -> set:
         """ Channel-ids in the inventory. """
         if self.inventory is None:
             return set()
@@ -135,11 +136,18 @@ class RealTimeTribe(Tribe):
                    for net in self.inventory for sta in net for chan in sta)
 
     @property
-    def expected_channels(self) -> set:
+    def expected_seed_ids(self) -> set:
         """ ids of channels to be used for detection. """
         if self.inventory is None or len(self.inventory) == 0:
-            return self.template_channels
-        return self.template_channels.intersection(self.used_stations)
+            return self.template_seed_ids
+        return self.template_seed_ids.intersection(self.used_seed_ids)
+
+    @property
+    def used_stations(self) -> set:
+        """ Set of station names used in detection. """
+        if self.inventory is None:
+            return set()
+        return {sta.code for net in self.inventory for sta in net}
 
     @property
     def minimum_data_for_detection(self) -> float:
@@ -154,6 +162,13 @@ class RealTimeTribe(Tribe):
         Note that names are not guaranteed to be unique.
         """
         return {t.name for t in self.templates}
+
+    def _ensure_templates_have_enough_stations(self, min_stations):
+        """ Remove templates that don't have enough stations. """
+        self.templates = [
+            t for t in self.templates
+            if len({tr.stats.station for tr in t.st}.intersection(
+                self.used_stations)) >= min_stations]
 
     def _remove_old_detections(self, endtime: UTCDateTime) -> None:
         """ Remove detections older than keep duration. Works in-place. """
@@ -238,7 +253,8 @@ class RealTimeTribe(Tribe):
         self.plotter = EQcorrscanPlot(
             rt_client=self.rt_client, plot_length=self.plot_length,
             tribe=self, inventory=self.inventory,
-            detections=self.detections, exclude_channels=self.exclude_channels,
+            detections=self.detections,
+            exclude_channels=self.plotting_exclude_channels,
             update_interval=update_interval, plot_height=plot_height,
             plot_width=plot_width, offline=offline,
             **plot_options)
@@ -255,7 +271,7 @@ class RealTimeTribe(Tribe):
             Logger.debug(
                 "Waiting for data, currently have {0} channels of {1} "
                 "expected channels".format(
-                    len(self.rt_client.buffer), len(self.expected_channels)))
+                    len(self.rt_client.buffer), len(self.expected_seed_ids)))
             if detection_kwargs:
                 self._add_templates_from_disk(**detection_kwargs)
             else:
@@ -266,7 +282,7 @@ class RealTimeTribe(Tribe):
             toc = time.time()
             wait_length += (toc - tic)
             if wait is None:
-                if len(self.rt_client.buffer) >= len(self.expected_channels):
+                if len(self.rt_client.buffer) >= len(self.expected_seed_ids):
                     break
                 if wait_length >= max_wait:
                     Logger.warning(
@@ -282,6 +298,7 @@ class RealTimeTribe(Tribe):
         threshold: float,
         threshold_type: str,
         trig_int: float,
+        min_stations: int = None,
         keep_detections: float = 86400,
         detect_directory: str = "{name}/detections",
         plot_detections: bool = True,
@@ -309,6 +326,8 @@ class RealTimeTribe(Tribe):
             `eqcorrscan.core.match_filter.Tribe.detect` for options.
         trig_int
             Minimum inter-detection time in seconds.
+        min_stations
+            Minimum number of stations required to make a detection.
         keep_detections
             Duration to store detection in memory for in seconds.
         detect_directory
@@ -338,6 +357,15 @@ class RealTimeTribe(Tribe):
         The party created - will not contain detections expired by
         `keep_detections` threshold.
         """
+        # Remove templates that do not have enough stations in common with the
+        # inventory.
+        min_stations = min_stations or 0
+        n = len(self.templates)
+        self._ensure_templates_have_enough_stations(min_stations=min_stations)
+        n -= len(self.templates)
+        Logger.info(
+            f"{n} templates were removed because they did not share enough "
+            f"stations with the inventory. {len(self.templates)} will be used")
         try:
             if kwargs.pop("plot"):
                 Logger.info("EQcorrscan plotting disabled")
@@ -353,7 +381,7 @@ class RealTimeTribe(Tribe):
         if not self.rt_client.started:
             self.rt_client.start()
         if self.rt_client.can_add_streams:
-            for tr_id in self.expected_channels:
+            for tr_id in self.expected_seed_ids:
                 self.rt_client.select_stream(
                     net=tr_id.split('.')[0], station=tr_id.split('.')[1],
                     selector=tr_id.split('.')[3])
@@ -366,10 +394,10 @@ class RealTimeTribe(Tribe):
         else:
             Logger.info("Real-time streaming already running")
         Logger.info("Detection will use the following data: {0}".format(
-            self.expected_channels))
+            self.expected_seed_ids))
         if backfill_client and backfill_to:
             self._wait()
-            for tr_id in self.expected_channels:
+            for tr_id in self.expected_seed_ids:
                 try:
                     tr_in_buffer = self.rt_client.buffer.select(id=tr_id)[0]
                 except IndexError:
@@ -399,11 +427,18 @@ class RealTimeTribe(Tribe):
             self._wait(sleep_step)
         first_data = min([tr.stats.starttime
                           for tr in self.rt_client.get_stream().merge()])
+        detection_kwargs = dict(
+            threshold=threshold, threshold_type=threshold_type,
+            trig_int=trig_int, keep_detections=keep_detections,
+            detect_directory=detect_directory, plot_detections=plot_detections,
+            save_waveforms=save_waveforms, maximum_backfill=first_data,
+            endtime=None, min_stations=min_stations)
         try:
             while self.busy:
                 self._running = True  # Lock tribe
                 start_time = UTCDateTime.now()
-                st = self.rt_client.get_stream().split().merge() # Split to remove trailing mask
+                st = self.rt_client.get_stream().split().merge()
+                # Split to remove trailing mask
                 if len(st) == 0:
                     Logger.warning("No data")
                     continue
@@ -466,14 +501,7 @@ class RealTimeTribe(Tribe):
                 detection_iteration += 1
                 self._wait(
                     wait=(self.detect_interval - run_time) / self._speed_up,
-                    detection_kwargs=dict(
-                        threshold=threshold, threshold_type=threshold_type,
-                        trig_int=trig_int, keep_detections=keep_detections,
-                        detect_directory=detect_directory,
-                        plot_detections=plot_detections,
-                        save_waveforms=save_waveforms,
-                        maximum_backfill=first_data,
-                        endtime=None))
+                    detection_kwargs=detection_kwargs)
                 if max_run_length and UTCDateTime.now() > run_start + max_run_length:
                     Logger.info("Hit maximum run time, stopping.")
                     self.stop()
@@ -511,6 +539,7 @@ class RealTimeTribe(Tribe):
         threshold: float,
         threshold_type: str,
         trig_int: float,
+        min_stations: int,
         keep_detections: float = 86400,
         detect_directory: str = "{name}/detections",
         plot_detections: bool = True,
@@ -526,10 +555,10 @@ class RealTimeTribe(Tribe):
             f"Adding {len(new_tribe)} templates to already running tribe.")
         self.add_templates(
             new_tribe, threshold=threshold, threshold_type=threshold_type,
-            trig_int=trig_int, keep_detections=keep_detections,
-            detect_directory=detect_directory, plot_detections=plot_detections,
-            save_waveforms=save_waveforms, maximum_backfill=maximum_backfill,
-            endtime=endtime, **kwargs)
+            trig_int=trig_int, min_stations=min_stations,
+            keep_detections=keep_detections, detect_directory=detect_directory,
+            plot_detections=plot_detections, save_waveforms=save_waveforms,
+            maximum_backfill=maximum_backfill, endtime=endtime, **kwargs)
 
     def add_templates(
         self,
@@ -537,6 +566,7 @@ class RealTimeTribe(Tribe):
         threshold: float,
         threshold_type: str,
         trig_int: float,
+        min_stations: int = None,
         keep_detections: float = 86400,
         detect_directory: str = "{name}/detections",
         plot_detections: bool = True,
@@ -587,9 +617,22 @@ class RealTimeTribe(Tribe):
         """
         while self._running:
             time.sleep(1)  # Wait until the lock is released
-        self.templates.extend(templates)
         if isinstance(templates, list):
-            templates = Tribe(templates)
+            new_tribe = Tribe(templates)
+        else:
+            new_tribe = templates
+        # Remove templates that do not have enough stations.
+        min_stations = min_stations or 0
+        n = len(new_tribe)
+        new_tribe.templates = [
+            t for t in new_tribe.templates
+            if len({tr.stats.station for tr in t.st}.intersection(
+                self.used_stations)) >= min_stations]
+        n -= len(new_tribe)
+        Logger.info(
+            f"{n} templates were removed because they did not have enough "
+            f"stations. {len(new_tribe)} will be added to the running tribe.")
+        self.templates.extend(new_tribe.templates)
         # Get the stream
         endtime = endtime or UTCDateTime.now()
         if maximum_backfill is not None:
@@ -599,12 +642,12 @@ class RealTimeTribe(Tribe):
         if starttime >= endtime or self.rt_client.wavebank is None:
             return
         bulk = [tuple(chan.split('.').extend([starttime, endtime]))
-                for chan in self.expected_channels]
+                for chan in self.expected_seed_ids]
         st = self.rt_client.wavebank.get_waveforms_bulk(bulk)
         Logger.debug("Additional templates to be run: \n{0} "
-                     "templates".format(len(templates)))
+                     "templates".format(len(new_tribe)))
         # TODO: This could be in a non-blocking Process of it's own
-        new_party = templates.detect(
+        new_party = new_tribe.detect(
             stream=st, plot=False, threshold=threshold,
             threshold_type=threshold_type, trig_int=trig_int,
             xcorr_func="fftw", concurrency="concurrent",

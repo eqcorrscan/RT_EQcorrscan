@@ -332,8 +332,7 @@ def define_plot(
     p1.xaxis.formatter = datetick_formatter
 
     # Add detection lines
-    detection_source = _get_pick_times(
-        detections, channels[0], datastream={})
+    detection_source = _get_pick_times(detections, channels[0])
     detection_source.update(
         {"pick_values": [[
             int(min(stream.select(id=channels[0])[0].data) * .9),
@@ -364,8 +363,7 @@ def define_plot(
             p.xaxis.formatter = datetick_formatter
 
             # Add detection lines
-            detection_source = _get_pick_times(
-                detections, channel, datastream=detection_sources)
+            detection_source = _get_pick_times(detections, channel)
             detection_source.update(
                 {"pick_values": [[
                     int(min(stream.select(id=channel)[0].data) * .9),
@@ -421,8 +419,7 @@ def define_plot(
             trace_sources[_channel].stream(
                 new_data=new_data,
                 rollover=int(plot_length * _tr.stats.sampling_rate))
-            new_picks = _get_pick_times(
-                detections, _channel, datastream=detection_sources)
+            new_picks = _get_pick_times(detections, _channel)
             new_picks.update({
                 'pick_values': [
                     [int(np.nan_to_num(
@@ -506,7 +503,11 @@ def _update_template_alphas(
     return
 
 
-def _get_pick_times(detections: list, seed_id: str, datastream) -> dict:
+def _get_pick_times(
+    detections: list,
+    seed_id: str,
+    ignore_channel: bool = True
+) -> dict:
     """
     Get new pick times from catalog for a given channel.
 
@@ -516,9 +517,8 @@ def _get_pick_times(detections: list, seed_id: str, datastream) -> dict:
         List of detections
     seed_id
         The full Seed-id (net.sta.loc.chan) for extract picks for
-    datastream
-        Dictionary keyed by seed-id containing the DataStreams used for
-        plotting the picks. Will compare against this to find new picks.
+    ignore_channel
+        Whether to return all picks for a given sensor (e.g. HH*)
 
     Returns
     -------
@@ -527,20 +527,21 @@ def _get_pick_times(detections: list, seed_id: str, datastream) -> dict:
     picks = []
     Logger.debug("Scanning {0} detections for new picks".format(
         len(detections)))
+    net, sta, loc, chan = seed_id.split('.')
     for detection in detections:
         try:
-            pick = [p for p in detection.event.picks
-                    if p.waveform_id.get_seed_string() == seed_id][0]
+            if ignore_channel:
+                pick = [p for p in detection.event.picks
+                        if p.waveform_id.network_code == net and
+                        p.waveform_id.station_code == sta and
+                        p.waveform_id.location_code == loc][0]
+            else:
+                pick = [p for p in detection.event.picks
+                        if p.waveform_id.get_seed_string() == seed_id][0]
         except IndexError:
             pick = None
             pass
         if pick:
-            # old_picks = datastream.get(seed_id, None)
-            # if old_picks is None:
-            #     old_picks = []
-            # else:
-            #     old_picks = old_picks.data["picks"]
-            # if [pick.time.datetime, pick.time.datetime] not in old_picks:
             Logger.debug("Plotting pick on {0} at {1}".format(
                 seed_id, pick.time))
             picks.append([pick.time.datetime, pick.time.datetime])

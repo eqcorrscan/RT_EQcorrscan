@@ -34,11 +34,11 @@ def _read_event_list(fname: str) -> List[str]:
     return event_ids
 
 
-def run(working_dir: str, cores: int = 1):
+def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
     os.chdir(working_dir)
     config = read_config('rt_eqcorrscan_config.yml')
     config.setup_logging(
-        screen=False, file=True,
+        screen=log_to_screen, file=True,
         filename="{0}/rt_eqcorrscan_{1}.log".format(
             working_dir,
             os.path.split(working_dir)[-1]))
@@ -84,7 +84,7 @@ def run(working_dir: str, cores: int = 1):
     # real_time_tribe.notifier = None
 
     real_time_tribe_kwargs = {
-        "backfill_to": event_time(triggering_event),
+        "backfill_to": event_time(triggering_event) - 180,
         "backfill_client": config.rt_match_filter.get_waveform_client(),
         "cores": cores}
 
@@ -92,6 +92,7 @@ def run(working_dir: str, cores: int = 1):
         threshold=config.rt_match_filter.threshold,
         threshold_type=config.rt_match_filter.threshold_type,
         trig_int=config.rt_match_filter.trig_int,
+        min_stations=min_stations,
         keep_detections=86400,
         detect_directory="{name}/detections",
         plot_detections=config.rt_match_filter.plot_detections,
@@ -211,7 +212,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "-n", "--n-processors", type=int, default=1,
         help="Number of processors to use for detection")
+    parser.add_argument(
+        "-l", "--log-to-screen", action="store_true",
+        help="Whether to log to screen or not, defaults to False")
 
     args = parser.parse_args()
 
-    run(working_dir=args.working_dir, cores=args.n_processors)
+    run(working_dir=args.working_dir, cores=args.n_processors,
+        log_to_screen=args.log_to_screen)

@@ -46,6 +46,30 @@ def synthesise_real_time(
     query_interval: float = 60,
 ):
     """
+    Synthesise a real-time matched-filter process for old data.
+
+    Parameters
+    ----------
+    triggering_event:
+        The Event that should trigger the system (must have happened in the
+        past)
+    database_duration:
+        The duration to create the template database for in days prior to the
+        triggering event
+    config:
+        Configuration for this synthesis
+    detection_runtime:
+        Maximum run-time for the detector in seconds
+    make_templates:
+        Whether templates need to be made or not.
+    speed_up:
+        Speed-up factor for detector - stream data faster than "real-time".
+    debug:
+        Whether to run logging in debug or not
+    query_interval:
+        How often to query the waveform server in seconds.  Smaller numbers
+        will query more often, but this is limited by disk read speeds - make
+        sure you don't go too small and make your system stall!
     """
     if debug:
         config.log_level = "DEBUG"
@@ -80,6 +104,7 @@ def synthesise_real_time(
         catalog = client.get_events(
             starttime=database_starttime, endtime=database_endtime,
             **region)
+        Logger.info(f"Downloaded {len(catalog)} events")
         Logger.info("Building template database")
         template_bank.make_templates(
             catalog=catalog, client=client, **config.template)
@@ -105,7 +130,7 @@ def synthesise_real_time(
                         station=station.code, 
                         channel=channel.code,
                         location=channel.location_code,
-                        starttime=trigger_origin.time,
+                        starttime=trigger_origin.time - 60.,
                         endtime=trigger_origin.time + detection_runtime)
                 except Exception as e:
                     Logger.error(
@@ -120,7 +145,7 @@ def synthesise_real_time(
     config.streaming.update(
         {"rt_client_url": str(wavebank.bank_path),
          "rt_client_type": "obsplus",
-         "starttime": trigger_origin.time,
+         "starttime": trigger_origin.time - 60,
          "speed_up": speed_up,
          "query_interval": 1.0})
 
@@ -130,7 +155,7 @@ def synthesise_real_time(
         catalog=None, waveform_client=client)
     listener._speed_up = speed_up
     listener._test_start_step = UTCDateTime.now() - trigger_origin.time
-    listener._test_start_step += 180  # Start up 3 minutes before the event
+    listener._test_start_step += 60  # Start up 1 minute before the event
 
     reactor = Reactor(
         client=client,

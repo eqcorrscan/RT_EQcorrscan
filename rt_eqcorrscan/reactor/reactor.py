@@ -213,12 +213,10 @@ class Reactor(object):
         for trigger_event in trigger_events:
             if trigger_event not in self._triggered_events:
                 Logger.warning(
-                    "Listener triggered by event {0}".format(
-                        trigger_event))
+                    "Listener triggered by event {0}".format(trigger_event))
                 self.notifier.notify(
                     message="Listener triggered by event {0}".format(
-                        trigger_event),
-                    level=5)
+                        trigger_event), level=5)
                 if len(self._running_regions) >= self.available_cores:
                     Logger.error("No more available processors")
                     continue
@@ -263,7 +261,7 @@ class Reactor(object):
             os.path.dirname(os.path.abspath(__file__)), "spin_up.py")
         _call = ["python", script_path, "-w", working_dir,
                  "-n", str(min(self.available_cores, self._max_detect_cores))]
-        Logger.info(f"Running {_call}")
+        Logger.info("Running `{call}`".format(call=" ".join(_call)))
         proc = subprocess.Popen(_call)
         self.detecting_processes.update({triggering_event_id: proc})
         self._running_regions.update({triggering_event_id: region})
