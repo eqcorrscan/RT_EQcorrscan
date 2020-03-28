@@ -503,18 +503,20 @@ class RealTimeTribe(Tribe):
                     wait=(self.detect_interval - run_time) / self._speed_up,
                     detection_kwargs=detection_kwargs)
                 if max_run_length and UTCDateTime.now() > run_start + max_run_length:
-                    Logger.info("Hit maximum run time, stopping.")
+                    Logger.critical("Hit maximum run time, stopping.")
                     self.stop()
+                    break
                 if minimum_rate and len(self.detections) > 0:
                     _rate = average_rate(
                         self.detections,
                         starttime=max(last_data - keep_detections, first_data),
                         endtime=last_data)
                     if _rate < minimum_rate:
-                        Logger.info(
+                        Logger.critical(
                             "Rate ({0:.2f}) has dropped below minimum rate, "
                             "stopping.".format(_rate))
                         self.stop()
+                        break
                 gc.collect()
                 # Memory output
                 # sum1 = summary.summarize(muppy.get_objects())

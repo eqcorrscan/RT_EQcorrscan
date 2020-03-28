@@ -182,6 +182,7 @@ class ReactorConfig(_ConfigAttribDict):
         "rate_radius": 0.2,
         "minimum_events_in_bin": 10,
         "catalog_lookup_kwargs": dict(),
+        "max_run_length": None,
     }
     readonly = []
 

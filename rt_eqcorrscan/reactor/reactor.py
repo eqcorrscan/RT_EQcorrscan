@@ -166,6 +166,7 @@ class Reactor(object):
             self.process_new_events(new_events=working_cat)
             self.set_up_time(UTCDateTime.now())
             if max_run_length is not None and self.up_time >= max_run_length:
+                Logger.critical("Max run length reached. Stopping.")
                 self.stop()
                 break
             time.sleep(self.sleep_step)
@@ -287,7 +288,8 @@ class Reactor(object):
 
     def stop(self) -> None:
         """Stop all the processes."""
-        for event_id in self.detecting_processes.keys():
+        triggering_event_ids = list(self.detecting_processes.keys())
+        for event_id in triggering_event_ids:
             self.stop_tribe(event_id)
         self.listener.background_stop()
 

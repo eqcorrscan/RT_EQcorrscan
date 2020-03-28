@@ -162,7 +162,7 @@ def synthesise_real_time(
         listener=listener, trigger_func=trigger_func,
         template_database=template_bank, config=config)
     Logger.info("Starting reactor")
-    reactor.run()
+    reactor.run(max_run_length=config.reactor.max_run_length)
 
 
 if __name__ == "__main__":

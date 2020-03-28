@@ -71,7 +71,7 @@ def run(**kwargs):
         client=client,
         listener=listener, trigger_func=trigger_func,
         template_database=template_bank, config=config)
-    reactor.run()
+    reactor.run(max_run_length=config.reactor.max_run_length)
     return
 
 
