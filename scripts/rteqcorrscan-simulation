@@ -191,6 +191,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--debug", action="store_true",
         help="Flag to run in debug mode, with lots of output to screen")
+    parser.add_argument(
+        "--speed-up", type=float, default=1,
+        help="Multiplier to speed-up RT match-filter by.")
     
     args = parser.parse_args()
 
@@ -207,4 +210,4 @@ if __name__ == "__main__":
     synthesise_real_time(
         triggering_event=trigger_event, database_duration=args.db_duration,
         config=config, make_templates=args.templates_made,
-        debug=args.debug)
+        debug=args.debug, speed_up=args.speed_up)
