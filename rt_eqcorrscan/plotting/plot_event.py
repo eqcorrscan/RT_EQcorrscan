@@ -99,6 +99,9 @@ def plot_event(
             labels=labels)
         min_x.append(chan_min_x)
         max_x.append(chan_max_x)
+    # Make xlabels invisible for all axes apart from the last one
+    for ax in axes[0:-1]:
+        plt.setp(ax.get_xticklabels(), visible=False)
     axes[-1].set_xlim([np.min(min_x), np.max(max_x)])
     axes[-1].set_xlabel("Time")
     plt.tight_layout()
