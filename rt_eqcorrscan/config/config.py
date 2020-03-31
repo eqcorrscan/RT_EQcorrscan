@@ -71,7 +71,7 @@ class RTMatchFilterConfig(_ConfigAttribDict):
         "threshold_type": "av_chan_corr",
         "trig_int": 2.0,
         "save_waveforms": True,
-        "plot_detections": True,
+        "plot_detections": False,
     }
     readonly = []
 

@@ -221,13 +221,16 @@ class RealTimeTribe(Tribe):
         if len(self.party) > 0:
             self.party.decluster(
                 trig_int=trig_int, timing="origin", metric="cor_sum")
+        Logger.info("Completed decluster")
         for family in self.party:
             family.detections = [
                 d for d in family.detections if d.detect_time >= endtime]
+        Logger.info("Writing detections to disk")
         for f in self.party:
             for d in f:
                 if d in self.detections:
                     continue
+                Logger.info(f"Writing detection: {d.detect_time}")
                 self._fig = _write_detection(
                     detection=d,
                     detect_directory=detect_directory,
@@ -715,19 +718,19 @@ def _write_detection(
         os.makedirs(_path)
     _filename = os.path.join(
         _path, detection.detect_time.strftime("%Y%m%dT%H%M%S"))
-    detection.event.write("{0}.xml".format(_filename), format="QUAKEML")
+    detection.event.write(f"{_filename}.xml", format="QUAKEML")
     detection.event.picks.sort(key=lambda p: p.time)
     st = stream.slice(
         detection.event.picks[0].time - 10,
         detection.event.picks[-1].time + 20).copy()
-    if save_waveform:
-        st.split().write("{0}.ms".format(_filename), format="MSEED")
     if plot_detection:
         # Make plot
-        fig = plot_event(fig=fig, event=detection.event, st=st.merge(),
+        fig = plot_event(fig=fig, event=detection.event, st=st,
                          length=90, show=False)
-        fig.savefig("{0}.png".format(_filename))
+        fig.savefig(f"{_filename}.png")
         fig.clf()
+    if save_waveform:
+        st.split().write(f"{_filename}.ms", format="MSEED")
     return fig
 
 
