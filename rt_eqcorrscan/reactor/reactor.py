@@ -22,7 +22,7 @@ from obsplus.events import get_events
 from rt_eqcorrscan.database.database_manager import (
     TemplateBank, check_tribe_quality)
 from rt_eqcorrscan.event_trigger.catalog_listener import CatalogListener
-from rt_eqcorrscan.config import Notifier, Config
+from rt_eqcorrscan.config import Config
 
 
 Logger = logging.getLogger(__name__)
@@ -65,8 +65,6 @@ class Reactor(object):
         matched-filter detection.
     config
         Configuration for RT-EQcorrscan.
-    notifier
-        Notifier that will send messages about triggers.
 
     Notes
     -----
@@ -105,7 +103,6 @@ class Reactor(object):
         trigger_func: Callable,
         template_database: TemplateBank,
         config: Config,
-        notifier: Notifier = None,
     ):
         self.client = client
         self.listener = listener
@@ -115,7 +112,6 @@ class Reactor(object):
         self._listener_kwargs = dict(
             min_stations=config.database_manager.min_stations,
             template_kwargs=config.template)
-        self.notifier = notifier or Notifier()
         # Time-keepers
         self._run_start = None
         self.up_time = 0
@@ -215,9 +211,6 @@ class Reactor(object):
             if trigger_event not in self._triggered_events:
                 Logger.warning(
                     "Listener triggered by event {0}".format(trigger_event))
-                self.notifier.notify(
-                    message="Listener triggered by event {0}".format(
-                        trigger_event), level=5)
                 if len(self._running_regions) >= self.available_cores:
                     Logger.error("No more available processors")
                     continue
