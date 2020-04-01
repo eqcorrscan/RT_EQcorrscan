@@ -37,7 +37,7 @@ jobs:
         shell: bash -l {0}
         run: |
           export CI="true"
-          py.test -n 2 -v
+          py.test -n 2 -v --cov=./ --cov-report=xml
 
       - name: upload coverage
         uses: codecov/codecov-action@v1
