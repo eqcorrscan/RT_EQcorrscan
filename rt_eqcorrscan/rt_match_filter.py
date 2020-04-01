@@ -23,7 +23,6 @@ from matplotlib.figure import Figure
 from eqcorrscan import Tribe, Template, Party, Detection
 
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
-from rt_eqcorrscan.config.notification import Notifier
 from rt_eqcorrscan.event_trigger.triggers import average_rate
 
 Logger = logging.getLogger(__name__)
@@ -59,7 +58,6 @@ class RealTimeTribe(Tribe):
     plotting_exclude_channels
         Channels to exclude from plotting
     """
-    notifier = Notifier()
     process_cores = 2
     _parallel_processing = True  # This seems unstable for subprocessing.
     _running = False
@@ -239,9 +237,6 @@ class RealTimeTribe(Tribe):
                     fig=self._fig)
                 # Need to append rather than create a new object
                 self.detections.append(d)
-                self.notifier.notify(
-                    message="Made detection at {0}".format(
-                        d.detect_time), level=2)
 
     def _plot(self) -> None:  # pragma: no cover
         """ Plot the data as it comes in. """
