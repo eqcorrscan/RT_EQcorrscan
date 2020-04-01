@@ -18,7 +18,7 @@ jobs:
         with:
           miniconda-version: 'latest'
           python-version: ${{ matrix.python-version }}
-          activate-environment: test
+          activate-environment: rteqcorrscan-test
           environment-file: .github/test_conda_env.yml
           condarc-file: .github/test_condarc.yml
 
