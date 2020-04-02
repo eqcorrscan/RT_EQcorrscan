@@ -49,9 +49,9 @@ class SeedLinkTest(unittest.TestCase):
             inv += client.get_stations(
                 network=net, station=sta, channel=chan, location=loc)
 
-        now = UTCDateTime.now()
         template_cat = client.get_events(
-            starttime=now - 3600, endtime=now)
+            starttime=UTCDateTime(2020, 3, 25),
+            endtime=UTCDateTime(2020, 3, 26))
         tribe = Tribe(templates=[
             Template(event=event, name=event.resource_id.id.split("/")[-1])
             for event in template_cat])
