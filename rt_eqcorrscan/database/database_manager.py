@@ -413,6 +413,12 @@ def _download_and_make_template(
         if os.path.isfile(output_path):
             Logger.debug("Template exists and rebuild=False, skipping")
             return read_template(output_path)
+    # Sanitize event - sometime Arrivals or not linked.
+    pick_dict = {p.resource_id.id: p for p in event.picks}
+    for origin in event.origins:
+        origin.arrivals = [
+            arr for arr in origin.arrivals 
+            if arr.pick_id in pick_dict]
     _process_len = kwargs.pop("process_len", download_data_len)
     if _process_len > download_data_len:
         Logger.info(

@@ -26,6 +26,7 @@ Logger = logging.getLogger(__name__)
 def run(
     starttime: UTCDateTime,
     endtime: UTCDateTime,
+    chunk_size: float = 30,
     rebuild: bool = True,
     max_workers: int = None,
     **kwargs
@@ -34,7 +35,7 @@ def run(
     debug = kwargs.get("debug", False)
     if debug:
         config.log_level = "DEBUG"
-        print("Using the following configuration:\n{0}".format(config))
+        print(f"Using the following configuration:\n{config}")
     config.setup_logging()
     Logger.debug("Running in debug mode - expect lots of output!")
 
@@ -48,13 +49,24 @@ def run(
         event_ext=config.database_manager.event_ext,
         executor=ProcessPoolExecutor(max_workers=max_workers))
 
-    catalog = client.get_events(
-        starttime=starttime, endtime=endtime,
-        **config.reactor.catalog_lookup_kwargs)
-    Logger.info("Will make templates for {0} events".format(len(catalog)))
+    # Break request into chunks
+    n_chunks = (endtime - starttime) / (chunk_size * 86400)
+    chunks = [(starttime + (i * chunk_size * 86400),
+               starttime + ((i + 1) * chunk_size * 86400))
+              for i in range(int(n_chunks))]
+    if n_chunks > int(n_chunks):
+        chunks.append((chunks[-1][-1], endtime))
 
-    template_bank.make_templates(
-        catalog=catalog, rebuild=rebuild, client=client, **config.template)
+    for chunk_start, chunk_end in chunks:
+        Logger.info(f"Downloading catalog between {chunk_start} and {chunk_end}")
+        catalog = client.get_events(
+            starttime=chunk_start, endtime=chunk_end,
+            **config.reactor.catalog_lookup_kwargs)
+        Logger.info(f"Will make templates for {len(catalog)} events")
+
+        tribe = template_bank.make_templates(
+            catalog=catalog, rebuild=rebuild, client=client, **config.template)
+        Logger.info(f"Made {len(tribe)} templates")
 
 
 if __name__ == "__main__":
@@ -77,6 +89,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "-e", "--endtime", type=str,
         help="Endtime parsable by obspy's UTCDateTime to end database at")
+    parser.add_argument(
+        "-i", "--chunk-interval", type=float, default=30,
+        help="Chunk size in DAYS for downloading and building database")
     parser.add_argument(
         "-r", "--rebuild", action="store_true",
         help="Force templates already in the database to be re-constructed")
@@ -102,5 +117,6 @@ if __name__ == "__main__":
             f"Could not parse {args.endtime} to UTCDateTime")
 
     kwargs.update({"debug": args.debug, "config_file": args.config})
-    run(starttime=starttime, endtime=endtime, rebuild=args.rebuild,
+    run(starttime=starttime, endtime=endtime, 
+        chunk_size=args.chunk_interval, rebuild=args.rebuild,
         max_workers=args.max_workers, **kwargs)
