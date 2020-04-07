@@ -129,6 +129,7 @@ class RealTimeClient(_StreamingClient):
         while self.streaming:
             _query_start = UTCDateTime.now()
             st = Stream()
+            query_passed = True
             for _bulk in self.bulk:
                 jitter = random.randint(int(self.query_interval))
                 _bulk.update({
@@ -140,6 +141,7 @@ class RealTimeClient(_StreamingClient):
                 except Exception as e:
                     Logger.error("Failed (bulk={0})".format(_bulk))
                     Logger.error(e)
+                    query_passed = False
                     continue
             for tr in st:
                 self.on_data(tr)
@@ -154,7 +156,8 @@ class RealTimeClient(_StreamingClient):
                     sleep_step))
                 time.sleep(sleep_step)
             now += max(self.query_interval, _query_duration)
-            last_query_start = min([_bulk["endtime"] for _bulk in self.bulk])
+            if query_passed:
+                last_query_start = min(_bulk["endtime"] for _bulk in self.bulk)
 
     def stop(self) -> None:
         self.busy = False

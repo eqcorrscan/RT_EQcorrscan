@@ -5,6 +5,7 @@ Tests for real-time matched-filtering.
 import unittest
 import time
 import shutil
+import os
 import numpy as np
 
 from obspy import Stream
@@ -18,6 +19,11 @@ class SeedLinkTest(unittest.TestCase):
     def setUpClass(cls):
         cls.rt_client = RealTimeClient(
             server_url="link.geonet.org.nz", buffer_capacity=10.)
+
+    @classmethod
+    def tearDownClass(cls):
+        if os.path.isdir("test_wavebank"):
+            shutil.rmtree("test_wavebank")
 
     def test_background_streaming(self):
         rt_client = self.rt_client.copy()
