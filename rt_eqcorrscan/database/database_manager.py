@@ -404,9 +404,13 @@ def _download_and_make_template(
     """ Make the template using downloaded data"""
     Logger.debug("Making template for event {0}".format(event.resource_id))
     if not rebuild:
-        path = _summarize_template(
-            event=event, path_struct=path_structure,
-            name_struct=template_name_structure)["path"]
+        try:
+            path = _summarize_template(
+                event=event, path_struct=path_structure,
+                name_struct=template_name_structure)["path"]
+        except ValueError as e:
+            Logger.error(f"Could not summarize event due to {e}")
+            return None
         ppath = (Path(bank_path) / path).absolute()
         ppath.parent.mkdir(parents=True, exist_ok=True)
         output_path = str(ppath)
