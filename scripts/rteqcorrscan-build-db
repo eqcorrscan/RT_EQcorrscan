@@ -50,12 +50,16 @@ def run(
         executor=ProcessPoolExecutor(max_workers=max_workers))
 
     # Break request into chunks
-    n_chunks = (endtime - starttime) / (chunk_size * 86400)
-    chunks = [(starttime + (i * chunk_size * 86400),
-               starttime + ((i + 1) * chunk_size * 86400))
-              for i in range(int(n_chunks))]
-    if n_chunks > int(n_chunks):
-        chunks.append((chunks[-1][-1], endtime))
+    if chunk_size < (endtime - starttime) / 86400:
+        n_chunks = (endtime - starttime) / (chunk_size * 86400)
+        Logger.info(f"Breaking into {n_chunks}")
+        chunks = [(starttime + (i * chunk_size * 86400),
+                   starttime + ((i + 1) * chunk_size * 86400))
+                  for i in range(int(n_chunks))]
+        if n_chunks > int(n_chunks):
+            chunks.append((chunks[-1][-1], endtime))
+    else:
+        chunks = [(starttime, endtime)]
 
     for chunk_start, chunk_end in chunks:
         Logger.info(f"Downloading catalog between {chunk_start} and {chunk_end}")
@@ -84,11 +88,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--debug", action="store_true", help="Flag to set log level to debug")
     parser.add_argument(
-        "-s", "--starttime", type=str,
+        "-s", "--starttime", type=str, default="1970-01-01",
         help="Starttime parsable by obspy's UTCDateTime to begin database from")
     parser.add_argument(
-        "-e", "--endtime", type=str,
-        help="Endtime parsable by obspy's UTCDateTime to end database at")
+        "-e", "--endtime", type=str, default=None,
+        help="Endtime parsable by obspy's UTCDateTime to end database at. "
+             "Defaults to now")
     parser.add_argument(
         "-i", "--chunk-interval", type=float, default=30,
         help="Chunk size in DAYS for downloading and building database")
@@ -109,12 +114,15 @@ if __name__ == "__main__":
         raise NotImplementedError(
             f"Could not parse {args.starttime} to UTCDateTime")
 
-    try:
-        endtime = UTCDateTime(args.endtime)
-    except Exception as e:
-        Logger.error(e)
-        raise NotImplementedError(
-            f"Could not parse {args.endtime} to UTCDateTime")
+    if args.endtime:
+        try:
+            endtime = UTCDateTime(args.endtime)
+        except Exception as e:
+            Logger.error(e)
+            raise NotImplementedError(
+                f"Could not parse {args.endtime} to UTCDateTime")
+    else:
+        endtime = UTCDateTime()
 
     kwargs.update({"debug": args.debug, "config_file": args.config})
     run(starttime=starttime, endtime=endtime, 
