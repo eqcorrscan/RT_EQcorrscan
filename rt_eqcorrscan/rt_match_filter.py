@@ -68,6 +68,8 @@ class RealTimeTribe(Tribe):
     _max_wait_length = 60.
     _fig = None
     _tribe_file = "tribe.tgz"
+    _min_run_length = 3600  # Minimum run-length in seconds.
+    # Usurped by max_run_length, used to set a threshold for rate calculation.
 
     def __init__(
         self,
@@ -344,7 +346,7 @@ class RealTimeTribe(Tribe):
         minimum_rate
             Stopping criteria: if the detection rate drops below this the
             detector will stop. If set to None, then the detector will run
-            until `max_run_length`
+            until `max_run_length`. Units: events per day
         backfill_to
             Time to backfill the data buffer to.
         backfill_client
@@ -504,7 +506,7 @@ class RealTimeTribe(Tribe):
                     Logger.critical("Hit maximum run time, stopping.")
                     self.stop()
                     break
-                if minimum_rate and len(self.detections) > 0:
+                if minimum_rate and UTCDateTime.now() > run_start + self._min_run_length:
                     _rate = average_rate(
                         self.detections,
                         starttime=max(last_data - keep_detections, first_data),
