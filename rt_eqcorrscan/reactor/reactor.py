@@ -181,7 +181,11 @@ class Reactor(object):
             Catalog of new-events to be assessed.
         """
         for triggering_event_id, tribe_region in self._running_regions.items():
-            add_events = get_events(new_events, **tribe_region)
+            try:
+                add_events = get_events(new_events, **tribe_region)
+            except Exception as e:
+                Logger.error(e)
+                continue
             # Don't trigger on events now running in another tribe.
             new_events.events = [e for e in new_events
                                  if e not in add_events]
