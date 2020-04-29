@@ -184,7 +184,9 @@ class Reactor(object):
             try:
                 add_events = get_events(new_events, **tribe_region)
             except Exception as e:
-                Logger.error(e)
+                # This only occurs when there are no events in the region
+                # and is fixed by PR #177 on Obsplus.
+                add_events = Catalog()
                 continue
             # Don't trigger on events now running in another tribe.
             new_events.events = [e for e in new_events
