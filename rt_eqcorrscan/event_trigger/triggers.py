@@ -1,10 +1,5 @@
 """
 Standardised trigger functions for use with a Reactor.
-
-Author
-    Calum J Chamberlain
-License
-    GPL v3.0
 """
 import logging
 from typing import Union, List, Optional

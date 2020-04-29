@@ -1,10 +1,5 @@
 """
 Listener to an event stream.
-
-Author
-    Calum J Chamberlain
-License
-    GPL v3.0
 """
 import time
 import logging
@@ -224,14 +219,8 @@ class CatalogListener(_Listener):
             Whether to add new templates to the database (True) or not.
         template_kwargs:
             Dictionary of keyword arguments for making templates, requires
-            at-least:
-              - lowcut
-              - highcut
-              - samp_rate
-              - filt_order
-              - prepick
-              - length
-              - swin
+            at-least: lowcut, highcut, samp_rate, filt_order, prepick, length,
+            swin.
         min_stations:
             Minimum number of stations for an event to be added to the
             TemplateBank

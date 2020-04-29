@@ -1,10 +1,5 @@
 """
 Classes for real-time matched-filter detection of earthquakes.
-
-Author
-    Calum J Chamberlain
-License
-    GPL v3.0
 """
 import time
 import traceback
