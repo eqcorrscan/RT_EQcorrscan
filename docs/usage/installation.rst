@@ -18,26 +18,7 @@ Not yet implemented.
 From Source
 -----------
 
-To start with, you will need the current development version of
-`ObsPlus <https://github.com/niosh-mining/obsplus/versions/latest>`_. A full release
-should be coming soon, so if you are looking at these docs after February 2020,
-check whether ObsPlus 0.1.0 has been released yet.  If it has, skip this step!
-Otherwise, if we haven't finished packaging ObsPlus, you will need to
-clone the ObsPlus repository:
-
-.. code-block:: bash
-
-    git clone https://github.com/niosh-mining/obsplus/obsplus.git
-
-Then install ObsPlus from source:
-
-.. code-block:: bash
-
-    cd obsplus
-    pip install .
-
-Now you can proceed to installing RT-EQcorrscan. First you will need to clone
-the RT-EQcorrscan repository:
+First you will need to clone the RT-EQcorrscan repository:
 
 .. code-block:: bash
 
