@@ -1,11 +1,7 @@
 """
 Utilities for emulating obspy clients using local data. Relies on obsplus
-
-Author
-    Calum J Chamberlain
-License
-    GPL v3.0
 """
+
 import logging
 
 from typing import Union

@@ -1,10 +1,5 @@
 """
 Plotting for real-time seismic data.
-
-Author
-    Calum J Chamberlain
-License
-    GPL v3.0
 """
 import numpy as np
 import logging

@@ -22,9 +22,7 @@ sys.path.insert(0, project_root)
 import rt_eqcorrscan
 
 READ_THE_DOCS = os.environ.get('READTHEDOCS', None) == 'True'
-if not READ_THE_DOCS:
-    print('Imported rtd')
-    import sphinx_rtd_theme
+import sphinx_bootstrap_theme
 # -- Project information -----------------------------------------------------
 
 project = 'RT-EQcorrscan'
@@ -37,6 +35,78 @@ master_doc = "index"
 version = rt_eqcorrscan.__version__
 # The full version, including alpha/beta/rc tags.
 release = rt_eqcorrscan.__version__
+
+# Bootstrap option
+html_theme_options = {
+    # Navigation bar title. (Default: ``project`` value)
+    'navbar_title': "RT-EQcorrscan",
+
+    # Tab name for entire site. (Default: "Site")
+    'navbar_site_name': "Site",
+
+    # A list of tuples containing pages or urls to link to.
+    # Valid tuples should be in the following forms:
+    #    (name, page)                 # a link to a page
+    #    (name, "/aa/bb", 1)          # a link to an arbitrary relative url
+    #    (name, "http://example.com", True) # arbitrary absolute url
+    # Note the "1" or "True" value above as the third argument to indicate
+    # an arbitrary url.
+    # 'navbar_links': [
+    #     ("Examples", "examples"),
+    #     ("Link", "http://example.com", True),
+    # ],
+
+    # Render the next and previous page links in navbar. (Default: true)
+    'navbar_sidebarrel': True,
+
+    # Render the current pages TOC in the navbar. (Default: true)
+    'navbar_pagenav': True,
+
+    # Tab name for the current pages TOC. (Default: "Page")
+    'navbar_pagenav_name': "Page",
+
+    # Global TOC depth for "site" navbar tab. (Default: 1)
+    # Switching to -1 shows all levels.
+    'globaltoc_depth': 2,
+
+    # Include hidden TOCs in Site navbar?
+    #
+    # Note: If this is "false", you cannot have mixed ``:hidden:`` and
+    # non-hidden ``toctree`` directives in the same page, or else the build
+    # will break.
+    #
+    # Values: "true" (default) or "false"
+    'globaltoc_includehidden': "true",
+
+    # HTML navbar class (Default: "navbar") to attach to <div> element.
+    # For black navbar, do "navbar navbar-inverse"
+    'navbar_class': "navbar",
+
+    # Fix navigation bar to top of page?
+    # Values: "true" (default) or "false"
+    'navbar_fixed_top': "true",
+
+    # Location of link to source.
+    # Options are "nav" (default), "footer" or anything else to exclude.
+    'source_link_position': "nav",
+
+    # Bootswatch (http://bootswatch.com/) theme.
+    #
+    # Options are nothing (default) or the name of a valid theme
+    # such as "cosmo" or "sandstone".
+    #
+    # The set of valid themes depend on the version of Bootstrap
+    # that's used (the next config option).
+    #
+    # Currently, the supported themes are:
+    # - Bootstrap 2: https://bootswatch.com/2
+    # - Bootstrap 3: https://bootswatch.com/3
+    'bootswatch_theme': "yeti",
+
+    # Choose Bootstrap version.
+    # Values: "3" (default) or "2" (in quotes)
+    'bootstrap_version': "3",
+}
 
 
 
@@ -54,7 +124,7 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
     "sphinx_autodoc_typehints",
-    "numpydoc",
+    # "numpydoc",
     "nbsphinx",
 ]
 
@@ -73,9 +143,8 @@ pygments_style = "sphinx"
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = 'sphinx_rtd_theme'
-if not READ_THE_DOCS:
-    html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
+html_theme = 'bootstrap'
+html_theme_path = sphinx_bootstrap_theme.get_html_theme_path()
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -88,13 +157,15 @@ pygments_style = 'sphinx'
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = True
 
+# numpydoc_show_class_members = False
+
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3.7/', None),
     'numpy': ('https://docs.scipy.org/doc/numpy/', None),
     'scipy': ('https://docs.scipy.org/doc/scipy/reference/', None),
     'obspy': ('https://docs.obspy.org/', None),
-    'obsplus': ('https://niosh-mining.github.io/obsplus/', None),
+    'obsplus': ('https://niosh-mining.github.io/obsplus/versions/latest/', None),
 }
 
 autosummary_generate = glob.glob("modules" + os.sep + "*.rst")
@@ -107,3 +178,9 @@ autodoc_default_flags = ['show-inheritance']
 nitpicky = False
 
 trim_doctest_flags = True
+
+
+def setup(app):
+    app.add_stylesheet("my-styles.css")  # also can be a full URL
+    # app.add_stylesheet("ANOTHER.css")
+    # app.add_stylesheet("AND_ANOTHER.css")

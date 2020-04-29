@@ -1,10 +1,5 @@
 """
 Listener ABC.
-
-Author
-    Calum J Chamberlain
-License
-    GPL v3.0
 """
 
 import threading

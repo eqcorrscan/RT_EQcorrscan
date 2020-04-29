@@ -11,7 +11,7 @@ These scripts are:
 - `rteqcorrscan-simulation`_
 
 If you find that these scripts do not meet your use-case, you have full power
-to write your own scripts that interact directly with the API
+to write your own scripts that interact directly with the :doc:`API <../api/index>`.
 
 Command-line Interfaces (Scripts)
 ---------------------------------
@@ -38,7 +38,7 @@ event service finds more events in your region of interest, these will be added
 to your running real-time matched-filter database and run through previous data
 to *fill-in* past events.
 
-Once the `Reactor` has started a real-time system, it keeps listening for other
+Once the **Reactor** has started a real-time system, it keeps listening for other
 possible triggers.  Because of this, a whole country can be covered at once
 (we haven't run a global reactor, but you could give it a go!), and events that
 occur in different places can be reacted to.
@@ -49,7 +49,7 @@ of what detections you might expect, and lets you check that RT-EQcorrscan is wo
 as you expect it!
 
 Note that these docs are **not automatically updated** and may be out-of-date.
-To confirm the arguments for your version of RT-EQcorrscan, use the `--help` flag
+To confirm the arguments for your version of RT-EQcorrscan, use the :code:`--help` flag
 of the scripts.
 
 rteqcorrscan-config

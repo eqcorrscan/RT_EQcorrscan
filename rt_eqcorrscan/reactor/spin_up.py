@@ -1,11 +1,6 @@
 #!/usr/bin/env python
 """
 Functions for spinning up and running a real-time tribe based on trigger-events
-
-Author
-    Calum J Chamberlain
-License
-    GPL v3.0
 """
 
 import os

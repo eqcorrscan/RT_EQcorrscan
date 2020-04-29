@@ -1,10 +1,5 @@
 """
 Overarching tool for listening to and triggering from FDSN earthquakes.
-
-Author
-    Calum J Chamberlain
-License
-    GPL v3.0
 """
 import logging
 import time
@@ -72,14 +67,12 @@ class Reactor(object):
     achieve this you should generate a partial function from your trigger
     function. For example, using the provided rate-and-magnitude triggering
     function:
-    ```
-        from rt_eqcorrscan.event_trigger import magnitude_rate_trigger_func
-        from functools import partial
 
-        trigger_func = partial(
-            magnitude_rate_trigger_func, magnitude_threshold=4,
-            rate_threshold=20, rate_bin=0.5)
-    ```
+    >>> from rt_eqcorrscan.event_trigger import magnitude_rate_trigger_func
+    >>> from functools import partial
+    >>> trigger_func = partial(
+    >>>     magnitude_rate_trigger_func, magnitude_threshold=4,
+    >>>     rate_threshold=20, rate_bin=0.5)
     """
     _triggered_events = []
     _running_templates = dict()

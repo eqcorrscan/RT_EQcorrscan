@@ -1,10 +1,5 @@
 """
 Tools for managing a database of template information.
-
-Author
-    Calum J Chamberlain
-License
-    GPL v3.0
 """
 
 import logging
@@ -201,10 +196,9 @@ class TemplateBank(EventBank):
         Define the directory structure used by the event bank. Characters are
         separated by /, regardless of operating system. The following
         words can be used in curly braces as data specific variables:
-            year, month, day, julday, hour, minute, second, event_id,
-            event_id_short
-        If no structure is provided it will be read from the index, if no
-        index exists the default is {year}/{month}/{day}
+        year, month, day, julday, hour, minute, second, event_id,
+        event_id_short. If no structure is provided it will be read from the
+        index, if no index exists the default is {year}/{month}/{day}
     name_structure : str
         The same as path structure but for the event, template and waveform
         file names. Supports the same variables and a slash cannot be used
@@ -334,14 +328,8 @@ class TemplateBank(EventBank):
             templates.
         kwargs
             Keyword arguments supported by EQcorrscan's `Template.construct`
-            method. Requires at least:
-              - lowcut
-              - highcut
-              - samp_rate
-              - filt_order
-              - prepick
-              - length
-              - swin
+            method. Requires at least: lowcut, highcut, samp_rate, filt_order,
+            prepick, length, swin
 
         Returns
         -------

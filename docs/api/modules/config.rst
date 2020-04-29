@@ -2,10 +2,11 @@ config
 ======
 
 .. currentmodule:: rt_eqcorrscan.config
-.. automodule:: rt_eqcorrscan.config
 
-.. toctree::
-  :maxdepth: 2
+Functions, classes and methods for configuring the RT-EQcorrscan system.
 
-  config/config
-  config/notification
+config.config
+-------------
+
+.. automodule:: rt_eqcorrscan.config.config
+    :members:

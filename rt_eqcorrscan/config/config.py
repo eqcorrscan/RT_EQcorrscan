@@ -1,12 +1,7 @@
 """
 Handle configuration of RT_EQcorrscan using a yaml file.
-
-Author
-    Calum J Chamberlain
-License
-    GPL v3.0
-
 """
+
 import logging
 import importlib
 import os
@@ -337,7 +332,7 @@ class Config(object):
         Parameters
         ----------
         config_file
-            path to the configuration file. Will overwrite and not warm
+            path to the configuration file. Will overwrite and not warn
         """
         with open(config_file, "w") as f:
             f.write(dump(self.to_yaml_dict(), Dumper=Dumper))
