@@ -71,8 +71,8 @@ class Reactor(object):
     >>> from rt_eqcorrscan.event_trigger import magnitude_rate_trigger_func
     >>> from functools import partial
     >>> trigger_func = partial(
-    >>>     magnitude_rate_trigger_func, magnitude_threshold=4,
-    >>>     rate_threshold=20, rate_bin=0.5)
+    ...     magnitude_rate_trigger_func, magnitude_threshold=4,
+    ...     rate_threshold=20, rate_bin=0.5)
     """
     _triggered_events = []
     _running_templates = dict()
