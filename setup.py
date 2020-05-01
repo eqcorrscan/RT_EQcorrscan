@@ -11,9 +11,11 @@ import glob
 import os
 import sys
 import shutil
-import rt_eqcorrscan
 
-VERSION = rt_eqcorrscan.__version__
+with open("rt_eqcorrscan/__init__.py", "r") as init_file:
+    version_line = [line for line in init_file
+                    if '__version__' in line][0]
+VERSION = version_line.split()[-1].split("'")[1]
 
 long_description = '''
 Real-time EQcorrscan: Real-time wrappers for EQcorrscan's earthquake detection
