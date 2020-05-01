@@ -5,7 +5,8 @@ include README.md
 include LICENCE.txt
 include requirements.txt
 recursive-include scripts/*
-recursive-include rteqcorrscan
+recursive-include rt_eqcorrscan
+recursive-include rt_eqcorrscan/*
 recursive-include docs
 recursive-include tests
 
