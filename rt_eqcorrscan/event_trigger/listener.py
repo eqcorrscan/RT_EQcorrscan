@@ -5,6 +5,7 @@ Listener ABC.
 import threading
 import logging
 
+import numpy as np
 from obspy import Catalog, UTCDateTime
 from obspy.core.event import Event
 from abc import ABC, abstractmethod
@@ -22,10 +23,31 @@ class _Listener(ABC):
 
     threads = []
     client = None
+    old_events = []  # List of tuples of (event_id, event_time)
+    keep = 86400  # Time in seconds to keep old events
 
     @abstractmethod
     def run(self, *args, **kwargs):
         """ Run the listener """
+
+    def _remove_old_events(self, endtime: UTCDateTime) -> None:
+        """
+        Expire old events from the cache.
+
+        Parameters
+        ----------
+        endtime
+            The time to calculate time-difference relative to. Any events
+            older than endtime - self.keep will be removed.
+        """
+        if len(self.old_events) == 0:
+            return
+        time_diffs = np.array([endtime - tup[1] for tup in self.old_events])
+        filt = time_diffs <= self.keep
+        # Need to remove in-place, without creating a new list
+        for i, old_event in enumerate(list(self.old_events)):
+            if not filt[i]:
+                self.old_events.remove(old_event)
 
     def background_run(self, *args, **kwargs):
         self.busy = True

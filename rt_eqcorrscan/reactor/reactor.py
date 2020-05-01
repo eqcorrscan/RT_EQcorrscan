@@ -16,7 +16,7 @@ from obsplus.events import get_events
 
 from rt_eqcorrscan.database.database_manager import (
     TemplateBank, check_tribe_quality)
-from rt_eqcorrscan.event_trigger.catalog_listener import CatalogListener
+from rt_eqcorrscan.event_trigger.listener import _Listener
 from rt_eqcorrscan.config import Config
 
 
@@ -92,7 +92,7 @@ class Reactor(object):
     def __init__(
         self,
         client,
-        listener: CatalogListener,
+        listener: _Listener,
         trigger_func: Callable,
         template_database: TemplateBank,
         config: Config,
