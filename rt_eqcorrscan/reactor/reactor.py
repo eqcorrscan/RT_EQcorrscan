@@ -229,7 +229,8 @@ class Reactor(object):
         triggering_event_id = triggering_event.resource_id.id.split('/')[-1]
         region = estimate_region(
             triggering_event,
-            multiplier=self.config.reactor.scaling_multiplier or 1.0)
+            multiplier=self.config.reactor.scaling_multiplier or 1.0,
+            min_length=self.config.reactor.minimum_lookup_radius or 50.0)
         if region is None:
             return
         region.update(

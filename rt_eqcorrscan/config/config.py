@@ -180,6 +180,7 @@ class ReactorConfig(_ConfigAttribDict):
         "max_run_length": None,
         "scaling_relation": "wells_coppersmith_subsurface",
         "scaling_multiplier": 1.5,
+        "minimum_lookup_radius": 50.0,  # Minimum look-up radius in km.
     }
     readonly = []
 
