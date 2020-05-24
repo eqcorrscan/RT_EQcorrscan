@@ -6,7 +6,7 @@ import time
 import os
 import subprocess
 
-from typing import Callable
+from typing import Callable, Union
 from multiprocessing import cpu_count
 
 from obspy import UTCDateTime, Catalog
@@ -16,8 +16,9 @@ from obsplus.events import get_events
 
 from rt_eqcorrscan.database.database_manager import (
     TemplateBank, check_tribe_quality)
-from rt_eqcorrscan.event_trigger.catalog_listener import CatalogListener
+from rt_eqcorrscan.event_trigger.listener import _Listener
 from rt_eqcorrscan.config import Config
+from rt_eqcorrscan.reactor.scaling_relations import get_scaling_relation
 
 
 Logger = logging.getLogger(__name__)
@@ -71,8 +72,8 @@ class Reactor(object):
     >>> from rt_eqcorrscan.event_trigger import magnitude_rate_trigger_func
     >>> from functools import partial
     >>> trigger_func = partial(
-    >>>     magnitude_rate_trigger_func, magnitude_threshold=4,
-    >>>     rate_threshold=20, rate_bin=0.5)
+    ...     magnitude_rate_trigger_func, magnitude_threshold=4,
+    ...     rate_threshold=20, rate_bin=0.5)
     """
     _triggered_events = []
     _running_templates = dict()
@@ -92,7 +93,7 @@ class Reactor(object):
     def __init__(
         self,
         client,
-        listener: CatalogListener,
+        listener: _Listener,
         trigger_func: Callable,
         template_database: TemplateBank,
         config: Config,
@@ -226,7 +227,10 @@ class Reactor(object):
             Event that triggered this run - needs to have at-least an origin.
         """
         triggering_event_id = triggering_event.resource_id.id.split('/')[-1]
-        region = estimate_region(triggering_event)
+        region = estimate_region(
+            triggering_event,
+            multiplier=self.config.reactor.scaling_multiplier or 1.0,
+            min_length=self.config.reactor.minimum_lookup_radius or 50.0)
         if region is None:
             return
         region.update(
@@ -286,7 +290,12 @@ class Reactor(object):
         self.listener.background_stop()
 
 
-def estimate_region(event: Event, min_length: float = 50.) -> dict:
+def estimate_region(
+    event: Event,
+    min_length: float = 50.,
+    scaling_relation: Union[str, Callable] = 'default',
+    multiplier: float = 1.25,
+) -> dict:
     """
     Estimate the region to find templates within given a triggering event.
 
@@ -297,6 +306,11 @@ def estimate_region(event: Event, min_length: float = 50.) -> dict:
     min_length
         Minimum length in km for diameter of event circle around the
         triggering event
+    scaling_relation
+        Name of registered scaling-relationship or Callable that takes only
+        the earthquake magnitude as an argument and returns length in km
+    multiplier
+        Fudge factor to scale the scaling relation up by a constant.
 
     Returns
     -------
@@ -304,7 +318,7 @@ def estimate_region(event: Event, min_length: float = 50.) -> dict:
 
     Notes
     -----
-    Uses a basic Wells and Coppersmith relation, scaled by 1.25 times.
+    The `scaling_relation` * `multiplier` defines the `maxradius` of the region
     """
     from obspy.geodetics import kilometer2degrees
     try:
@@ -319,11 +333,12 @@ def estimate_region(event: Event, min_length: float = 50.) -> dict:
         Logger.warning("Triggering event has no magnitude, using minimum "
                        "length or {0}".format(min_length))
         magnitude = None
+
     if magnitude:
-        length = 10 ** ((magnitude.mag - 5.08) / 1.16)  # Wells and Coppersmith
-        # Scale up a bit - for Darfield this gave 0.6 deg, but the aftershock
-        # region is more like 1.2 deg radius
-        length *= 1.25
+        if not callable(scaling_relation):
+            scaling_relation = get_scaling_relation(scaling_relation)
+        length = scaling_relation(magnitude.mag)
+        length *= multiplier
     else:
         length = min_length
 
