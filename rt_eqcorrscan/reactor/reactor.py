@@ -161,6 +161,21 @@ class Reactor(object):
                 break
             time.sleep(self.sleep_step)
 
+    def check_running_tribes(self) -> None:
+        """ 
+        Check on the state of running tribes.
+
+        Because this process starts subprocesses, they need to be stopped
+        by this process if they "complete".  This is recorded by the
+        real-time-tribe by writing a `.stopfile`
+        """
+        for trigger_event in self._triggered_events:
+            trigger_event_id = trigger_event.resource_id.id.split('/')[-1]
+            working_dir = _get_triggered_working_dir(
+                triggering_event_id, exist_ok=True)
+            if os.path.isfile(f"{working_dir}/.stopfile"):
+                self.stop_tribe(trigger_event_id)
+
     def process_new_events(self, new_events: Catalog) -> None:
         """
         Process any new events in the system.

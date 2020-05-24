@@ -661,8 +661,16 @@ class RealTimeTribe(Tribe):
             save_waveforms=save_waveforms, st=st, trig_int=trig_int)
         return set(t.name for t in self.templates)
 
-    def stop(self) -> None:
-        """ Stop the real-time system. """
+    def stop(self, write_stopfile: bool = False) -> None:
+        """
+        Stop the real-time system.
+       
+        Parameters
+        ----------
+        write_stopfile:
+            Used to write a one-line file telling listening systems that
+            this has stopped. Used by the Reactor.
+        """
         if self.plotter is not None:  # pragma: no cover
             self.plotter.background_stop()
         self.rt_client.background_stop()
@@ -670,6 +678,9 @@ class RealTimeTribe(Tribe):
         self._running = False
         if self._detecting_thread is not None:
             self._detecting_thread.join()
+        if write_stopfile:
+            with open(".stopfile", "a") as f:
+                f.write(f"{self.name}\n")
 
 
 def _write_detection(
