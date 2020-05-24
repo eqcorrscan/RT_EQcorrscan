@@ -361,6 +361,9 @@ class RealTimeTribe(Tribe):
         Logger.info(
             f"{n} templates were removed because they did not share enough "
             f"stations with the inventory. {len(self.templates)} will be used")
+        if len(self.templates) == 0:
+            Logger.critical("No templates remain, not running")
+            return Party()
         try:
             if kwargs.pop("plot"):
                 Logger.info("EQcorrscan plotting disabled")
