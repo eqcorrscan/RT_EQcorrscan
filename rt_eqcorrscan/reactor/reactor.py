@@ -207,15 +207,29 @@ class Reactor(object):
                     self._running_templates[triggering_event_id].update(
                         added_ids)
         trigger_events = self.trigger_func(new_events)
+        # Sanitize trigger-events - make sure that multiple events that would otherwise
+        # run together do not all trigger - sort by magnitude
         for trigger_event in trigger_events:
-            if trigger_event not in self._triggered_events:
-                Logger.warning(
-                    "Listener triggered by event {0}".format(trigger_event))
-                if len(self._running_regions) >= self.available_cores:
-                    Logger.error("No more available processors")
-                    continue
-                self._triggered_events.append(trigger_event)
-                self.spin_up(trigger_event)
+            # Make sure they all have a magnitude
+            if len(trigger_event.magntiudes) == 0:
+                trigger_event.magnitudes = [Magnitude(mag=-999)]
+        trigger_events.events.sort(
+            key=lambda e: e.preferred_magnitude().mag or e.magnitudes[0].mag,
+            reverse=True)
+        for trigger_event in trigger_events:
+            if trigger_event in self._triggered_events:
+                continue
+            if trigger_event.resource_id.id in self._running_template_ids:
+                Logger.info(
+                    f"Not spinning up {trigger_event}: it is already running")
+                continue
+            Logger.warning(
+                "Listener triggered by event {0}".format(trigger_event))
+            if len(self._running_regions) >= self.available_cores:
+                Logger.error("No more available processors")
+                continue
+            self._triggered_events.append(trigger_event)
+            self.spin_up(trigger_event)
 
     def spin_up(self, triggering_event: Event) -> None:
         """
