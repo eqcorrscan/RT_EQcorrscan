@@ -87,9 +87,7 @@ def magnitude_rate_trigger_func(
             for _event in sub_catalog:
                 if _event not in trigger_events:
                     trigger_events.events.append(_event)
-    if len(trigger_events) > 0:
-        return Catalog(trigger_events)
-    return Catalog()
+    return trigger_events
 
 
 def inter_event_distance(
