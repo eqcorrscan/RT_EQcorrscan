@@ -3,6 +3,7 @@ Listener ABC.
 """
 
 import threading
+import multiprocessing
 import logging
 
 import numpy as np
@@ -52,7 +53,8 @@ class _Listener(ABC):
     def background_run(self, *args, **kwargs):
         self.busy = True
         listening_thread = threading.Thread(
-            target=self.run, args=args, kwargs=kwargs, name="ListeningThread")
+            target=self.run, args=args, kwargs=kwargs,
+            name="ListeningThread")
         listening_thread.daemon = True
         listening_thread.start()
         self.threads.append(listening_thread)
@@ -61,8 +63,10 @@ class _Listener(ABC):
     def background_stop(self):
         self.busy = False
         for thread in self.threads:
-            thread.join()
-
+            thread.join(timeout=10)
+            if thread.is_alive():
+                # Didn't join within timeout...
+                thread.join()
 
 def event_time(event: Event) -> UTCDateTime:
     """

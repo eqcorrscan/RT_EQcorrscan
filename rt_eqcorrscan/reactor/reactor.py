@@ -4,6 +4,7 @@ Overarching tool for listening to and triggering from FDSN earthquakes.
 import logging
 import time
 import os
+import signal
 import subprocess
 
 from typing import Callable, Union
@@ -108,7 +109,10 @@ class Reactor(object):
             template_kwargs=config.template)
         # Time-keepers
         self._run_start = None
+        self._running = False
         self.up_time = 0
+        signal.signal(signal.SIGINT, self._handle_interupt)
+        signal.signal(signal.SIGTERM, self._handle_interupt)
 
     @property
     def available_cores(self) -> int:
@@ -135,7 +139,7 @@ class Reactor(object):
     def run(self, max_run_length: float = None) -> None:
         """
         Run all the processes.
-
+        
         Parameters
         ----------
         max_run_length
@@ -144,7 +148,8 @@ class Reactor(object):
         self.listener.background_run(**self._listener_kwargs)
         self._run_start = UTCDateTime.now()
         # Query the catalog in the listener every so often and check
-        while True:
+        self._running = True
+        while self._running:
             if len(self.listener.old_events) > 0:
                 working_ids = list(zip(*self.listener.old_events))[0]
                 working_cat = self.template_database.get_events(
@@ -226,7 +231,7 @@ class Reactor(object):
         # run together do not all trigger - sort by magnitude
         for trigger_event in trigger_events:
             # Make sure they all have a magnitude
-            if len(trigger_event.magntiudes) == 0:
+            if len(trigger_event.magnitudes) == 0:
                 trigger_event.magnitudes = [Magnitude(mag=-999)]
         trigger_events.events.sort(
             key=lambda e: e.preferred_magnitude().mag or e.magnitudes[0].mag,
@@ -234,7 +239,7 @@ class Reactor(object):
         for trigger_event in trigger_events:
             if trigger_event in self._triggered_events:
                 continue
-            if trigger_event.resource_id.id in self._running_template_ids:
+            if trigger_event.resource_id.id in self.running_template_ids:
                 Logger.info(
                     f"Not spinning up {trigger_event}: it is already running")
                 continue
@@ -311,12 +316,23 @@ class Reactor(object):
         self.detecting_processes.pop(triggering_event_id)
         self._running_templates.pop(triggering_event_id)
 
+    def _handle_interupt(self, signum, frame) -> None:
+        Logger.critical(f"Received signal: {signum}")
+        self.stop()
+
     def stop(self) -> None:
         """Stop all the processes."""
+        Logger.critical("Stopping the reactor")
+        self._running = False
+        Logger.critical("Stopping the listener")
+        self.listener.background_stop()
+        Logger.critical("Stopped the listener")
         triggering_event_ids = list(self.detecting_processes.keys())
         for event_id in triggering_event_ids:
+            Logger.critical(f"Stopping tribe running for {event_id}")
             self.stop_tribe(event_id)
-        self.listener.background_stop()
+        Logger.critical("Stopped")
+        raise SystemExit
 
 
 def estimate_region(

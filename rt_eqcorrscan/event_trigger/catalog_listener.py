@@ -308,9 +308,19 @@ class CatalogListener(_Listener):
                     Logger.debug("Old events current state: {0}".format(
                         self.old_events))
             self.previous_time = now
-            time.sleep(self.sleep_interval)
+            # Sleep in steps to make death responsive
+            _sleep_step = min(10.0, self.sleep_interval)
+            _slept = 0.0
+            while _slept < self.sleep_interval:
+                _tic = time.time()
+                time.sleep(_sleep_step)
+                if not self.busy:
+                    break
+                _toc = time.time()
+                _slept += _toc - _tic
             toc = time.time()  # Timer for loop, used in synthesising speed-ups
             loop_duration = toc - tic
+        return
 
 
 if __name__ == "__main__":
