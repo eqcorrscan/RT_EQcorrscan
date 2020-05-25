@@ -46,6 +46,7 @@ class _StreamingClient(ABC):
     """
     busy = False
     started = False
+    lock = False  # Lock for data access
 
     def __init__(
         self,
@@ -111,7 +112,7 @@ class _StreamingClient(ABC):
         """
         if len(self.buffer) == 0:
             return 0.
-        return max([tr.data_len for tr in self.buffer])
+        return max([tr.data_len for tr in self.buffer.stream])
 
     @abstractmethod
     def copy(self, empty_buffer: bool = True):
@@ -159,7 +160,9 @@ class _StreamingClient(ABC):
         """
         logging.debug("Packet of {0} samples for {1}".format(
             trace.stats.npts, trace.id))
+        self.lock = True
         self.buffer.add_stream(trace)
+        self.lock = False
         if self.wavebank is not None:
             self.wavebank.put_waveforms(stream=Stream([trace]))
             # Note that this should be undertaken by put_waveforms,

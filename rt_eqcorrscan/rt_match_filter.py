@@ -394,6 +394,7 @@ class RealTimeTribe(Tribe):
         Logger.info("Detection will use the following data: {0}".format(
             self.expected_seed_ids))
         if backfill_client and backfill_to:
+            backfill = Stream()
             self._wait()
             for tr_id in self.expected_seed_ids:
                 try:
@@ -409,6 +410,8 @@ class RealTimeTribe(Tribe):
                     Logger.error("Could not back fill due to: {0}".format(e))
                     continue
                 Logger.debug("Downloaded backfill: {0}".format(tr))
+                backfill += tr
+            for tr in backfill:
                 self.rt_client.on_data(tr)
                 Logger.debug("Stream in buffer is now: {0}".format(
                     self.rt_client.buffer))
