@@ -31,6 +31,7 @@ def _read_event_list(fname: str) -> List[str]:
 
 def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
     os.chdir(working_dir)
+    Logger.debug("Reading config")
     config = read_config('rt_eqcorrscan_config.yml')
     config.setup_logging(
         screen=log_to_screen, file=True,
@@ -38,7 +39,9 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
             working_dir,
             os.path.split(working_dir)[-1]))
     triggering_event = read_events('triggering_event.xml')[0]
+    Logger.debug(f"Triggered by {triggering_event}")
     min_stations = config.rt_match_filter.get("min_stations", None)
+    Logger.info("Reading the Tribe")
     tribe = Tribe().read("tribe.tgz")
     # Remove file to avoid re-reading it
     os.remove("tribe.tgz")
