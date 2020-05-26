@@ -414,8 +414,8 @@ class RealTimeTribe(Tribe):
                 backfill += tr
             for tr in backfill:
                 # Get the lock!
-                with self.rt_client.lock:
-                    self.rt_client.on_data(tr)
+                Logger.debug(f"Adding {tr.id} to the buffer")
+                self.rt_client.on_data(tr)
             Logger.debug("Stream in buffer is now: {0}".format(
                 self.rt_client.stream))
         if self.plot:  # pragma: no cover
