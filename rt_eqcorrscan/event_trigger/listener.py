@@ -42,12 +42,11 @@ class _Listener(ABC):
             old_events = self._old_events
         return old_events
 
-    old_events = property(get_old_events)
-
-    @old_events.setter
-    def _set_old_events(self, events: List[EventInfo]):
+    def set_old_events(self, events: List[EventInfo]):
         with self.lock:
             self._old_events = events
+
+    old_events = property(fget=get_old_events, fset=set_old_events)
 
     def extend(self, events: Union[EventInfo, List[EventInfo]]):
         """ Threadsafe way to add events to the cache """

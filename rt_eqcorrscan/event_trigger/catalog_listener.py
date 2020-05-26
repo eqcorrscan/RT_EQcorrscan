@@ -145,8 +145,8 @@ class CatalogListener(_Listener):
         self.waveform_client = waveform_client or client
         if catalog is None:
             catalog = Catalog()
-        self.old_events = [
-            (ev.resource_id.id, event_time(ev)) for ev in catalog]
+        self.set_old_events(
+            [EventInfo(ev.resource_id.id, event_time(ev)) for ev in catalog])
         self.template_bank = template_bank
         self.catalog_lookup_kwargs = catalog_lookup_kwargs or dict()
         self.interval = interval
