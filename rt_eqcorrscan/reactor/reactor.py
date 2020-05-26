@@ -7,6 +7,7 @@ import os
 import signal
 import subprocess
 
+from copy import deepcopy
 from typing import Callable, Union
 from multiprocessing import cpu_count
 
@@ -150,8 +151,10 @@ class Reactor(object):
         # Query the catalog in the listener every so often and check
         self._running = True
         while self._running:
-            if len(self.listener.old_events) > 0:
-                working_ids = list(zip(*self.listener.old_events))[0]
+            old_events = deepcopy(self.listener.old_events)
+            # Get these locally to avoid accessing shared memory multiple times
+            if len(old_events) > 0:
+                working_ids = list(zip(*old_events))[0]
                 working_cat = self.template_database.get_events(
                     eventid=working_ids)
             else:

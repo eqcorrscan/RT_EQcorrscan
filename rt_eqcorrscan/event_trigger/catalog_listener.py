@@ -3,17 +3,16 @@ Listener to an event stream.
 """
 import time
 import logging
-import numpy as np
 import copy
 
 from typing import Union, Callable
 from obspy import UTCDateTime, Catalog
 from obspy.core.event import Event
 
-from rt_eqcorrscan.event_trigger.listener import _Listener, event_time
+from rt_eqcorrscan.event_trigger.listener import (
+    _Listener, event_time, EventInfo)
 from rt_eqcorrscan.database.database_manager import (
     TemplateBank, remove_unreferenced)
-from rt_eqcorrscan.event_trigger.triggers import magnitude_rate_trigger_func
 
 Logger = logging.getLogger(__name__)
 
@@ -238,7 +237,7 @@ class CatalogListener(_Listener):
                 raise NotImplementedError(
                     "Trying to access future data: spoilers not allowed")
             now = UTCDateTime.now() - self._test_start_step
-            # Remove old events from dict
+            # Remove old events from cache
             self._remove_old_events(now)
             Logger.debug("Checking for new events between {0} and {1}".format(
                 self.previous_time, now))
@@ -295,7 +294,7 @@ class CatalogListener(_Listener):
                                 origin.latitude, origin.longitude,
                                 origin.depth / 1000.))
                     event_info = [
-                        (ev.resource_id.id, event_time(ev))
+                        EventInfo(ev.resource_id.id, event_time(ev))
                         for ev in new_events]
                     if make_templates:
                         self.template_bank.make_templates(
@@ -304,7 +303,7 @@ class CatalogListener(_Listener):
                     else:
                         self.template_bank.put_events(new_events)
                     # Putting the events in the bank clears the catalog.
-                    self.old_events.extend(event_info)
+                    self.extend(event_info)
                     Logger.debug("Old events current state: {0}".format(
                         self.old_events))
             self.previous_time = now
@@ -313,7 +312,7 @@ class CatalogListener(_Listener):
             _slept = 0.0
             while _slept < self.sleep_interval:
                 _tic = time.time()
-                time.sleep(_sleep_step)
+                time.sleep(_sleep_step)  # Need to sleep to allow other threads to run
                 if not self.busy:
                     break
                 _toc = time.time()

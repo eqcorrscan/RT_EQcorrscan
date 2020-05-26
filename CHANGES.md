@@ -8,6 +8,8 @@
   - Controls stopping of completed spin_ups
 - rt_eqcorrscan.streaming:
   - Add a lock on `on_data` method and `stream` property for threadsafety.
+- rt_eqcorrscan.listener:
+  - Add lock on `old_events` property for threadsafe access.
 
 # 0.0.2
 - First full release. Everything is new!

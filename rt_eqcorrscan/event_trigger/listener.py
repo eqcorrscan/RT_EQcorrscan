@@ -3,16 +3,19 @@ Listener ABC.
 """
 
 import threading
-import multiprocessing
 import logging
 
 import numpy as np
-from obspy import Catalog, UTCDateTime
+from obspy import UTCDateTime
 from obspy.core.event import Event
 from abc import ABC, abstractmethod
-
+from collections import namedtuple
+from typing import List, Union, Tuple
 
 Logger = logging.getLogger(__name__)
+
+
+EventInfo = namedtuple("EventInfo", ("event_id", "event_time"))
 
 
 class _Listener(ABC):
@@ -24,12 +27,34 @@ class _Listener(ABC):
 
     threads = []
     client = None
-    old_events = []  # List of tuples of (event_id, event_time)
+    # TODO: old_events should be a property with getter and setter methods that are threadsafe!
+    _old_events = []  # List of tuples of (event_id, event_time)
     keep = 86400  # Time in seconds to keep old events
+    lock = threading.Lock()  # Lock for access to old_events
 
     @abstractmethod
     def run(self, *args, **kwargs):
         """ Run the listener """
+
+    def get_old_events(self) -> List[EventInfo]:
+        """ Threadsafe access to underlying list of tuples of old-events. """
+        with self.lock:
+            old_events = self._old_events
+        return old_events
+
+    old_events = property(get_old_events)
+
+    @old_events.setter
+    def _set_old_events(self, events: List[EventInfo]):
+        with self.lock:
+            self._old_events = events
+
+    def extend(self, events: Union[EventInfo, List[EventInfo]]):
+        """ Threadsafe way to add events to the cache """
+        if isinstance(events, EventInfo):
+            events = [events]
+        with self.lock:
+            self._old_events.extend(events)
 
     def _remove_old_events(self, endtime: UTCDateTime) -> None:
         """
@@ -48,7 +73,8 @@ class _Listener(ABC):
         # Need to remove in-place, without creating a new list
         for i, old_event in enumerate(list(self.old_events)):
             if not filt[i]:
-                self.old_events.remove(old_event)
+                with self.lock:  # Make threadsafe
+                    self.old_events.remove(old_event)
 
     def background_run(self, *args, **kwargs):
         self.busy = True
@@ -67,6 +93,7 @@ class _Listener(ABC):
             if thread.is_alive():
                 # Didn't join within timeout...
                 thread.join()
+
 
 def event_time(event: Event) -> UTCDateTime:
     """
