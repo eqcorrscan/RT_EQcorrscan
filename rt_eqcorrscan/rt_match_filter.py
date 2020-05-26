@@ -396,9 +396,10 @@ class RealTimeTribe(Tribe):
         if backfill_client and backfill_to:
             backfill = Stream()
             self._wait()
+            _buffer = self.rt_client.stream
             for tr_id in self.expected_seed_ids:
                 try:
-                    tr_in_buffer = self.rt_client.buffer.select(id=tr_id)[0]
+                    tr_in_buffer = _buffer.select(id=tr_id)[0]
                 except IndexError:
                     continue
                 endtime = tr_in_buffer.stats.starttime
@@ -412,9 +413,11 @@ class RealTimeTribe(Tribe):
                 Logger.debug("Downloaded backfill: {0}".format(tr))
                 backfill += tr
             for tr in backfill:
-                self.rt_client.on_data(tr)
-                Logger.debug("Stream in buffer is now: {0}".format(
-                    self.rt_client.buffer))
+                # Get the lock!
+                with self.rt_client.lock:
+                    self.rt_client.on_data(tr)
+            Logger.debug("Stream in buffer is now: {0}".format(
+                self.rt_client.stream))
         if self.plot:  # pragma: no cover
             # Set up plotting thread
             self._plot()
@@ -427,7 +430,7 @@ class RealTimeTribe(Tribe):
                 sleep_step))
             self._wait(sleep_step)
         first_data = min([tr.stats.starttime
-                          for tr in self.rt_client.get_stream().merge()])
+                          for tr in self.rt_client.stream.merge()])
         detection_kwargs = dict(
             threshold=threshold, threshold_type=threshold_type,
             trig_int=trig_int, keep_detections=keep_detections,
@@ -438,7 +441,7 @@ class RealTimeTribe(Tribe):
             while self.busy:
                 self._running = True  # Lock tribe
                 start_time = UTCDateTime.now()
-                st = self.rt_client.get_stream().split().merge()
+                st = self.rt_client.stream.split().merge()
                 # Split to remove trailing mask
                 if len(st) == 0:
                     Logger.warning("No data")
@@ -453,9 +456,11 @@ class RealTimeTribe(Tribe):
                 # Remove short channels
                 st.traces = [
                     tr for tr in st
-                    if _numpy_len(tr.data) >= (.8 * self.minimum_data_for_detection)]
+                    if _numpy_len(tr.data) >= (
+                            .8 * self.minimum_data_for_detection)]
                 Logger.info("Starting detection run")
-                Logger.debug("Using data: \n{0}".format(st.__str__(extended=True)))
+                Logger.debug("Using data: \n{0}".format(
+                    st.__str__(extended=True)))
                 try:
                     Logger.debug("Currently have {0} templates in tribe".format(
                         len(self)))

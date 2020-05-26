@@ -58,12 +58,12 @@ class FDSNTest(unittest.TestCase):
     #     rt_client.background_stop()
     #     new_client = rt_client.copy(empty_buffer=False)
     #     new_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
-    #     self.assertEqual(new_client.get_stream(), rt_client.get_stream())
+    #     self.assertEqual(new_client.get_stream(), rt_client.stream)
     #     new_client.background_run()
     #     time.sleep(SLEEP_STEP * 2)
     #     new_client.background_stop()
     #     # Make sure that we don't change the old buffer.
-    #     self.assertNotEqual(new_client.get_stream(), rt_client.get_stream())
+    #     self.assertNotEqual(new_client.get_stream(), rt_client.stream)
 
     def test_reprint(self):
         print_str = self.rt_client.__repr__()

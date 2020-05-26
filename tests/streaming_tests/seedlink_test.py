@@ -69,10 +69,10 @@ class SeedLinkTest(unittest.TestCase):
         rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
         rt_client.background_run()
         time.sleep(10)
-        stream = rt_client.get_stream()
+        stream = rt_client.stream
         self.assertIsInstance(stream, Stream)
         time.sleep(10)
-        stream2 = rt_client.get_stream()
+        stream2 = rt_client.stream
         self.assertNotEqual(stream, stream2)
 
     def test_wavebank_integration(self):
@@ -85,14 +85,44 @@ class SeedLinkTest(unittest.TestCase):
         self.assertTrue(rt_client.buffer_full)  # Need a full buffer to work
         wavebank_traces = rt_client.wavebank.get_waveforms()
         wavebank_stream = wavebank_traces.merge()
-        buffer_stream = rt_client.get_stream()
+        buffer_stream = rt_client.stream
         wavebank_stream.sort()
         buffer_stream.sort()
-        self.assertEqual(buffer_stream[0].stats.endtime,
-                         wavebank_stream[0].stats.endtime)
+        self.assertEqual(buffer_stream[0].id, wavebank_stream[0].id)
+        print(buffer_stream[0])
+        print(wavebank_stream[0])
+        self.assertLessEqual(
+            abs(buffer_stream[0].stats.endtime - wavebank_stream[0].stats.endtime),
+            buffer_stream[0].stats.delta * 10)
+        endtime = min(buffer_stream[0].stats.endtime,
+                      wavebank_stream[0].stats.endtime)
+        starttime = max(buffer_stream[0].stats.starttime,
+                        wavebank_stream[0].stats.starttime)
         self.assertTrue(
-            np.all(wavebank_stream.slice(starttime=buffer_stream[0].stats.starttime)[0].data == buffer_stream[0].data))
+            np.all(wavebank_stream.slice(
+                starttime=starttime, endtime=endtime)[0].data ==
+                   buffer_stream.slice(starttime=starttime, endtime=endtime)[0].data))
         shutil.rmtree("test_wavebank")
+
+
+# TODO: Write these tests.
+class SeedLinkThreadedTests(unittest.TestCase):
+    """ Checks that operations are thread-safe. """
+    @classmethod
+    def setUpClass(cls):
+        cls.rt_client = RealTimeClient(
+            server_url="link.geonet.org.nz", buffer_capacity=10.)
+
+    @classmethod
+    def tearDownClass(cls):
+        if os.path.isdir("test_wavebank"):
+            shutil.rmtree("test_wavebank")
+
+    def test_multi_thread_write(self):
+        """ Check that two threads can put data into the buffer. """
+
+    def test_read_write_from_multiple_threads(self):
+        """ Check that one thread can read while the other writes. """
 
 
 if __name__ == "__main__":

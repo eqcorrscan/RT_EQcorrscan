@@ -74,7 +74,7 @@ class EQcorrscanPlot:
         if new_event_loop:
             # Set up a new event loop for the plots
             asyncio.set_event_loop(asyncio.new_event_loop())
-        channels = [tr.id for tr in rt_client.buffer
+        channels = [tr.id for tr in rt_client.stream
                     if tr.stats.channel not in exclude_channels]
         Logger.debug("Plot will contain the following channels: {0}".format(
             channels))
@@ -195,7 +195,7 @@ def define_plot(
         will be real-time
     """
     # Set up the data source
-    stream = rt_client.get_stream().copy().split().detrend()
+    stream = rt_client.stream.copy().split().detrend()
     if lowcut and highcut:
         stream.filter("bandpass", freqmin=lowcut, freqmax=highcut)
         title = "Streaming data: {0}-{1} Hz bandpass".format(lowcut, highcut)
@@ -382,7 +382,7 @@ def define_plot(
     
     def update():
         Logger.debug("Plot updating")
-        _stream = rt_client.get_stream().split().detrend()
+        _stream = rt_client.stream.split().detrend()
         if lowcut and highcut:
             _stream.filter("bandpass", freqmin=lowcut, freqmax=highcut)
         elif lowcut:

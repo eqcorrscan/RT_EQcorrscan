@@ -46,7 +46,7 @@ class _StreamingClient(ABC):
     """
     busy = False
     started = False
-    lock = False  # Lock for data access
+    lock = threading.Lock()  # Lock for data access
 
     def __init__(
         self,
@@ -112,7 +112,9 @@ class _StreamingClient(ABC):
         """
         if len(self.buffer) == 0:
             return 0.
-        return max([tr.data_len for tr in self.buffer.stream])
+        with self.lock:
+            buffer_length = max([tr.data_len for tr in self.buffer])
+        return buffer_length
 
     @abstractmethod
     def copy(self, empty_buffer: bool = True):
@@ -125,9 +127,16 @@ class _StreamingClient(ABC):
             Whether to start the new client with an empty buffer or not.
         """
 
-    def get_stream(self) -> Stream:
+    @property
+    def stream(self) -> Stream:
+        """ Get a copy of the stream in the buffer. """
+        return self._get_stream()
+
+    def _get_stream(self) -> Stream:
         """ Get a copy of the current data in buffer. """
-        return self.buffer.stream
+        with self.lock:
+            stream = self.buffer.stream
+        return stream
 
     def _bg_run(self):
         while self.busy:
@@ -160,9 +169,8 @@ class _StreamingClient(ABC):
         """
         logging.debug("Packet of {0} samples for {1}".format(
             trace.stats.npts, trace.id))
-        self.lock = True
-        self.buffer.add_stream(trace)
-        self.lock = False
+        with self.lock:
+            self.buffer.add_stream(trace)
         if self.wavebank is not None:
             self.wavebank.put_waveforms(stream=Stream([trace]))
             # Note that this should be undertaken by put_waveforms,

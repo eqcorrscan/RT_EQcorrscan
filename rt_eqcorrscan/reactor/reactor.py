@@ -177,7 +177,7 @@ class Reactor(object):
         for trigger_event in self._triggered_events:
             trigger_event_id = trigger_event.resource_id.id.split('/')[-1]
             working_dir = _get_triggered_working_dir(
-                triggering_event_id, exist_ok=True)
+                trigger_event_id, exist_ok=True)
             if os.path.isfile(f"{working_dir}/.stopfile"):
                 self.stop_tribe(trigger_event_id)
 
