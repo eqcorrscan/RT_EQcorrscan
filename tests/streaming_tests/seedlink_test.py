@@ -101,7 +101,8 @@ class SeedLinkTest(unittest.TestCase):
         self.assertTrue(
             np.all(wavebank_stream.slice(
                 starttime=starttime, endtime=endtime)[0].data ==
-                   buffer_stream.slice(starttime=starttime, endtime=endtime)[0].data))
+                   buffer_stream.slice(
+                       starttime=starttime, endtime=endtime)[0].data))
         shutil.rmtree("test_wavebank")
 
 
@@ -118,11 +119,21 @@ class SeedLinkThreadedTests(unittest.TestCase):
         if os.path.isdir("test_wavebank"):
             shutil.rmtree("test_wavebank")
 
-    def test_multi_thread_write(self):
-        """ Check that two threads can put data into the buffer. """
-
     def test_read_write_from_multiple_threads(self):
         """ Check that one thread can read while the other writes. """
+        rt_client = self.rt_client.copy()
+        rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
+        rt_client.background_run()
+        tic, toc = time.time(), time.time()
+        lock_count = 0
+        while toc - tic < 10.0:
+            if rt_client.lock.locked():
+                lock_count += 1
+                _ = rt_client.stream  # This waits then acquires the lock
+                self.assertFalse(rt_client.lock.locked())
+            toc = time.time()
+        rt_client.background_stop()
+        self.assertGreater(lock_count, 0)
 
 
 if __name__ == "__main__":

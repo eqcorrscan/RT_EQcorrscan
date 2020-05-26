@@ -135,7 +135,10 @@ class _StreamingClient(ABC):
     def _get_stream(self) -> Stream:
         """ Get a copy of the current data in buffer. """
         with self.lock:
+            Logger.debug(f"Copying data: Lock status: {self.lock.locked()}")
             stream = self.buffer.stream
+        Logger.debug(
+            f"Finished getting the data: Lock status: {self.lock.locked()}")
         return stream
 
     def _bg_run(self):
@@ -170,7 +173,9 @@ class _StreamingClient(ABC):
         logging.debug("Packet of {0} samples for {1}".format(
             trace.stats.npts, trace.id))
         with self.lock:
+            Logger.debug(f"Adding data: Lock status: {self.lock.locked()}")
             self.buffer.add_stream(trace)
+        Logger.debug(f"Finished adding data: Lock status: {self.lock.locked()}")
         if self.wavebank is not None:
             self.wavebank.put_waveforms(stream=Stream([trace]))
             # Note that this should be undertaken by put_waveforms,
