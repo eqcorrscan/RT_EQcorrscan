@@ -12,7 +12,7 @@ from typing import Callable, Union
 from multiprocessing import cpu_count
 
 from obspy import UTCDateTime, Catalog
-from obspy.core.event import Event
+from obspy.core.event import Event, Magnitude
 
 from obsplus.events import get_events
 
