@@ -63,7 +63,7 @@ class RealTimeTribe(Tribe):
     _max_wait_length = 60.
     _fig = None
     _tribe_file = "tribe.tgz"
-    _min_run_length = 3600  # Minimum run-length in seconds.
+    _min_run_length = 24 * 3600  # Minimum run-length in seconds.
     # Usurped by max_run_length, used to set a threshold for rate calculation.
 
     def __init__(
