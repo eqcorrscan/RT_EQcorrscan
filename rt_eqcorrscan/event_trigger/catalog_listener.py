@@ -188,6 +188,7 @@ class CatalogListener(_Listener):
         auto_picks: bool = True,
         event_type: Union[list, str] = None,
         filter_func: Callable = None,
+        starttime: UTCDateTime = None,
         **filter_kwargs,
     ) -> None:
         """
@@ -216,12 +217,18 @@ class CatalogListener(_Listener):
         filter_func
             Function used for filtering. If left as none, this will use the
             `catalog_listener.filter_events` function.
+        starttime
+            When to start to get events from, defaults to the last time
+            the listener was run.
         filter_kwargs:
             If the `filter_func` has changed then this should be the
             additional kwargs for the user-defined filter_func.
         """
         self.busy = True
-        self.previous_time -= self._test_start_step
+        if starttime is None:
+            self.previous_time -= self._test_start_step
+        else:
+            self.previous_time = starttime
         template_kwargs = template_kwargs or dict()
         loop_duration = 0  # Timer for loop, used in synthesising speed-ups
         while self.busy:

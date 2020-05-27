@@ -17,7 +17,7 @@ faulthandler.enable()
 from functools import partial
 from concurrent.futures import ProcessPoolExecutor
 
-from obspy import Catalog
+from obspy import Catalog, UTCDateTime
 
 from rt_eqcorrscan.config import read_config
 from rt_eqcorrscan.event_trigger import (
@@ -33,6 +33,7 @@ def run(**kwargs):
     config = read_config(config_file=kwargs.get("config_file", None))
     debug = kwargs.get("debug", False)
     update_bank = kwargs.get("update_bank", True)
+    listener_starttime = kwargs.get("listener_starttime", None)
     if debug:
         config.log_level = "DEBUG"
         print("Using the following configuration:\n{0}".format(config))
@@ -70,7 +71,8 @@ def run(**kwargs):
     reactor = Reactor(
         client=client,
         listener=listener, trigger_func=trigger_func,
-        template_database=template_bank, config=config)
+        template_database=template_bank, config=config,
+        listener_starttime=listener_starttime)
     reactor.run(max_run_length=config.reactor.max_run_length)
     return
 
@@ -90,9 +92,14 @@ if __name__ == "__main__":
         "-u", "--update-bank", action="store_true",
         help="Flag to update template bank index before running, use if events"
              " have been manually added")
+    parser.add_argument(
+        "-s", "--listener-starttime", type=UTCDateTime, 
+        help="UTCDateTime parsable starttime for the listener - will collect "
+             "events from this date to now and react to them.")
 
     args = parser.parse_args()
 
     kwargs.update({"debug": args.debug, "config_file": args.config,
-                   "update_bank": args.update_bank})
+                   "update_bank": args.update_bank, 
+                   "listener_starttime": args.listener_starttime})
     run(**kwargs)

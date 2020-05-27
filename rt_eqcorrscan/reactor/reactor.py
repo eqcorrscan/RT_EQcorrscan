@@ -99,6 +99,7 @@ class Reactor(object):
         trigger_func: Callable,
         template_database: TemplateBank,
         config: Config,
+        listener_starttime: UTCDateTime = None,
     ):
         self.client = client
         self.listener = listener
@@ -107,7 +108,8 @@ class Reactor(object):
         self.config = config
         self._listener_kwargs = dict(
             min_stations=config.database_manager.min_stations,
-            template_kwargs=config.template)
+            template_kwargs=config.template,
+            starttime=listener_starttime)
         # Time-keepers
         self._run_start = None
         self._running = False
