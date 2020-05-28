@@ -86,6 +86,44 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
         "backfill_client": config.rt_match_filter.get_waveform_client(),
         "cores": cores}
 
+    # If backfill-to is further in the past than the buffer-length, then it
+    # will essentially be ignored...
+    if real_time_tribe_kwargs["backfill_client"]:
+        while UTCDateTime.now() - real_time_tribe_kwargs["backfill_to"] > config.streaming.buffer_capacity:
+            # Download the required data and run it!
+            endtime = UTCDateTime.now()
+            Logger.info(
+                f"Backfilling between {real_time_tribe_kwargs['backfill_to']}"
+                f" and {endtime}")
+            party, st = real_time_tribe.client_detect(
+                client=real_time_tribe_kwargs["backfill_client"],
+                starttime=real_time_tribe_kwargs["backfill_to"],
+                endtime=endtime, return_stream=True,
+                threshold=config.rt_match_filter.threshold,
+                threshold_type=config.rt_match_filter.threshold_type,
+                trig_int=config.rt_match_filter.trig_int,
+                parallel_process=False, cores=real_time_tribe_kwargs["cores"])
+            Logger.info(f"Made {len(party)} detections between "
+                        f"{real_time_tribe_kwargs['backfill_to']} and "
+                        f"{endtime}")
+            # Remove detections with fewer than min_stations
+            for family in party:
+                family.detections = [
+                    d for d in family
+                    if len({chan[0] for chan in d.chans}) >= min_stations]
+            Logger.info(f"{len(party)} detections remain after removing "
+                        f"detections using fewer than {min_stations} stations")
+            # Write detections to disk
+            real_time_tribe._handle_detections(
+                party, trig_int=config.rt_match_filter.trig_int,
+                endtime=real_time_tribe_kwargs["backfill_to"],
+                detect_directory="{name}/detections",
+                save_waveforms=config.rt_match_filter.save_waveforms,
+                plot_detections=config.rt_match_filter.plot_detections,
+                st=st)
+            # Update and re-check whether we still need to do more backfilling.
+            real_time_tribe_kwargs.update({"backfill_to": endtime})
+
     real_time_tribe.run(
         threshold=config.rt_match_filter.threshold,
         threshold_type=config.rt_match_filter.threshold_type,

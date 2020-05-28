@@ -403,9 +403,14 @@ class RealTimeTribe(Tribe):
                 except IndexError:
                     continue
                 endtime = tr_in_buffer.stats.starttime
+                if endtime - backfill_to > self.rt_client.buffer_capacity:
+                    Logger.info("Truncating backfill to buffer length")
+                    starttime = endtime - self.rt_client.buffer_capacity
+                else:
+                    starttime = backfill_to
                 try:
                     tr = backfill_client.get_waveforms(
-                        *tr_id.split('.'), starttime=backfill_to,
+                        *tr_id.split('.'), starttime=starttime,
                         endtime=endtime).merge()[0]
                 except Exception as e:
                     Logger.error("Could not back fill due to: {0}".format(e))
