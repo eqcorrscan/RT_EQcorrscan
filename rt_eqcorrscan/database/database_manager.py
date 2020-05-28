@@ -294,7 +294,7 @@ class TemplateBank(EventBank):
         download_data_len: float = 90,
         save_raw: bool = True,
         update_index: bool = True,
-        rebuild: bool = True,
+        rebuild: bool = False,
         **kwargs,
     ) -> Tribe:
         """

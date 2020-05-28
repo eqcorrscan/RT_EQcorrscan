@@ -164,12 +164,16 @@ class Reactor(object):
             Logger.debug("Currently analysing a catalog of {0} events".format(
                 len(working_cat)))
             self.process_new_events(new_events=working_cat)
+            Logger.debug("Finished processing new events")
             self.set_up_time(UTCDateTime.now())
+            Logger.debug(f"Up-time: {self.up_time}")
             if max_run_length is not None and self.up_time >= max_run_length:
                 Logger.critical("Max run length reached. Stopping.")
                 self.stop()
                 break
+            Logger.debug(f"Sleeping for {self.sleep_step} seconds")
             time.sleep(self.sleep_step)
+            Logger.debug("Waking up")
 
     def check_running_tribes(self) -> None:
         """ 
@@ -202,11 +206,10 @@ class Reactor(object):
         for triggering_event_id, tribe_region in self._running_regions.items():
             try:
                 add_events = get_events(new_events, **tribe_region)
-            except Exception as e:
+            except Exception:
                 # This only occurs when there are no events in the region
                 # and is fixed by PR #177 on Obsplus.
                 add_events = Catalog()
-                continue
             # Don't trigger on events now running in another tribe.
             new_events.events = [e for e in new_events
                                  if e not in add_events]
