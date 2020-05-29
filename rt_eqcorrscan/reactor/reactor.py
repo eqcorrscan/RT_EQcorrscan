@@ -227,20 +227,15 @@ class Reactor(object):
                     **self.config.template)
                 if len(tribe) > 0:
                     Logger.info(f"Adding {len(tribe)} events to {triggering_event_id}")
-                    tribe_file = os.path.join(
+                    template_dir = os.path.join(
                         _get_triggered_working_dir(triggering_event_id),
-                        "tribe.tgz")
-                    _tic = time.time()
-                    while os.path.isfile(tribe_file):
-                        time.sleep(0.2)  # Wait until the tribe-file is removed by the subprocess
-                        _total_wait = time.time() - _tic
-                        if _total_wait >= 2.0:
-                            break
-                    if os.path.isfile(tribe_file):
-                        tribe += read_tribe(tribe_file)
-                        os.remove(tribe_file)
-                    tribe.write(tribe_file)
-                    Logger.info(f"Written new templates to {tribe_file}")
+                        "new_templates")
+                    if not os.path.isdir(template_dir):
+                        os.makedirs(template_dir)
+                    for template in tribe:
+                        template.write(filename=os.path.join(
+                            template_dir, template.name))
+                    Logger.info(f"Written new templates to {template_dir}")
                     self._running_templates[triggering_event_id].update(
                         added_ids)
         trigger_events = self.trigger_func(new_events)

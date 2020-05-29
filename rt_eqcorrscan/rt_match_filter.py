@@ -8,6 +8,7 @@ import logging
 import copy
 import numpy
 import gc
+import glob
 
 # from pympler import summary, muppy
 
@@ -62,7 +63,7 @@ class RealTimeTribe(Tribe):
     # Speed-up for simulated runs - do not change for real-time!
     _max_wait_length = 60.
     _fig = None
-    _tribe_file = "tribe.tgz"
+    _template_dir = "new_templates"
     _min_run_length = 24 * 3600  # Minimum run-length in seconds.
     # Usurped by max_run_length, used to set a threshold for rate calculation.
 
@@ -217,23 +218,26 @@ class RealTimeTribe(Tribe):
             self.party.decluster(
                 trig_int=trig_int, timing="origin", metric="cor_sum")
         Logger.info("Completed decluster")
-        for family in self.party:
-            family.detections = [
-                d for d in family.detections if d.detect_time >= endtime]
         Logger.info("Writing detections to disk")
-        for f in self.party:
-            for d in f:
-                if d in self.detections:
+        for family in self.party:
+            for detection in family:
+                if detection in self.detections:
                     continue
-                Logger.info(f"Writing detection: {d.detect_time}")
+                Logger.info(f"Writing detection: {detection.detect_time}")
                 self._fig = _write_detection(
-                    detection=d,
+                    detection=detection,
                     detect_directory=detect_directory,
                     save_waveform=save_waveforms,
                     plot_detection=plot_detections, stream=st,
                     fig=self._fig)
+        Logger.info("Expiring old detections")
+        for family in self.party:
+            family.detections = [
+                d for d in family.detections if d.detect_time >= endtime]
+            for detection in family:
                 # Need to append rather than create a new object
-                self.detections.append(d)
+                self.detections.append(detection)
+        return
 
     def _plot(self) -> None:  # pragma: no cover
         """ Plot the data as it comes in. """
@@ -537,11 +541,15 @@ class RealTimeTribe(Tribe):
         return self.party
 
     def _read_templates_from_disk(self):
-        if not os.path.isfile(self._tribe_file):
+        template_files = glob.glob(self._template_dir)
+        if len(template_files) == 0:
             return []
-        Logger.info(f"Checking for events in {self._tribe_file}")
-        new_tribe = Tribe().read(self._tribe_file)
-        os.remove(self._tribe_file)  # Remove file once done with it.
+        Logger.info(f"Checking for events in {self._template_dir}")
+        new_tribe = Tribe()
+        for template_file in template_files:
+            Logger.debug(f"Reading from {template_file}")
+            new_tribe += Template().read(template_file)
+            os.remove(template_file)  # Remove file once done with it.
         new_tribe.templates = [t for t in new_tribe
                                if t.name not in self.running_templates]
         Logger.info(f"Read in {len(new_tribe)} new templates from disk")
@@ -594,6 +602,7 @@ class RealTimeTribe(Tribe):
         This method will run the new templates back in time, then append the
         templates to the already running tribe.
 
+        # TODO - make standard parameters and wrap methods to decorate them
         Parameters
         ----------
         templates
@@ -605,6 +614,8 @@ class RealTimeTribe(Tribe):
             `eqcorrscan.core.match_filter.Tribe.detect` for options.
         trig_int
             Minimum inter-detection time in seconds.
+        min_stations:
+            Minimum number of stations required to make a detection.
         keep_detections
             Duration to store detection in memory for in seconds.
         detect_directory
@@ -646,6 +657,69 @@ class RealTimeTribe(Tribe):
             f"{n} templates were removed because they did not have enough "
             f"stations. {len(new_tribe)} will be added to the running tribe.")
         self.templates.extend(new_tribe.templates)
+        self.backfill(
+            templates=new_tribe, threshold=threshold,
+            threshold_type=threshold_type, trig_int=trig_int,
+            keep_detections=keep_detections, detect_directory=detect_directory,
+            plot_detections=plot_detections, save_waveforms=save_waveforms,
+            maximum_backfill=maximum_backfill, endtime=endtime, **kwargs)
+        return set(t.name for t in self.templates)
+
+    def backfill(
+        self,
+        templates: Union[List[Template], Tribe],
+        threshold: float,
+        threshold_type: str,
+        trig_int: float,
+        keep_detections: float = 86400,
+        detect_directory: str = "{name}/detections",
+        plot_detections: bool = True,
+        save_waveforms: bool = True,
+        maximum_backfill: float = None,
+        endtime: UTCDateTime = None,
+        **kwargs
+    ) -> None:
+        """
+        Backfill using data from rt_client's wavebank.
+
+        This method will run the new templates through old data and record
+        detections in the real-time-tribe.
+
+        Parameters
+        ----------
+        templates
+            New templates to add to the tribe.
+        threshold
+            Threshold for detection
+        threshold_type
+            Type of threshold to use. See
+            `eqcorrscan.core.match_filter.Tribe.detect` for options.
+        trig_int
+            Minimum inter-detection time in seconds.
+        keep_detections
+            Duration to store detection in memory for in seconds.
+        detect_directory
+            Relative path to directory for detections. This directory will be
+            created if it doesn't exist - tribe name will be appended to this
+            string to give the directory name.
+        plot_detections
+            Whether to plot detections or not - plots will be saved to the
+            `detect_directory` as png images.
+        save_waveforms
+            Whether to save waveforms of detections or not - waveforms
+            will be saved in the `detect_directory` as miniseed files.
+        maximum_backfill
+            Time in seconds to backfill to - if this is larger than the
+            difference between the time now and the time that the tribe
+            started, then it will backfill to when the tribe started.
+        endtime
+            Time to stop the backfill, if None will run to now.
+        """
+        # TODO: This could be in a non-blocking Process of it's own
+        if isinstance(templates, Tribe):
+            new_tribe = templates
+        else:
+            new_tribe = Tribe(templates)
         # Get the stream
         endtime = endtime or UTCDateTime.now()
         if maximum_backfill is not None:
@@ -659,7 +733,7 @@ class RealTimeTribe(Tribe):
         st = self.rt_client.wavebank.get_waveforms_bulk(bulk)
         Logger.debug("Additional templates to be run: \n{0} "
                      "templates".format(len(new_tribe)))
-        # TODO: This could be in a non-blocking Process of it's own
+
         new_party = new_tribe.detect(
             stream=st, plot=False, threshold=threshold,
             threshold_type=threshold_type, trig_int=trig_int,
@@ -667,12 +741,12 @@ class RealTimeTribe(Tribe):
             parallel_process=self._parallel_processing,
             process_cores=self.process_cores, **kwargs)
         while self._running:
-            time.sleep(1)  # Wait until lock is released to add detections
+            time.sleep(0.5)  # Wait until lock is released to add detections
         self._handle_detections(
             new_party=new_party, detect_directory=detect_directory,
             endtime=endtime - keep_detections, plot_detections=plot_detections,
             save_waveforms=save_waveforms, st=st, trig_int=trig_int)
-        return set(t.name for t in self.templates)
+        return
 
     def stop(self, write_stopfile: bool = False) -> None:
         """

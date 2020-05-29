@@ -9,7 +9,7 @@ import logging
 from collections import Counter
 from typing import List, Union
 
-from obspy import read_events, Inventory, UTCDateTime
+from obspy import read_events, Inventory, UTCDateTime, Stream
 from obspy.core.event import Event
 from obspy.clients.fdsn.client import FDSNNoDataException
 from obspy.geodetics import locations2degrees, kilometer2degrees
@@ -95,38 +95,34 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
             Logger.info(
                 f"Backfilling between {real_time_tribe_kwargs['backfill_to']}"
                 f" and {endtime}")
-            try:
-                party, st = real_time_tribe.client_detect(
-                    client=real_time_tribe_kwargs["backfill_client"],
-                    starttime=real_time_tribe_kwargs["backfill_to"],
-                    endtime=endtime, return_stream=True,
-                    threshold=config.rt_match_filter.threshold,
-                    threshold_type=config.rt_match_filter.threshold_type,
-                    trig_int=config.rt_match_filter.trig_int,
-                    parallel_process=False,
-                    cores=real_time_tribe_kwargs["cores"])
-            except Exception as e:
-                Logger.error(e)
-                Logger.info("Could not backfill, continuing with real-time")
-                break
-            Logger.info(f"Made {len(party)} detections between "
-                        f"{real_time_tribe_kwargs['backfill_to']} and "
-                        f"{endtime}")
-            # Remove detections with fewer than min_stations
-            for family in party:
-                family.detections = [
-                    d for d in family
-                    if len({chan[0] for chan in d.chans}) >= min_stations]
-            Logger.info(f"{len(party)} detections remain after removing "
-                        f"detections using fewer than {min_stations} stations")
-            # Write detections to disk
-            real_time_tribe._handle_detections(
-                party, trig_int=config.rt_match_filter.trig_int,
-                endtime=real_time_tribe_kwargs["backfill_to"],
+            st = Stream()
+            for network in inventory:
+                for station in network:
+                    for channel in station:
+                        try:
+                            st += real_time_tribe_kwargs['backfill_client'].get_waveforms(
+                                network=network.code, station=station.code,
+                                location=channel.location_code,
+                                channel=channel.code,
+                                starttime=real_time_tribe_kwargs['backfill_to'],
+                                endtime=endtime)
+                        except Exception as e:
+                            Logger.error(e)
+                            continue
+            rt_client.wavebank.put_waveforms(st)
+            backfill_stations = {tr.stats.station for tr in st}
+            backfill_templates = [
+                t for t in real_time_tribe.templates
+                if len({tr.stats.station for tr in t.st}.intersection(
+                    backfill_stations)) >= min_stations]
+            real_time_tribe.backfill(
+                templates=backfill_templates,
+                threshold=config.rt_match_filter.threshold,
+                threshold_type=config.rt_match_filter.threshold_type,
+                trig_int=config.rt_match_filter.trig_int,
+                keep_detections=86400,
                 detect_directory="{name}/detections",
-                save_waveforms=config.rt_match_filter.save_waveforms,
-                plot_detections=config.rt_match_filter.plot_detections,
-                st=st)
+                plot_detections=config.rt_match_filter.plot_detections)
             # Update and re-check whether we still need to do more backfilling.
             real_time_tribe_kwargs.update({"backfill_to": endtime})
 
