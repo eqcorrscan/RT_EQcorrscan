@@ -95,14 +95,20 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
             Logger.info(
                 f"Backfilling between {real_time_tribe_kwargs['backfill_to']}"
                 f" and {endtime}")
-            party, st = real_time_tribe.client_detect(
-                client=real_time_tribe_kwargs["backfill_client"],
-                starttime=real_time_tribe_kwargs["backfill_to"],
-                endtime=endtime, return_stream=True,
-                threshold=config.rt_match_filter.threshold,
-                threshold_type=config.rt_match_filter.threshold_type,
-                trig_int=config.rt_match_filter.trig_int,
-                parallel_process=False, cores=real_time_tribe_kwargs["cores"])
+            try:
+                party, st = real_time_tribe.client_detect(
+                    client=real_time_tribe_kwargs["backfill_client"],
+                    starttime=real_time_tribe_kwargs["backfill_to"],
+                    endtime=endtime, return_stream=True,
+                    threshold=config.rt_match_filter.threshold,
+                    threshold_type=config.rt_match_filter.threshold_type,
+                    trig_int=config.rt_match_filter.trig_int,
+                    parallel_process=False,
+                    cores=real_time_tribe_kwargs["cores"])
+            except Exception as e:
+                Logger.error(e)
+                Logger.info("Could not backfill, continuing with real-time")
+                break
             Logger.info(f"Made {len(party)} detections between "
                         f"{real_time_tribe_kwargs['backfill_to']} and "
                         f"{endtime}")
