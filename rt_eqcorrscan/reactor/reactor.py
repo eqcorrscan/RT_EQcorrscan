@@ -16,6 +16,8 @@ from obspy.core.event import Event, Magnitude
 
 from obsplus.events import get_events
 
+from eqcorrscan.core.match_filter import read_tribe
+
 from rt_eqcorrscan.database.database_manager import (
     TemplateBank, check_tribe_quality)
 from rt_eqcorrscan.event_trigger.listener import _Listener
@@ -228,8 +230,15 @@ class Reactor(object):
                     tribe_file = os.path.join(
                         _get_triggered_working_dir(triggering_event_id),
                         "tribe.tgz")
+                    _tic = time.time()
                     while os.path.isfile(tribe_file):
                         time.sleep(0.2)  # Wait until the tribe-file is removed by the subprocess
+                        _total_wait = time.time() - _tic
+                        if _total_wait >= 2.0:
+                            break
+                    if os.path.isfile(tribe_file):
+                        tribe += read_tribe(tribe_file)
+                        os.remove(tribe_file)
                     tribe.write(tribe_file)
                     Logger.info(f"Written new templates to {tribe_file}")
                     self._running_templates[triggering_event_id].update(
