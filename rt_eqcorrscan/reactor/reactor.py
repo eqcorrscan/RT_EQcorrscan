@@ -246,7 +246,7 @@ class Reactor(object):
             if len(trigger_event.magnitudes) == 0 or trigger_event.magnitudes[0] is None:
                 trigger_event.magnitudes = [Magnitude(mag=-999)]
         trigger_events.events.sort(
-            key=lambda e: e.preferred_magnitude().mag or e.magnitudes[0].mag,
+            key=lambda e: (e.preferred_magnitude() or e.magnitudes[0]).mag,
             reverse=True)
         for trigger_event in trigger_events:
             if trigger_event in self._triggered_events:
