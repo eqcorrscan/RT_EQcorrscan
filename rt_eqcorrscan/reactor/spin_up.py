@@ -13,6 +13,9 @@ from obspy import read_events, Inventory, UTCDateTime, Stream
 from obspy.core.event import Event
 from obspy.clients.fdsn.client import FDSNNoDataException
 from obspy.geodetics import locations2degrees, kilometer2degrees
+
+from obsplus import WaveBank
+
 from eqcorrscan import Tribe
 
 from rt_eqcorrscan import read_config, RealTimeTribe
@@ -38,6 +41,9 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
         filename="{0}/rt_eqcorrscan_{1}.log".format(
             working_dir,
             os.path.split(working_dir)[-1]))
+    # Enforce a local-wave-bank for the streamer
+    config.streaming.local_wave_bank = WaveBank("streaming_wavebank")
+
     triggering_event = read_events('triggering_event.xml')[0]
     Logger.debug(f"Triggered by {triggering_event}")
     min_stations = config.rt_match_filter.get("min_stations", None)
@@ -88,7 +94,7 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
 
     # If backfill-to is further in the past than the buffer-length, then it
     # will essentially be ignored...
-    if real_time_tribe_kwargs["backfill_client"]:
+    if real_time_tribe_kwargs["backfill_client"] and rt_client.wavebank:
         while UTCDateTime.now() - real_time_tribe_kwargs["backfill_to"] > config.streaming.buffer_capacity:
             # Download the required data and run it!
             endtime = UTCDateTime.now()

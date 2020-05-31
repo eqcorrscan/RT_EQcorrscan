@@ -16,6 +16,8 @@ from logging.handlers import RotatingFileHandler
 
 from obspy.core.util import AttribDict
 
+from obsplus import WaveBank
+
 
 Logger = logging.getLogger(__name__)
 
@@ -130,6 +132,8 @@ class StreamingConfig(_ConfigAttribDict):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if isinstance(self.local_wave_bank, str):
+            self.local_wave_bank = WaveBank(self.local_wave_bank)
 
     @property
     def rt_client_module(self):
