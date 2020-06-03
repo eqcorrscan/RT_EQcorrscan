@@ -108,7 +108,7 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
             for network in inventory:
                 for station in network:
                     for channel in station:
-                        Logger.debug(
+                        Logger.info(
                             f"Downloading for {network.code}.{station.code}."
                             f"{channel.location_code}.{channel.code}")
                         try:
