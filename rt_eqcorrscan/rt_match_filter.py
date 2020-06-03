@@ -728,7 +728,7 @@ class RealTimeTribe(Tribe):
             starttime = UTCDateTime(0)
         if starttime >= endtime or self.rt_client.wavebank is None:
             return
-        if self.expected_seed_ids:
+        if self.expected_seed_ids and len(self.expected_seed_ids) > 0:
             bulk = [tuple(chan.split('.').extend([starttime, endtime]))
                     for chan in self.expected_seed_ids]
         else:

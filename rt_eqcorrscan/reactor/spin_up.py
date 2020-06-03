@@ -71,6 +71,9 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
         client, tribe, triggering_event=triggering_event,
         max_distance=config.rt_match_filter.max_distance,
         n_stations=config.rt_match_filter.n_stations)
+    if len(inventory) == 0:
+        Logger.critical("No inventory matching your templates, not running")
+        return None, None
     detect_interval = config.rt_match_filter.get(
         "detect_interval", 60)
     plot = config.rt_match_filter.get("plot", False)
