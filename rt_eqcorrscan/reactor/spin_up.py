@@ -79,6 +79,9 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
         detect_interval=detect_interval, plot=plot,
         plot_options=config.plot,
         name=triggering_event.resource_id.id.split('/')[-1])
+    if real_time_tribe.expected_seed_ids is None:
+        Logger.error("No matching channels in inventory and templates")
+        return
     real_time_tribe._parallel_processing = False
     # Disable parallel processing for subprocess
     Logger.info("Created real-time tribe with inventory:\n{0}".format(
@@ -105,6 +108,9 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
             for network in inventory:
                 for station in network:
                     for channel in station:
+                        Logger.debug(
+                            f"Downloading for {network.code}.{station.code}."
+                            f"{channel.location_code}.{channel.code}")
                         try:
                             st += real_time_tribe_kwargs['backfill_client'].get_waveforms(
                                 network=network.code, station=station.code,
@@ -115,12 +121,18 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
                         except Exception as e:
                             Logger.error(e)
                             continue
+            st = st.merge()
+            Logger.info(f"Downloaded {len(st)} for backfill")
+            if len(st) == 0:
+                Logger.warning("No backfill available, skipping")
+                break
             rt_client.wavebank.put_waveforms(st)
             backfill_stations = {tr.stats.station for tr in st}
             backfill_templates = [
                 t for t in real_time_tribe.templates
                 if len({tr.stats.station for tr in t.st}.intersection(
                     backfill_stations)) >= min_stations]
+            Logger.info("Computing backfill detections")
             real_time_tribe.backfill(
                 templates=backfill_templates,
                 threshold=config.rt_match_filter.threshold,
