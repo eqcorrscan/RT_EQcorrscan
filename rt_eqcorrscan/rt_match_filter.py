@@ -728,8 +728,15 @@ class RealTimeTribe(Tribe):
             starttime = UTCDateTime(0)
         if starttime >= endtime or self.rt_client.wavebank is None:
             return
-        bulk = [tuple(chan.split('.').extend([starttime, endtime]))
-                for chan in self.expected_seed_ids]
+        if self.expected_seed_ids:
+            bulk = [tuple(chan.split('.').extend([starttime, endtime]))
+                    for chan in self.expected_seed_ids]
+        else:
+            Logger.warning("No expected seed ids")
+            return
+        if len(bulk) == 0:
+            Logger.warning("No bulk")
+            return
         st = self.rt_client.wavebank.get_waveforms_bulk(bulk)
         Logger.debug("Additional templates to be run: \n{0} "
                      "templates".format(len(new_tribe)))
