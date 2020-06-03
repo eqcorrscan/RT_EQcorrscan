@@ -729,8 +729,11 @@ class RealTimeTribe(Tribe):
         if starttime >= endtime or self.rt_client.wavebank is None:
             return
         if self.expected_seed_ids and len(self.expected_seed_ids) > 0:
-            bulk = [tuple(chan.split('.').extend([starttime, endtime]))
-                    for chan in self.expected_seed_ids]
+            bulk = []
+            for chan in self.expected_seed_ids:
+                query = chan.split('.')
+                query.extend([starttime, endtime])
+                bulk.append(tuple(query))
         else:
             Logger.warning("No expected seed ids")
             return
