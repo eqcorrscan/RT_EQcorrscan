@@ -175,12 +175,12 @@ class _StreamingClient(ABC):
         with self.lock:
             Logger.debug(f"Adding data: Lock status: {self.lock.locked()}")
             self.buffer.add_stream(trace)
+            if self.wavebank is not None:
+                self.wavebank.put_waveforms(stream=Stream([trace]))
+                # Note that this should be undertaken by put_waveforms,
+                # but seems to get missed...
+                self.wavebank.update_index()
         Logger.debug(f"Finished adding data: Lock status: {self.lock.locked()}")
-        if self.wavebank is not None:
-            self.wavebank.put_waveforms(stream=Stream([trace]))
-            # Note that this should be undertaken by put_waveforms,
-            # but seems to get missed...
-            self.wavebank.update_index()
         Logger.debug("Buffer contains {0}".format(self.buffer))
 
     def on_terminate(self) -> Stream:  # pragma: no cover
