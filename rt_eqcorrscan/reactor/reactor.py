@@ -332,8 +332,15 @@ class Reactor(object):
         Logger.critical(f"Received signal: {signum}")
         self.stop()
 
-    def stop(self) -> None:
-        """Stop all the processes."""
+    def stop(self, raise_exit: bool=True) -> None:
+        """
+        Stop all the processes.
+
+        Parameters
+        ----------
+        raise_exit:
+            Whether to exit the Python system or not.
+        """
         Logger.critical("Stopping the reactor")
         self._running = False
         Logger.critical("Stopping the listener")
@@ -344,7 +351,8 @@ class Reactor(object):
             Logger.critical(f"Stopping tribe running for {event_id}")
             self.stop_tribe(event_id)
         Logger.critical("Stopped")
-        raise SystemExit
+        if raise_exit:
+            raise SystemExit
 
 
 def estimate_region(

@@ -64,7 +64,8 @@ class ReactorTests(unittest.TestCase):
             client=Client("GEONET"),
             listener=self.listener, trigger_func=self.trigger_func,
             template_database=self.template_bank, config=self.config)
-        reactor.run(max_run_length=30)
+        with self.assertRaises(SystemExit):
+            reactor.run(max_run_length=30)
         self.assertGreaterEqual(reactor.up_time, 30)
 
     def test_reactor_spin_up(self):
@@ -80,7 +81,8 @@ class ReactorTests(unittest.TestCase):
             magnitudes=[Magnitude(mag=7.4)])
         reactor.spin_up(triggering_event=trigger_event)
         time.sleep(10)
-        reactor.stop()
+        with self.assertRaises(SystemExit):
+            reactor.stop()
 
     @classmethod
     def tearDownClass(cls) -> None:
