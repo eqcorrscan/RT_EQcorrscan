@@ -48,7 +48,7 @@ class _Listener(ABC):
 
     old_events = property(fget=get_old_events, fset=set_old_events)
 
-    def remove_old_event(self, event: Event):
+    def remove_old_event(self, event: EventInfo):
         with self.lock:  # Make threadsafe
             self._old_events.remove(event)
 
@@ -76,7 +76,7 @@ class _Listener(ABC):
         # Need to remove in-place, without creating a new list
         for i, old_event in enumerate(list(self.old_events)):
             if not filt[i]:
-                self.remove_event(old_event)
+                self.remove_old_event(old_event)
 
     def background_run(self, *args, **kwargs):
         self.busy = True
