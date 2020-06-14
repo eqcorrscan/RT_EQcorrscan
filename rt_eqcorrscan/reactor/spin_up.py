@@ -129,6 +129,7 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
             if len(st) == 0:
                 Logger.warning("No backfill available, skipping")
                 break
+            st = st.split()  # Cannot write masked data
             rt_client.wavebank.put_waveforms(st)
             backfill_stations = {tr.stats.station for tr in st}
             backfill_templates = [
