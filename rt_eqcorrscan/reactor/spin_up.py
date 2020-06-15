@@ -89,8 +89,9 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
     # Disable parallel processing for subprocess
     real_time_tribe._parallel_processing = False
     # Set the maximum correlation core-count
-    real_time_tribe.max_correlation_cores = config.rt_match_filter.get(
-        "max_correlation_cores", None)
+    if config.rt_match_filter.get("max_correlation_cores", None):
+        cores = min(cores, config.rt_match_filter.max_correlation_cores)
+    real_time_tribe.max_correlation_cores = cores
 
     Logger.info("Created real-time tribe with inventory:\n{0}".format(
         inventory))
@@ -100,8 +101,7 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
 
     real_time_tribe_kwargs = {
         "backfill_to": event_time(triggering_event) - 180,
-        "backfill_client": config.rt_match_filter.get_waveform_client(),
-        "cores": cores}
+        "backfill_client": config.rt_match_filter.get_waveform_client()}
 
     # If backfill-to is further in the past than the buffer-length, then it
     # will essentially be ignored...

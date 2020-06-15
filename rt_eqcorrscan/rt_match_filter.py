@@ -389,11 +389,16 @@ class RealTimeTribe(Tribe):
         if len(self.templates) == 0:
             Logger.critical("No templates remain, not running")
             return Party()
+        # Fix unsupported args
         try:
             if kwargs.pop("plot"):
                 Logger.info("EQcorrscan plotting disabled")
         except KeyError:
             pass
+        _cores = kwargs.get("cores", None)
+        if _cores:
+            self.max_correlation_cores = min(
+                kwargs.pop("cores"), self.max_correlation_cores)
         run_start = UTCDateTime.now()
         detection_iteration = 0  # Counter for number of detection loops run
         if not self.busy:
