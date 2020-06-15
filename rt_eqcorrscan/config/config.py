@@ -69,6 +69,7 @@ class RTMatchFilterConfig(_ConfigAttribDict):
         "trig_int": 2.0,
         "save_waveforms": True,
         "plot_detections": False,
+        "max_correlation_cores": None,
     }
     readonly = []
 

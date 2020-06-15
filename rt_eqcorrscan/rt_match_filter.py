@@ -16,7 +16,7 @@ from typing import Union, List
 
 from obspy import Stream, UTCDateTime, Inventory
 from matplotlib.figure import Figure
-from multiprocessing import Process
+from multiprocessing import Process, Lock
 from eqcorrscan import Tribe, Template, Party, Detection
 
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
@@ -55,17 +55,22 @@ class RealTimeTribe(Tribe):
     plotting_exclude_channels
         Channels to exclude from plotting
     """
+    # Management of detection multi-processing
     process_cores = 2
     _parallel_processing = True  # This seems unstable for subprocessing.
+    max_correlation_cores = None
+
+    # Thread management
+    lock = Lock()  # Lock for access to internals
     _running = False
     _detecting_thread = None
     _backfillers = []  # Backfill processes
     busy = False
-    _speed_up = 1.0
-    # Speed-up for simulated runs - do not change for real-time!
+
+    _speed_up = 1.0  # For simulated runs - do not change for real-time!
     _max_wait_length = 60.
-    _fig = None
-    _template_dir = "new_templates"
+    _fig = None  # Cache figures to save memory
+    _template_dir = "new_templates"  # Where new templates should be.
     _min_run_length = 24 * 3600  # Minimum run-length in seconds.
     # Usurped by max_run_length, used to set a threshold for rate calculation.
 
@@ -173,7 +178,8 @@ class RealTimeTribe(Tribe):
         # Use a copy to avoid changing list while iterating
         for d in copy.copy(self.detections):
             if d.detect_time <= endtime:
-                self.detections.remove(d)
+                with self.lock:
+                    self.detections.remove(d)
 
     def _remove_unused_backfillers(self):
         """ Expire unused back fill processes to release resources. """
@@ -492,6 +498,7 @@ class RealTimeTribe(Tribe):
                         stream=st, plot=False, threshold=threshold,
                         threshold_type=threshold_type, trig_int=trig_int,
                         xcorr_func="fftw", concurrency="concurrent",
+                        cores=self.max_correlation_cores,
                         process_cores=self.process_cores,
                         parallel_process=self._parallel_processing,
                         ignore_bad_data=True, **kwargs)
@@ -507,15 +514,16 @@ class RealTimeTribe(Tribe):
                         "better".format(self.detect_interval))
                     time.sleep(self.detect_interval)
                     continue
-                self._handle_detections(
-                    new_party, trig_int=trig_int,
-                    endtime=last_data - keep_detections,
-                    detect_directory=detect_directory,
-                    save_waveforms=save_waveforms,
-                    plot_detections=plot_detections, st=st)
-                self._remove_old_detections(last_data - keep_detections)
-                Logger.info("Party now contains {0} detections".format(
-                    len(self.detections)))
+                with self.lock:
+                    self._handle_detections(
+                        new_party, trig_int=trig_int,
+                        endtime=last_data - keep_detections,
+                        detect_directory=detect_directory,
+                        save_waveforms=save_waveforms,
+                        plot_detections=plot_detections, st=st)
+                    self._remove_old_detections(last_data - keep_detections)
+                    Logger.info("Party now contains {0} detections".format(
+                        len(self.detections)))
                 self._running = False  # Release lock
                 run_time = UTCDateTime.now() - start_time
                 Logger.info("Detection took {0:.2f}s".format(run_time))
@@ -786,15 +794,16 @@ class RealTimeTribe(Tribe):
             stream=st, plot=False, threshold=threshold,
             threshold_type=threshold_type, trig_int=trig_int,
             xcorr_func="fftw", concurrency="concurrent",
+            cores=self.max_correlation_cores,
             parallel_process=self._parallel_processing,
             process_cores=self.process_cores, **kwargs)
-        while self._running:
-            time.sleep(0.5)  # Wait until lock is released to add detections
         detect_directory = detect_directory.format(name=self.name)
-        self._handle_detections(
-            new_party=new_party, detect_directory=detect_directory,
-            endtime=endtime - keep_detections, plot_detections=plot_detections,
-            save_waveforms=save_waveforms, st=st, trig_int=trig_int)
+        with self.lock:  # The only time the state of RealTimeTribe is altered
+            self._handle_detections(
+                new_party=new_party, detect_directory=detect_directory,
+                endtime=endtime - keep_detections,
+                plot_detections=plot_detections, save_waveforms=save_waveforms,
+                st=st, trig_int=trig_int)
         return
 
     def stop(self, write_stopfile: bool = False) -> None:

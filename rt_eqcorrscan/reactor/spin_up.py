@@ -85,8 +85,13 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
     if real_time_tribe.expected_seed_ids is None:
         Logger.error("No matching channels in inventory and templates")
         return
-    real_time_tribe._parallel_processing = False
+
     # Disable parallel processing for subprocess
+    real_time_tribe._parallel_processing = False
+    # Set the maximum correlation core-count
+    real_time_tribe.max_correlation_cores = config.rt_match_filter.get(
+        "max_correlation_cores", None)
+
     Logger.info("Created real-time tribe with inventory:\n{0}".format(
         inventory))
 
