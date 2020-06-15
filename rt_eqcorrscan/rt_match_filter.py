@@ -16,6 +16,7 @@ from typing import Union, List
 
 from obspy import Stream, UTCDateTime, Inventory
 from matplotlib.figure import Figure
+from multiprocessing import Process
 from eqcorrscan import Tribe, Template, Party, Detection
 
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
@@ -58,6 +59,7 @@ class RealTimeTribe(Tribe):
     _parallel_processing = True  # This seems unstable for subprocessing.
     _running = False
     _detecting_thread = None
+    _backfillers = []  # Backfill processes
     busy = False
     _speed_up = 1.0
     # Speed-up for simulated runs - do not change for real-time!
@@ -173,6 +175,17 @@ class RealTimeTribe(Tribe):
             if d.detect_time <= endtime:
                 self.detections.remove(d)
 
+    def _remove_unused_backfillers(self):
+        """ Expire unused back fill processes to release resources. """
+        active_backfillers = []
+        for backfill_process in self._backfillers:
+            if not backfill_process.is_alive():
+                backfill_process.join()
+                backfill_process.close()
+            else:
+                active_backfillers.append(backfill_process)
+        self._backfillers = active_backfillers
+
     def _handle_detections(
         self,
         new_party: Party,
@@ -266,6 +279,8 @@ class RealTimeTribe(Tribe):
         wait_length = 0.
         while True:
             tic = time.time()
+            # Check on backfillers
+            self._remove_unused_backfillers()
             # Wait until we have some data
             Logger.debug(
                 "Waiting for data, currently have {0} channels of {1} "
@@ -715,7 +730,30 @@ class RealTimeTribe(Tribe):
         endtime
             Time to stop the backfill, if None will run to now.
         """
-        # TODO: This could be in a non-blocking Process of it's own
+        backfill_process = Process(
+            target=self._backfill,
+            args=(templates, threshold, threshold_type, trig_int,
+                  keep_detections, detect_directory, plot_detections,
+                  save_waveforms, maximum_backfill, endtime),
+            kwargs=kwargs, name="Backfiller")
+        backfill_process.start()
+        self._backfillers.append(backfill_process)
+
+    def _backfill(
+        self,
+        templates: Union[List[Template], Tribe],
+        threshold: float,
+        threshold_type: str,
+        trig_int: float,
+        keep_detections: float = 86400,
+        detect_directory: str = "{name}/detections",
+        plot_detections: bool = True,
+        save_waveforms: bool = True,
+        maximum_backfill: float = None,
+        endtime: UTCDateTime = None,
+        **kwargs
+    ) -> None:
+        """ Background backfill method """
         if isinstance(templates, Tribe):
             new_tribe = templates
         else:
