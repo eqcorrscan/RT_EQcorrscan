@@ -752,6 +752,7 @@ class RealTimeTribe(Tribe):
             process_cores=self.process_cores, **kwargs)
         while self._running:
             time.sleep(0.5)  # Wait until lock is released to add detections
+        detect_directory = detect_directory.format(name=self.name)
         self._handle_detections(
             new_party=new_party, detect_directory=detect_directory,
             endtime=endtime - keep_detections, plot_detections=plot_detections,
