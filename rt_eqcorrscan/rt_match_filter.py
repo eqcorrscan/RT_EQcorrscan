@@ -90,7 +90,6 @@ class RealTimeTribe(Tribe):
             [template.process_length for template in self.templates]))
         assert (self.rt_client.buffer_capacity >= detect_interval)
         self.name = name or "RealTimeTribe"
-        self.buffer = Stream()
         self.inventory = inventory
         self.party = Party()
         self.detect_interval = detect_interval
@@ -482,6 +481,10 @@ class RealTimeTribe(Tribe):
                     continue
                 # Cope with data that doesn't come
                 last_data = max(tr.stats.endtime for tr in st)
+                # Remove any data that shouldn't be there - sometimes GeoNet's Seedlink client gives old data.
+                st.trim(
+                    starttime=last_data - (self.rt_client.buffer_capacity + 20.0,
+                    endtime=last_data)
                 if detection_iteration > 0:
                     # For the first run we want to detect in everything we have.
                     st.trim(
