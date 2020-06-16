@@ -99,16 +99,14 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
     # TODO: How will this work? Currently notifiers are not implemented
     # real_time_tribe.notifier = None
 
-    real_time_tribe_kwargs = {
-        "backfill_to": event_time(triggering_event) - 180,
-        "backfill_client": config.rt_match_filter.get_waveform_client()}
+    backfill_to = event_time(triggering_event) - 180
+    backfill_client = config.rt_match_filter.get_waveform_client()
 
-    if real_time_tribe_kwargs["backfill_client"] and rt_client.wavebank:
+    if backfill_client and rt_client.wavebank:
         # Download the required data and write it to disk.
         endtime = UTCDateTime.now()
         Logger.info(
-            f"Backfilling between {real_time_tribe_kwargs['backfill_to']}"
-            f" and {endtime}")
+            f"Backfilling between {backfill_to} and {endtime}")
         st = Stream()
         for network in inventory:
             for station in network:
@@ -117,11 +115,11 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
                         f"Downloading for {network.code}.{station.code}."
                         f"{channel.location_code}.{channel.code}")
                     try:
-                        st += real_time_tribe_kwargs['backfill_client'].get_waveforms(
+                        st += backfill_client.get_waveforms(
                             network=network.code, station=station.code,
                             location=channel.location_code,
                             channel=channel.code,
-                            starttime=real_time_tribe_kwargs['backfill_to'],
+                            starttime=backfill_to,
                             endtime=endtime)
                     except Exception as e:
                         Logger.error(e)
@@ -133,6 +131,20 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
         else:
             st = st.split()  # Cannot write masked data
             rt_client.wavebank.put_waveforms(st)
+        backfill_stations = {tr.stats.station for tr in st}
+        backfill_templates = [
+            t for t in real_time_tribe.templates
+            if len({tr.stats.station for tr in t.st}.intersection(
+                backfill_stations)) >= min_stations]
+        Logger.info("Computing backfill detections")
+        real_time_tribe.backfill(
+            templates=backfill_templates,
+            threshold=config.rt_match_filter.threshold,
+            threshold_type=config.rt_match_filter.threshold_type,
+            trig_int=config.rt_match_filter.trig_int,
+            keep_detections=86400,
+            detect_directory="{name}/detections",
+            plot_detections=config.rt_match_filter.plot_detections)
 
     real_time_tribe.run(
         threshold=config.rt_match_filter.threshold,
@@ -145,7 +157,7 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
         save_waveforms=config.rt_match_filter.save_waveforms,
         max_run_length=config.rt_match_filter.max_run_length,
         minimum_rate=config.rt_match_filter.minimum_rate,
-        **real_time_tribe_kwargs)
+        backfill_to=backfill_to)
 
 
 def get_inventory(
