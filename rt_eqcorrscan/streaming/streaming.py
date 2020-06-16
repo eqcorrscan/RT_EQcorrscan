@@ -141,6 +141,12 @@ class _StreamingClient(ABC):
             f"Finished getting the data: Lock status: {self.lock.locked()}")
         return stream
 
+    def get_wavebank_stream(self, bulk: List[tuple]) -> Stream:
+        """ threadsafe get-waveforms-bulk call """
+        with self.lock:
+            st = self.wavebank.get_waveforms_bulk(bulk)
+        return st
+
     def _bg_run(self):
         while self.busy:
             self.run()

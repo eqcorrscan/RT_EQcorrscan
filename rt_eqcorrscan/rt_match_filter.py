@@ -793,10 +793,12 @@ class RealTimeTribe(Tribe):
         if len(bulk) == 0:
             Logger.warning("No bulk")
             return
-        st = self.rt_client.wavebank.get_waveforms_bulk(bulk)
+        st = self.rt_client.get_wavebank_bulk(bulk)
         Logger.debug("Additional templates to be run: \n{0} "
                      "templates".format(len(new_tribe)))
 
+        Logger.info("Starting backfill detection run with:")
+        Logger.info(st.__str__(extended=True))
         new_party = new_tribe.detect(
             stream=st, plot=False, threshold=threshold,
             threshold_type=threshold_type, trig_int=trig_int,
@@ -805,6 +807,7 @@ class RealTimeTribe(Tribe):
             parallel_process=self._parallel_processing,
             process_cores=self.process_cores, **kwargs)
         detect_directory = detect_directory.format(name=self.name)
+        Logger.info("Backfill detection completed - handling detections")
         with self.lock:  # The only time the state of RealTimeTribe is altered
             self._handle_detections(
                 new_party=new_party, detect_directory=detect_directory,
