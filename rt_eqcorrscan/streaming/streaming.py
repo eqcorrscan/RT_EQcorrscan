@@ -12,7 +12,7 @@ import threading
 import logging
 
 from abc import ABC, abstractmethod
-from typing import Union
+from typing import Union, List
 
 from obspy import Stream, Trace
 from obsplus import WaveBank
