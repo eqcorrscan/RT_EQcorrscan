@@ -483,7 +483,7 @@ class RealTimeTribe(Tribe):
                 last_data = max(tr.stats.endtime for tr in st)
                 # Remove any data that shouldn't be there - sometimes GeoNet's Seedlink client gives old data.
                 st.trim(
-                    starttime=last_data - (self.rt_client.buffer_capacity + 20.0,
+                    starttime=last_data - (self.rt_client.buffer_capacity + 20.0),
                     endtime=last_data)
                 if detection_iteration > 0:
                     # For the first run we want to detect in everything we have.
