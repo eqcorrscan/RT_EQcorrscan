@@ -178,8 +178,7 @@ class RealTimeTribe(Tribe):
         # Use a copy to avoid changing list while iterating
         for d in copy.copy(self.detections):
             if d.detect_time <= endtime:
-                with self.lock:
-                    self.detections.remove(d)
+                self.detections.remove(d)
 
     def _remove_unused_backfillers(self):
         """ Expire unused back fill processes to release resources. """

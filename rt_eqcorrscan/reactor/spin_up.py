@@ -103,55 +103,36 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
         "backfill_to": event_time(triggering_event) - 180,
         "backfill_client": config.rt_match_filter.get_waveform_client()}
 
-    # If backfill-to is further in the past than the buffer-length, then it
-    # will essentially be ignored...
     if real_time_tribe_kwargs["backfill_client"] and rt_client.wavebank:
-        while UTCDateTime.now() - real_time_tribe_kwargs["backfill_to"] > config.streaming.buffer_capacity:
-            # Download the required data and run it!
-            endtime = UTCDateTime.now()
-            Logger.info(
-                f"Backfilling between {real_time_tribe_kwargs['backfill_to']}"
-                f" and {endtime}")
-            st = Stream()
-            for network in inventory:
-                for station in network:
-                    for channel in station:
-                        Logger.info(
-                            f"Downloading for {network.code}.{station.code}."
-                            f"{channel.location_code}.{channel.code}")
-                        try:
-                            st += real_time_tribe_kwargs['backfill_client'].get_waveforms(
-                                network=network.code, station=station.code,
-                                location=channel.location_code,
-                                channel=channel.code,
-                                starttime=real_time_tribe_kwargs['backfill_to'],
-                                endtime=endtime)
-                        except Exception as e:
-                            Logger.error(e)
-                            continue
-            st = st.merge()
-            Logger.info(f"Downloaded {len(st)} for backfill")
-            if len(st) == 0:
-                Logger.warning("No backfill available, skipping")
-                break
+        # Download the required data and write it to disk.
+        endtime = UTCDateTime.now()
+        Logger.info(
+            f"Backfilling between {real_time_tribe_kwargs['backfill_to']}"
+            f" and {endtime}")
+        st = Stream()
+        for network in inventory:
+            for station in network:
+                for channel in station:
+                    Logger.info(
+                        f"Downloading for {network.code}.{station.code}."
+                        f"{channel.location_code}.{channel.code}")
+                    try:
+                        st += real_time_tribe_kwargs['backfill_client'].get_waveforms(
+                            network=network.code, station=station.code,
+                            location=channel.location_code,
+                            channel=channel.code,
+                            starttime=real_time_tribe_kwargs['backfill_to'],
+                            endtime=endtime)
+                    except Exception as e:
+                        Logger.error(e)
+                        continue
+        st = st.merge()
+        Logger.info(f"Downloaded {len(st)} for backfill")
+        if len(st) == 0:
+            Logger.warning("No backfill available, skipping")
+        else:
             st = st.split()  # Cannot write masked data
             rt_client.wavebank.put_waveforms(st)
-            backfill_stations = {tr.stats.station for tr in st}
-            backfill_templates = [
-                t for t in real_time_tribe.templates
-                if len({tr.stats.station for tr in t.st}.intersection(
-                    backfill_stations)) >= min_stations]
-            Logger.info("Computing backfill detections")
-            real_time_tribe.backfill(
-                templates=backfill_templates,
-                threshold=config.rt_match_filter.threshold,
-                threshold_type=config.rt_match_filter.threshold_type,
-                trig_int=config.rt_match_filter.trig_int,
-                keep_detections=86400,
-                detect_directory="{name}/detections",
-                plot_detections=config.rt_match_filter.plot_detections)
-            # Update and re-check whether we still need to do more backfilling.
-            real_time_tribe_kwargs.update({"backfill_to": endtime})
 
     real_time_tribe.run(
         threshold=config.rt_match_filter.threshold,
