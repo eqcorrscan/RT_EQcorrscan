@@ -793,7 +793,7 @@ class RealTimeTribe(Tribe):
         if len(bulk) == 0:
             Logger.warning("No bulk")
             return
-        st = self.rt_client.get_wavebank_bulk(bulk)
+        st = self.rt_client.get_wavebank_stream(bulk)
         Logger.debug("Additional templates to be run: \n{0} "
                      "templates".format(len(new_tribe)))
 
