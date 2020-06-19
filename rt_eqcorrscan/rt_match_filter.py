@@ -291,7 +291,8 @@ class RealTimeTribe(Tribe):
             Logger.debug(
                 "Waiting for data, currently have {0} channels of {1} "
                 "expected channels".format(
-                    len(self.rt_client.buffer), len(self.expected_seed_ids)))
+                    len(self.rt_client.buffer_ids),
+                    len(self.expected_seed_ids)))
             if detection_kwargs:
                 self._add_templates_from_disk(**detection_kwargs)
             else:
@@ -302,7 +303,7 @@ class RealTimeTribe(Tribe):
             toc = time.time()
             wait_length += (toc - tic)
             if wait is None:
-                if len(self.rt_client.buffer) >= len(self.expected_seed_ids):
+                if len(self.rt_client.buffer_ids) >= len(self.expected_seed_ids):
                     break
                 if wait_length >= max_wait:
                     Logger.warning(

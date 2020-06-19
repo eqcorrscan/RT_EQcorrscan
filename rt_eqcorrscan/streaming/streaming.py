@@ -97,24 +97,38 @@ class _StreamingClient(ABC):
 
     def clear_buffer(self):
         """ Clear the current buffer. """
-        self._buffer = Buffer(traces=[], maxlen=self.buffer_capacity)
+        with self.lock:
+            self._buffer = Buffer(traces=[], maxlen=self.buffer_capacity)
 
     @property
     def buffer_full(self) -> bool:
-        if len(self.buffer) == 0:
-            return False
-        return self.buffer.is_full()
+        with self.lock:
+            if len(self.buffer) == 0:
+                full = False
+            else:
+                full = self.buffer.is_full()
+        return full
 
     @property
     def buffer_length(self) -> float:
         """
         Return the maximum length of the buffer in seconds.
         """
-        if len(self.buffer) == 0:
-            return 0.
         with self.lock:
-            buffer_length = max([tr.data_len for tr in self.buffer])
+            if len(self.buffer) == 0:
+                buffer_length = 0.
+            else:
+                buffer_length = max([tr.data_len for tr in self.buffer])
         return buffer_length
+
+    @property
+    def buffer_ids(self) -> set:
+        with self.lock:
+            if len(self.buffer) == 0:
+                chans = set()
+            else:
+                chans = {tr.id for tr in self.buffer}
+        return chans
 
     @abstractmethod
     def copy(self, empty_buffer: bool = True):
