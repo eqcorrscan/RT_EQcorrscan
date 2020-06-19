@@ -152,7 +152,7 @@ class _StreamingClient(ABC):
             self.run()
 
     def background_run(self):
-        """Run the seedlink client in the background."""
+        """Run the client in the background."""
         self.busy = True
         streaming_thread = threading.Thread(
             target=self._bg_run, name="StreamThread")

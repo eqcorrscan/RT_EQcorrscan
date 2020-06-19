@@ -249,8 +249,10 @@ class RealTimeTribe(Tribe):
                     fig=self._fig)
         Logger.info("Expiring old detections")
         for family in self.party:
+            Logger.debug(f"Checking for {family.template.name}")
             family.detections = [
                 d for d in family.detections if d.detect_time >= endtime]
+            Logger.debug(f"Appending {len(family)} detections")
             for detection in family:
                 # Need to append rather than create a new object
                 self.detections.append(detection)
@@ -496,7 +498,7 @@ class RealTimeTribe(Tribe):
                     if _numpy_len(tr.data) >= (
                             .8 * self.minimum_data_for_detection)]
                 Logger.info("Starting detection run")
-                Logger.debug("Using data: \n{0}".format(
+                Logger.info("Using data: \n{0}".format(
                     st.__str__(extended=True)))
                 try:
                     Logger.debug("Currently have {0} templates in tribe".format(
@@ -509,6 +511,7 @@ class RealTimeTribe(Tribe):
                         process_cores=self.process_cores,
                         parallel_process=self._parallel_processing,
                         ignore_bad_data=True, **kwargs)
+                    Logger.info("Completed detection")
                 except Exception as e:  # pragma: no cover
                     Logger.error(e)
                     Logger.error(traceback.format_exc())
@@ -521,13 +524,15 @@ class RealTimeTribe(Tribe):
                         "better".format(self.detect_interval))
                     time.sleep(self.detect_interval)
                     continue
+                Logger.info(f"Trying to get lock - lock status: {self.lock}")
                 with self.lock:
-                    self._handle_detections(
-                        new_party, trig_int=trig_int,
-                        endtime=last_data - keep_detections,
-                        detect_directory=detect_directory,
-                        save_waveforms=save_waveforms,
-                        plot_detections=plot_detections, st=st)
+                    if len(new_party) > 0:
+                        self._handle_detections(
+                            new_party, trig_int=trig_int,
+                            endtime=last_data - keep_detections,
+                            detect_directory=detect_directory,
+                            save_waveforms=save_waveforms,
+                            plot_detections=plot_detections, st=st)
                     self._remove_old_detections(last_data - keep_detections)
                     Logger.info("Party now contains {0} detections".format(
                         len(self.detections)))
@@ -670,6 +675,7 @@ class RealTimeTribe(Tribe):
             Complete set of template names after addition
         """
         while self._running:
+            Logger.info("Waiting for access to tribe in add_templates")
             time.sleep(1)  # Wait until the lock is released
         if isinstance(templates, list):
             new_tribe = Tribe(templates)
@@ -808,12 +814,15 @@ class RealTimeTribe(Tribe):
             process_cores=self.process_cores, **kwargs)
         detect_directory = detect_directory.format(name=self.name)
         Logger.info("Backfill detection completed - handling detections")
-        with self.lock:  # The only time the state of RealTimeTribe is altered
-            self._handle_detections(
-                new_party=new_party, detect_directory=detect_directory,
-                endtime=endtime - keep_detections,
-                plot_detections=plot_detections, save_waveforms=save_waveforms,
-                st=st, trig_int=trig_int)
+        if len(new_party) > 0:
+            Logger.info(f"Lock status: {self.lock}")
+            with self.lock:  # The only time the state of RealTimeTribe is altered
+                Logger.info(f"Lock status: {self.lock}")
+                self._handle_detections(
+                    new_party=new_party, detect_directory=detect_directory,
+                    endtime=endtime - keep_detections,
+                    plot_detections=plot_detections, save_waveforms=save_waveforms,
+                    st=st, trig_int=trig_int)
         return
 
     def stop(self, write_stopfile: bool = False) -> None:
