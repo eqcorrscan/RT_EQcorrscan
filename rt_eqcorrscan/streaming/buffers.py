@@ -285,6 +285,9 @@ class TraceBuffer(object):
         assert self.stats.calib == trace.stats.calib, (
             "Calibration factors {0} and {1} differ".format(
                 self.stats.calib, trace.stats.calib))
+        if len(trace) == 0:
+            # Nothing to do with an empty trace.
+            return
         # Remove older data than our minimum starttime - faster to if this.
         if trace.stats.starttime < self.stats.starttime:
             trace = trace.slice(starttime=self.stats.starttime)
@@ -456,6 +459,9 @@ class NumpyDeque(object):
             The new data to extend the deque with.
         """
         other_length = len(other)
+        if other_length == 0:
+            # Nothing to see here, move-along.
+            return
         if isinstance(other, np.ma.MaskedArray):
             mask_value = other.mask
             other = other.data
@@ -486,6 +492,9 @@ class NumpyDeque(object):
             The new data to extend the deque with.
         """
         other_length = len(other)
+        if other_length == 0:
+            # Nothing to see here, move along.
+            return
         if isinstance(other, np.ma.MaskedArray):
             mask_value = other.mask
             other = other.data
@@ -713,9 +722,11 @@ class Buffer(object):
         for tr in stream:
             traces_in_buffer = self.select(id=tr.id)
             if len(traces_in_buffer) > 0:
+                # Append traces to the current buffer
                 for trace_in_buffer in traces_in_buffer:
                     trace_in_buffer.add_trace(tr)
             else:
+                # Add as a new trace to the buffer
                 self.traces.append(TraceBuffer(
                     data=tr.data, header=tr.stats,
                     maxlen=int(self.maxlen * tr.stats.sampling_rate)))

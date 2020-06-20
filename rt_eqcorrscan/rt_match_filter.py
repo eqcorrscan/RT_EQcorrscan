@@ -577,14 +577,17 @@ class RealTimeTribe(Tribe):
         return self.party
 
     def _read_templates_from_disk(self):
-        template_files = glob.glob(self._template_dir)
+        template_files = glob.glob(f"{self._template_dir}/*")
         if len(template_files) == 0:
             return []
         Logger.info(f"Checking for events in {self._template_dir}")
         new_tribe = Tribe()
         for template_file in template_files:
             Logger.debug(f"Reading from {template_file}")
-            new_tribe += Template().read(template_file)
+            try:
+                new_tribe += Template().read(template_file)
+            except Exception as e:
+                Logger.error(f"Could not read {template_file} due to {e}")
             os.remove(template_file)  # Remove file once done with it.
         new_tribe.templates = [t for t in new_tribe
                                if t.name not in self.running_templates]

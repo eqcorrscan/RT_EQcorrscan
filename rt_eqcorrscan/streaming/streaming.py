@@ -149,9 +149,9 @@ class _StreamingClient(ABC):
     def _get_stream(self) -> Stream:
         """ Get a copy of the current data in buffer. """
         with self.lock:
-            Logger.debug(f"Copying data: Lock status: {self.lock.locked()}")
+            Logger.info(f"Copying data: Lock status: {self.lock.locked()}")
             stream = self.buffer.stream
-        Logger.debug(
+        Logger.info(
             f"Finished getting the data: Lock status: {self.lock.locked()}")
         return stream
 
@@ -190,18 +190,26 @@ class _StreamingClient(ABC):
         trace
             New data.
         """
-        logging.debug("Packet of {0} samples for {1}".format(
+        logging.info("Packet of {0} samples for {1}".format(
             trace.stats.npts, trace.id))
         with self.lock:
-            Logger.debug(f"Adding data: Lock status: {self.lock.locked()}")
-            self.buffer.add_stream(trace)
+            Logger.info(f"Adding data: Lock status: {self.lock.locked()}")
+            try:
+                self.buffer.add_stream(trace)
+            except Exception as e:
+                Logger.error(
+                    f"Could not add {trace} to buffer due to {e}")
             if self.wavebank is not None:
-                self.wavebank.put_waveforms(stream=Stream([trace]))
-                # Note that this should be undertaken by put_waveforms,
-                # but seems to get missed...
-                self.wavebank.update_index()
-        Logger.debug(f"Finished adding data: Lock status: {self.lock.locked()}")
-        Logger.debug("Buffer contains {0}".format(self.buffer))
+                try:
+                    self.wavebank.put_waveforms(stream=Stream([trace]))
+                    # Note that this should be undertaken by put_waveforms,
+                    # but seems to get missed...
+                    self.wavebank.update_index()
+                except Exception as e:
+                    Logger.error(
+                        f"Could not add {trace} to wavebank due to {e}")
+            Logger.info("Buffer contains {0}".format(self.buffer))
+        Logger.info(f"Finished adding data: Lock status: {self.lock.locked()}")
 
     def on_terminate(self) -> Stream:  # pragma: no cover
         """
