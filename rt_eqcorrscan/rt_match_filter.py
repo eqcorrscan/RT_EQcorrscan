@@ -789,7 +789,7 @@ class RealTimeTribe(Tribe):
             starttime = endtime - maximum_backfill
         else:
             starttime = UTCDateTime(0)
-        if starttime >= endtime or self.rt_client.wavebank is None:
+        if starttime >= endtime or self.rt_client.has_wavebank:
             return
         if self.expected_seed_ids and len(self.expected_seed_ids) > 0:
             bulk = []

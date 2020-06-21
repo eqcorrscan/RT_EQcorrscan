@@ -146,6 +146,15 @@ class _StreamingClient(ABC):
         """ Get a copy of the stream in the buffer. """
         return self._get_stream()
 
+    @property
+    def has_wavebank(self) -> bool:
+        """ Check if there is a wavebank associated with this streamer. """
+        yes = False
+        with self.lock:
+            if self.wavebank is not None:
+                yes = True
+        return yes
+
     def _get_stream(self) -> Stream:
         """ Get a copy of the current data in buffer. """
         with self.lock:
