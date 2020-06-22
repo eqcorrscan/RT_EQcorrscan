@@ -60,11 +60,12 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         Buffer(0 traces, maxlen=600.0)
         """
         status_map = {True: "Running", False: "Stopped"}
-        print_str = (
-            "Seed-link client at {0}, status: {1}, buffer capacity: {2:.1f}s\n"
-            "\tCurrent Buffer:\n{3}".format(
-                self.server_hostname, status_map[self.busy],
-                self.buffer_capacity, self.buffer))
+        with self.lock:
+            print_str = (
+                "Seed-link client at {0}, status: {1}, buffer capacity: "
+                "{2:.1f}s\n\tCurrent Buffer:\n{3}".format(
+                    self.server_hostname, status_map[self.busy],
+                    self.buffer_capacity, self.buffer))
         return print_str
 
     def copy(self, empty_buffer: bool = True):
@@ -79,7 +80,7 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         if empty_buffer:
             buffer = Stream()
         else:
-            buffer = self.buffer.copy()
+            buffer = self.stream
         return RealTimeClient(
             server_url=self.server_hostname, buffer=buffer,
             buffer_capacity=self.buffer_capacity, wavebank=self.wavebank)

@@ -28,8 +28,8 @@ class _StreamingClient(ABC):
 
     Parameters
     ----------
-    client_name
-        Client name, used for book-keeping
+    server_url
+        Client URL. Used for book-keeping.
     buffer
         Stream to buffer data into
     buffer_capacity
@@ -46,7 +46,8 @@ class _StreamingClient(ABC):
     """
     busy = False
     started = False
-    lock = threading.Lock()  # Lock for data access
+    lock = threading.Lock()  # Lock for buffer access
+    wavebank_lock = threading.Lock()
 
     def __init__(
         self,
@@ -63,7 +64,11 @@ class _StreamingClient(ABC):
         self._buffer = buffer
         self.buffer_capacity = buffer_capacity
 
-        self.wavebank = wavebank
+        self.has_wavebank = False
+        # Wavebank status to avoid accessing the underlying, lockable, wavebank
+        self._wavebank = wavebank
+        if wavebank:
+            self.has_wavebank = True
         self.threads = []
 
     def __repr__(self):
@@ -71,11 +76,12 @@ class _StreamingClient(ABC):
         Print information about the client.
         """
         status_map = {True: "Running", False: "Stopped"}
-        print_str = (
-            "Client at {0}, status: {1}, buffer capacity: {2:.1f}s\n"
-            "\tCurrent Buffer:\n{3}".format(
-                self.server_url, status_map[self.busy],
-                self.buffer_capacity, self.buffer))
+        with self.lock:
+            print_str = (
+                "Client at {0}, status: {1}, buffer capacity: {2:.1f}s\n"
+                "\tCurrent Buffer:\n{3}".format(
+                    self.server_url, status_map[self.busy],
+                    self.buffer_capacity, self.buffer))
         return print_str
 
     @abstractmethod
@@ -130,6 +136,19 @@ class _StreamingClient(ABC):
                 chans = {tr.id for tr in self.buffer}
         return chans
 
+    def get_wavebank(self):
+        return self._wavebank
+
+    wavebank = property(get_wavebank)
+
+    @wavebank.setter
+    def wavebank(self, wavebank: WaveBank):
+        self._wavebank = wavebank
+        if wavebank:
+            self.has_wavebank = True
+        else:
+            self.has_wavebank = False
+
     @abstractmethod
     def copy(self, empty_buffer: bool = True):
         """
@@ -146,15 +165,6 @@ class _StreamingClient(ABC):
         """ Get a copy of the stream in the buffer. """
         return self._get_stream()
 
-    @property
-    def has_wavebank(self) -> bool:
-        """ Check if there is a wavebank associated with this streamer. """
-        yes = False
-        with self.lock:
-            if self.wavebank is not None:
-                yes = True
-        return yes
-
     def _get_stream(self) -> Stream:
         """ Get a copy of the current data in buffer. """
         with self.lock:
@@ -166,7 +176,7 @@ class _StreamingClient(ABC):
 
     def get_wavebank_stream(self, bulk: List[tuple]) -> Stream:
         """ threadsafe get-waveforms-bulk call """
-        with self.lock:
+        with self.wavebank_lock:
             st = self.wavebank.get_waveforms_bulk(bulk)
         return st
 
@@ -208,12 +218,12 @@ class _StreamingClient(ABC):
             except Exception as e:
                 Logger.error(
                     f"Could not add {trace} to buffer due to {e}")
-            if self.wavebank is not None:
+        if self.has_wavebank:
+            with self.wavebank_lock:
                 try:
                     self.wavebank.put_waveforms(stream=Stream([trace]))
-                    # Note that this should be undertaken by put_waveforms,
-                    # but seems to get missed...
-                    self.wavebank.update_index()
+                    # Note that this should be undertaken by put_waveforms.
+                    # self.wavebank.update_index()
                 except Exception as e:
                     Logger.error(
                         f"Could not add {trace} to wavebank due to {e}")
@@ -225,7 +235,7 @@ class _StreamingClient(ABC):
         Handle termination gracefully
         """
         Logger.info("Termination of {0}".format(self.__repr__()))
-        return self.buffer
+        return self.stream
 
     @staticmethod
     def on_error():  # pragma: no cover

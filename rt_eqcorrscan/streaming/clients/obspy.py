@@ -91,7 +91,7 @@ class RealTimeClient(_StreamingClient):
         if empty_buffer:
             buffer = Stream()
         else:
-            buffer = self.get_stream()
+            buffer = self.stream
         return RealTimeClient(
             server_url=self.client.base_url,
             client=self.client, starttime=self.starttime,
