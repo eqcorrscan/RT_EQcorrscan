@@ -783,13 +783,15 @@ class RealTimeTribe(Tribe):
             new_tribe = templates
         else:
             new_tribe = Tribe(templates)
+        Logger.info(f"Backfilling with {len(new_tribe)} templates")
         # Get the stream
         endtime = endtime or UTCDateTime.now()
         if maximum_backfill is not None:
             starttime = endtime - maximum_backfill
         else:
             starttime = UTCDateTime(0)
-        if starttime >= endtime or self.rt_client.has_wavebank:
+        Logger.info(f"Backfilling between {starttime} and {endtime}")
+        if starttime >= endtime or not self.rt_client.has_wavebank:
             return
         if self.expected_seed_ids and len(self.expected_seed_ids) > 0:
             bulk = []

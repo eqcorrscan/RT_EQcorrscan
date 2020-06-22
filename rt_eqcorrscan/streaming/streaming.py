@@ -208,10 +208,10 @@ class _StreamingClient(ABC):
         trace
             New data.
         """
-        logging.info("Packet of {0} samples for {1}".format(
+        logging.debug("Packet of {0} samples for {1}".format(
             trace.stats.npts, trace.id))
         with self.lock:
-            Logger.info(f"Adding data: Lock status: {self.lock.locked()}")
+            Logger.debug(f"Adding data: Lock status: {self.lock.locked()}")
             try:
                 self.buffer.add_stream(trace)
             except Exception as e:
@@ -226,8 +226,8 @@ class _StreamingClient(ABC):
                 except Exception as e:
                     Logger.error(
                         f"Could not add {trace} to wavebank due to {e}")
-            Logger.info("Buffer contains {0}".format(self.buffer))
-        Logger.info(f"Finished adding data: Lock status: {self.lock.locked()}")
+            Logger.debug("Buffer contains {0}".format(self.buffer))
+        Logger.debug(f"Finished adding data: Lock status: {self.lock.locked()}")
 
     def on_terminate(self) -> Stream:  # pragma: no cover
         """
