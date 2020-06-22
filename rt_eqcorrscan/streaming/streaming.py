@@ -48,6 +48,7 @@ class _StreamingClient(ABC):
     started = False
     lock = threading.Lock()  # Lock for buffer access
     wavebank_lock = threading.Lock()
+    has_wavebank = False
 
     def __init__(
         self,
@@ -64,9 +65,8 @@ class _StreamingClient(ABC):
         self._buffer = buffer
         self.buffer_capacity = buffer_capacity
 
-        self.has_wavebank = False
         # Wavebank status to avoid accessing the underlying, lockable, wavebank
-        self._wavebank = wavebank
+        self.__wavebank = wavebank
         if wavebank:
             self.has_wavebank = True
         self.threads = []
@@ -136,14 +136,13 @@ class _StreamingClient(ABC):
                 chans = {tr.id for tr in self.buffer}
         return chans
 
-    def get_wavebank(self):
-        return self._wavebank
-
-    wavebank = property(get_wavebank)
+    @property
+    def wavebank(self):
+        return self.__wavebank
 
     @wavebank.setter
     def wavebank(self, wavebank: WaveBank):
-        self._wavebank = wavebank
+        self.__wavebank = wavebank
         if wavebank:
             self.has_wavebank = True
         else:
