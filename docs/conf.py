@@ -26,7 +26,7 @@ import sphinx_bootstrap_theme
 # -- Project information -----------------------------------------------------
 
 project = 'RT-EQcorrscan'
-copyright = '2019, Calum J. Chamberlain'
+copyright = '2020, Calum J. Chamberlain'
 author = 'Calum J. Chamberlain'
 master_doc = "index"
 

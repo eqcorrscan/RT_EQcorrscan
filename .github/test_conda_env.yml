@@ -18,6 +18,7 @@ dependencies:
   - pytest>=2.0.0
   - pytest-cov
   - pytest-pep8
+  - pytest-xdist
   - pytest-rerunfailures
   - pytest-mpl
   - codecov
