@@ -1,6 +1,6 @@
 mock>=2.0
 numpy
-sphinx>=1.5.1
+sphinx>=3.0
 numpydoc
 sphinx_autodoc_typehints
 nbsphinx
