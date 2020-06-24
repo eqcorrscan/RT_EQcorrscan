@@ -175,10 +175,17 @@ class _StreamingClient(ABC):
 
     def get_wavebank_stream(self, bulk: List[tuple]) -> Stream:
         """ threadsafe get-waveforms-bulk call """
-        st = None
+        st = Stream()
         with self.wavebank_lock:
             try:
-                st = self.wavebank.get_waveforms_bulk(bulk)
+                # Running non-bulk internally for debug
+                for query in bulk:
+                    Logger.info(f"Getting data for {query}")
+                    st += self.wavebank.get_waveforms(
+                        network=query[0], station=query[1], location=query[2],
+                        channel=query[3], starttime=query[4], endtime=query[5])
+                    Logger.info(f"Stream now contains {st}")
+                # st = self.wavebank.get_waveforms_bulk(bulk)
             except Exception as e:
                 Logger.error(f"Could not get stream due to {e}")
         return st
