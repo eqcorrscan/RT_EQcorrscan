@@ -175,8 +175,12 @@ class _StreamingClient(ABC):
 
     def get_wavebank_stream(self, bulk: List[tuple]) -> Stream:
         """ threadsafe get-waveforms-bulk call """
+        st = None
         with self.wavebank_lock:
-            st = self.wavebank.get_waveforms_bulk(bulk)
+            try:
+                st = self.wavebank.get_waveforms_bulk(bulk)
+            except Exception as e:
+                Logger.error(f"Could not get stream due to {e}")
         return st
 
     def _bg_run(self):

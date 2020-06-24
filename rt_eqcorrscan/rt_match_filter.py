@@ -604,7 +604,7 @@ class RealTimeTribe(Tribe):
         detect_directory: str = "{name}/detections",
         plot_detections: bool = True,
         save_waveforms: bool = True,
-        maximum_backfill: float = None,
+        maximum_backfill: Union[float, UTCDateTime] = None,
         endtime: UTCDateTime = None,
         **kwargs
     ):
@@ -631,7 +631,7 @@ class RealTimeTribe(Tribe):
         detect_directory: str = "{name}/detections",
         plot_detections: bool = True,
         save_waveforms: bool = True,
-        maximum_backfill: float = None,
+        maximum_backfill: Union[float, UTCDateTime] = None,
         endtime: UTCDateTime = None,
         **kwargs
     ) -> set:
@@ -715,7 +715,7 @@ class RealTimeTribe(Tribe):
         detect_directory: str = "{name}/detections",
         plot_detections: bool = True,
         save_waveforms: bool = True,
-        maximum_backfill: float = None,
+        maximum_backfill: Union[float, UTCDateTime] = None,
         endtime: UTCDateTime = None,
         **kwargs
     ) -> None:
@@ -787,7 +787,15 @@ class RealTimeTribe(Tribe):
         # Get the stream
         endtime = endtime or UTCDateTime.now()
         if maximum_backfill is not None:
-            starttime = endtime - maximum_backfill
+            if isinstance(maximum_backfill, (float, int)):
+                starttime = endtime - maximum_backfill
+            elif isinstance(maximum_backfill, UTCDateTime):
+                starttime = maximum_backfill
+            else:
+                Logger.warning(
+                    f"maximum_backfill is {type(maximum_backfill)}, not float "
+                    "or UTCDateTime, starting from 0")
+                starttime = UTCDateTime(0)
         else:
             starttime = UTCDateTime(0)
         Logger.info(f"Backfilling between {starttime} and {endtime}")
@@ -805,6 +813,7 @@ class RealTimeTribe(Tribe):
         if len(bulk) == 0:
             Logger.warning("No bulk")
             return
+        Logger.info(f"Getting stations for backfill: {bulk}")
         st = self.rt_client.get_wavebank_stream(bulk)
         Logger.debug("Additional templates to be run: \n{0} "
                      "templates".format(len(new_tribe)))
