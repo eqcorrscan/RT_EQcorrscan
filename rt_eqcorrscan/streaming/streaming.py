@@ -8,6 +8,7 @@ License
     GPL v3.0
 """
 
+import time
 import threading
 import logging
 
@@ -173,21 +174,64 @@ class _StreamingClient(ABC):
             f"Finished getting the data: Lock status: {self.lock.locked()}")
         return stream
 
-    def get_wavebank_stream(self, bulk: List[tuple]) -> Stream:
-        """ threadsafe get-waveforms-bulk call """
-        st = Stream()
+    def _access_wavebank(
+        self,
+        method: str,
+        timeout: float = None,
+        *args, **kwargs
+    ):
+        """
+        Thread and process safe access to the wavebank.
+
+        Multiple processes cannot access the underlying HDF5 file at the same
+        time.  This method waits until access to the HDF5 file is available and
+
+        Parameters
+        ----------
+        method
+            Method of wavebank to call
+        timeout
+            Maximum time to try to get access to the file
+        args
+            Arguments passed to method
+        kwargs
+            Keyword arguments passed to method
+
+        Returns
+        -------
+        Whatever should be returned by the method.
+        """
+        if not self.has_wavebank:
+            Logger.error("No wavebank attached to streamer")
+            return None
+        timer, wait_step = 0.0, 0.5
         with self.wavebank_lock:
             try:
-                # Running non-bulk internally for debug
-                for query in bulk:
-                    Logger.info(f"Getting data for {query}")
-                    st += self.wavebank.get_waveforms(
-                        network=query[0], station=query[1], location=query[2],
-                        channel=query[3], starttime=query[4], endtime=query[5])
-                    Logger.info(f"Stream now contains {st}")
-                # st = self.wavebank.get_waveforms_bulk(bulk)
-            except Exception as e:
-                Logger.error(f"Could not get stream due to {e}")
+                func = self.wavebank.__getattribute__(method)
+            except AttributeError:
+                Logger.error(f"No wavebank method named {method}")
+                return None
+            # Attempt to access the underlying wavebank
+            out = None
+            while timer < timeout:
+                tic = time.time()
+                try:
+                    out = func(*args, **kwargs)
+                    break
+                except (IOError, OSError) as e:
+                    time.sleep(wait_step)
+                toc = time.time()
+                timer += toc - tic
+            else:
+                Logger.error(
+                    f"Waited {timer} s and could not access the wavebank "
+                    f"due to {e}")
+        return out
+
+    def get_wavebank_stream(self, bulk: List[tuple]) -> Stream:
+        """ threadsafe get-waveforms-bulk call """
+        st = self._access_wavebank(
+            method="get_waveforms_bulk", timeout=120., bulk=bulk)
         return st
 
     def _bg_run(self):
@@ -228,16 +272,9 @@ class _StreamingClient(ABC):
             except Exception as e:
                 Logger.error(
                     f"Could not add {trace} to buffer due to {e}")
-        if self.has_wavebank:
-            with self.wavebank_lock:
-                try:
-                    self.wavebank.put_waveforms(stream=Stream([trace]))
-                    # Note that this should be undertaken by put_waveforms.
-                    # self.wavebank.update_index()
-                except Exception as e:
-                    Logger.error(
-                        f"Could not add {trace} to wavebank due to {e}")
-            Logger.debug("Buffer contains {0}".format(self.buffer))
+        self._access_wavebank(
+            method="put_waveforms", timeout=120., stream=Stream([trace]))
+        Logger.debug("Buffer contains {0}".format(self.buffer))
         Logger.debug(f"Finished adding data: Lock status: {self.lock.locked()}")
 
     def on_terminate(self) -> Stream:  # pragma: no cover

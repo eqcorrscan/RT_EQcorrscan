@@ -65,6 +65,7 @@ class RealTimeTribe(Tribe):
     _running = False
     _detecting_thread = None
     _backfillers = []  # Backfill processes
+    _number_of_backfillers = 0  # Book-keeping of backfiller processes.
     busy = False
 
     _speed_up = 1.0  # For simulated runs - do not change for real-time!
@@ -755,12 +756,13 @@ class RealTimeTribe(Tribe):
         endtime
             Time to stop the backfill, if None will run to now.
         """
+        self._number_of_backfillers += 1
         backfill_process = Process(
             target=self._backfill,
             args=(templates, threshold, threshold_type, trig_int,
                   keep_detections, detect_directory, plot_detections,
                   save_waveforms, maximum_backfill, endtime),
-            kwargs=kwargs, name="Backfiller")
+            kwargs=kwargs, name=f"Backfiller_{self._number_of_backfillers}")
         backfill_process.start()
         self._backfillers.append(backfill_process)
 
