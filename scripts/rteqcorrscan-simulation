@@ -168,7 +168,8 @@ def synthesise_real_time(
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Simulate running a real-time matched-filter process for old data")
     parser.add_argument(
         "--quake", type=str, required=True,
         help="Earthquake to synthesise real-time, either the event-id or a "
