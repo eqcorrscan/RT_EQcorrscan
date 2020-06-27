@@ -17,3 +17,4 @@ pytest-pep8
 pytest-xdist
 pytest-rerunfailures
 pytest-mpl
+pillow>=6.2.3 # not directly required, pinned by Snyk to avoid a vulnerability
