@@ -9,6 +9,7 @@ These scripts are:
 - `rteqcorrscan-reactor`_
 - `rteqcorrscan-real-time-match`_
 - `rteqcorrscan-simulation`_
+- `rteqcorrscan-bench`_
 
 If you find that these scripts do not meet your use-case, you have full power
 to write your own scripts that interact directly with the :doc:`API <../api/index>`.
@@ -194,6 +195,34 @@ rteqcorrscan-simulation
                             old DB
       --debug               Flag to run in debug mode, with lots of output to
                             screen
+
+rteqcorrscan-bench
+^^^^^^^^^^^^^^^^^^
+
+**Benchmark your configuration on your system**
+
+Test your configuration and the limits of real-time detection on your system.
+RTEQcorrscan runs detections in near-real-time, if it takes longer to make
+detections than the length of the data detecting in, then the process will
+fall behind.
+
+.. code-block:: bash
+
+    usage: rteqcorrscan-bench [-h] -t N_TEMPLATES [N_TEMPLATES ...] -n N_CHANNELS
+                              [--config CONFIG]
+
+    Benchmark rteqcorrscan for a range of templates
+
+    optional arguments:
+      -h, --help            show this help message and exit
+      -t N_TEMPLATES [N_TEMPLATES ...], --n-templates N_TEMPLATES [N_TEMPLATES ...]
+                            Sequence of the number of templates to run
+      -n N_CHANNELS, --n-channels N_CHANNELS
+                            Number of channels to run with
+      --config CONFIG, -c CONFIG
+                            Path to configuration file
+      --verbose, -v         Print output from logging to screen
+
 
 
 Class Interfaces

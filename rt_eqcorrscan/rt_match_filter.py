@@ -12,12 +12,13 @@ import glob
 
 # from pympler import summary, muppy
 
-from typing import Union, List
+from typing import Union, List, Iterable
 
-from obspy import Stream, UTCDateTime, Inventory
+from obspy import Stream, UTCDateTime, Inventory, Trace
 from matplotlib.figure import Figure
 from multiprocessing import Process, Lock
 from eqcorrscan import Tribe, Template, Party, Detection
+from eqcorrscan.utils.pre_processing import _prep_data_for_correlation
 
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
 from rt_eqcorrscan.event_trigger.triggers import average_rate
@@ -379,6 +380,13 @@ class RealTimeTribe(Tribe):
         The party created - will not contain detections expired by
         `keep_detections` threshold.
         """
+        # Reshape the templates first
+        if len(self.templates) > 0:
+            self.templates = reshape_templates(
+                templates=self.templates, used_seed_ids=self.expected_seed_ids)
+        else:
+            Logger.error("No templates, will not run")
+            return
         # Remove templates that do not have enough stations in common with the
         # inventory.
         min_stations = min_stations or 0
@@ -485,7 +493,8 @@ class RealTimeTribe(Tribe):
                     continue
                 # Cope with data that doesn't come
                 last_data = max(tr.stats.endtime for tr in st)
-                # Remove any data that shouldn't be there - sometimes GeoNet's Seedlink client gives old data.
+                # Remove any data that shouldn't be there - sometimes GeoNet's
+                # Seedlink client gives old data.
                 st.trim(
                     starttime=last_data - (self.rt_client.buffer_capacity + 20.0),
                     endtime=last_data)
@@ -494,6 +503,9 @@ class RealTimeTribe(Tribe):
                     st.trim(
                         starttime=last_data - self.minimum_data_for_detection,
                         endtime=last_data)
+                if len(st) == 0:
+                    Logger.warning("No data")
+                    continue
                 # Remove short channels
                 st.traces = [
                     tr for tr in st
@@ -686,6 +698,9 @@ class RealTimeTribe(Tribe):
             new_tribe = Tribe(templates)
         else:
             new_tribe = templates
+        # Reshape
+        new_tribe.templates = reshape_templates(
+            templates=new_tribe.templates, used_seed_ids=self.expected_seed_ids)
         # Remove templates that do not have enough stations.
         min_stations = min_stations or 0
         n = len(new_tribe)
@@ -862,6 +877,54 @@ class RealTimeTribe(Tribe):
         if write_stopfile:
             with open(".stopfile", "a") as f:
                 f.write(f"{self.name}\n")
+
+
+def reshape_templates(
+    templates: List[Template],
+    used_seed_ids: Iterable[str]
+) -> List[Template]:
+    """
+    Reshape templates to have the full set of required channels (and no more).
+
+    This is done within matched-filter as well as here - we do it here so that
+    the templates are not reshaped every iteration.
+
+    Parameters
+    ----------
+    templates
+        Templates to be reshaped - the templates are changed in-place
+    used_seed_ids
+        Seed-ids used for detection (network.station.location.channel)
+
+    Returns
+    -------
+    Templates filled for detection.
+    """
+    template_streams = [t.st for t in templates]
+    template_names = [t.name for t in templates]
+
+    samp_rate = template_streams[0][0].stats.sampling_rate
+    process_len = max(t.process_length for t in templates)
+    # Make a dummy stream with all the used seed ids
+    stream = Stream()
+    for seed_id in used_seed_ids:
+        net, sta, loc, chan = seed_id.split('.')
+        tr = Trace(header=dict(
+            network=net, station=sta, location=loc, channel=chan,
+            sampling_rate=samp_rate), data=numpy.empty(process_len))
+        stream += tr
+
+    _, template_streams, template_names = _prep_data_for_correlation(
+        stream=stream, templates=template_streams,
+        template_names=template_names, force_stream_epoch=False)
+    templates_back = []
+    for template_st, template_name in zip(template_streams, template_names):
+        original = [t for t in templates if t.name == template_name]
+        assert len(original) == 1
+        original = original[0]
+        original.st = template_st
+        templates_back.append(original)
+    return templates_back
 
 
 def _write_detection(

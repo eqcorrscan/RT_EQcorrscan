@@ -10,11 +10,12 @@ License
 import psutil
 
 import numpy as np
+import json
 
 from typing import Iterable
 from memory_profiler import memory_usage
 
-from obspy import Stream, Trace
+from obspy import Stream, Trace, UTCDateTime
 
 from eqcorrscan.core.match_filter import Tribe, Template
 from eqcorrscan.utils.timer import Timer
@@ -106,7 +107,11 @@ def make_synthetic_data(
     return st
 
 
-def plot_time_memory(timings: dict, memory: dict, show: bool = True):
+def plot_time_memory(
+    timings: dict,
+    memory: dict,
+    process_length: float,
+    show: bool = True):
     import matplotlib.pyplot as plt
 
     n_templates = sorted(list(timings.keys()))
@@ -115,7 +120,8 @@ def plot_time_memory(timings: dict, memory: dict, show: bool = True):
 
     times = [timings[key] for key in n_templates]
     ax.plot(n_templates, times, linewidth=1.0, color="blue")
-    ax.scatter(n_templates, times, marker="+", color="blue")
+    ax.scatter(
+        n_templates, times, marker="+", color="blue", label="Detection time")
     ax.set_xlabel("Number of templates")
     ax.set_ylabel("Detection time (s)")
     ax.tick_params(axis="y", labelcolor="blue")
@@ -123,9 +129,14 @@ def plot_time_memory(timings: dict, memory: dict, show: bool = True):
     mem_ax = ax.twinx()
     mems = [memory[key] for key in n_templates]
     mem_ax.plot(n_templates, mems, linewidth=1.0, color="red")
-    mem_ax.scatter(n_templates, mems, marker="+", color="red")
+    mem_ax.scatter(
+        n_templates, mems, marker="+", color="red", label="Memory Use")
     mem_ax.set_ylabel("Peak memory (MB)")
     mem_ax.tick_params(axis="y", labelcolor="red")
+
+    ax.axhline(y=process_length, linestyle="--", label="Real-time limit")
+    ax.grid()
+    fig.legend()
 
     if show:
         plt.show()
@@ -140,17 +151,6 @@ def bench(
     sampling_rate: float,
     reruns: int = 3,
 ):
-    """
-
-    Parameters
-    ----------
-    n_templates
-    n_channels
-
-    Returns
-    -------
-
-    """
     import matplotlib.pyplot as plt
 
     timings, memory = dict(), dict()
@@ -181,11 +181,22 @@ def bench(
               f"{template_set} templates")
         timings.update({template_set: time})
         memory.update({template_set: mem})
-    fig = plot_time_memory(timings, memory, show=False)
+    fig = plot_time_memory(
+        timings, memory, process_length=process_length, show=False)
     fig.suptitle(
         f"RTEQcorrscan benchmark: {n_channels} channels of {process_length} "
-        f"s\n{psutil.cpu_count()} CPU cores, max clock: {psutil.cpu_freq().max} Hz")
+        f"s\n{psutil.cpu_count()} CPU cores, max clock: "
+        f"{psutil.cpu_freq().max} Hz")
     plt.show()
+
+    # Reshape for output
+    times_mems = {key: {"time": timings[key], "memory": memory[key]}
+                  for key in timings.keys()}
+    now = UTCDateTime.now().strftime("%Y%m%dT%H%M%S")
+    outfile = f"rteqcorrscan-bench_{now}"
+    with open(outfile, "w") as f:
+        json.dump(fp=f, obj=times_mems)
+    print(f"Written results to {outfile}")
 
 
 if __name__ == "__main__":
@@ -202,10 +213,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config", "-c", type=str, default=None,
         help="Path to configuration file", required=False)
+    parser.add_argument(
+        "--verbose", '-v', action="store_true",
+        help="Print output from logging to screen")
 
     args = parser.parse_args()
 
     config = read_config(args.config)
+    if args.verbose:
+        config.setup_logging()
     bench(
         n_templates=args.n_templates, n_channels=args.n_channels,
         process_length=config.template.process_len,
