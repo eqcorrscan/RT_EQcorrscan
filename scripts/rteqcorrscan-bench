@@ -150,6 +150,7 @@ def bench(
     template_length: float,
     sampling_rate: float,
     reruns: int = 3,
+    outfile: str = None,
 ):
     import matplotlib.pyplot as plt
 
@@ -193,7 +194,7 @@ def bench(
     times_mems = {key: {"time": timings[key], "memory": memory[key]}
                   for key in timings.keys()}
     now = UTCDateTime.now().strftime("%Y%m%dT%H%M%S")
-    outfile = f"rteqcorrscan-bench_{now}"
+    outfile = outfile or f"rteqcorrscan-bench_{now}"
     with open(outfile, "w") as f:
         json.dump(fp=f, obj=times_mems)
     print(f"Written results to {outfile}")
@@ -214,6 +215,9 @@ if __name__ == "__main__":
         "--config", "-c", type=str, default=None,
         help="Path to configuration file", required=False)
     parser.add_argument(
+        "--outfile", "-o", type=str, default=None,
+        help="File to write results to", required=False)
+    parser.add_argument(
         "--verbose", '-v', action="store_true",
         help="Print output from logging to screen")
 
@@ -226,5 +230,6 @@ if __name__ == "__main__":
         n_templates=args.n_templates, n_channels=args.n_channels,
         process_length=config.template.process_len,
         template_length=config.template.length,
-        sampling_rate=config.template.samp_rate)
+        sampling_rate=config.template.samp_rate,
+        outfile=args.outfile)
 
