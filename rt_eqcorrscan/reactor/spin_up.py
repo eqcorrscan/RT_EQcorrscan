@@ -72,7 +72,9 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
         max_distance=config.rt_match_filter.max_distance,
         n_stations=config.rt_match_filter.n_stations)
     if len(inventory) == 0:
-        Logger.critical("No inventory matching your templates, not running")
+        Logger.critical(
+            f"No inventory within {config.rt_match_filter.max_distance}"
+            f"km of the trigger matching your templates, not running")
         return None, None
     detect_interval = config.rt_match_filter.get(
         "detect_interval", 60)

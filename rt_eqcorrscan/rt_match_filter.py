@@ -911,7 +911,8 @@ def reshape_templates(
         net, sta, loc, chan = seed_id.split('.')
         tr = Trace(header=dict(
             network=net, station=sta, location=loc, channel=chan,
-            sampling_rate=samp_rate), data=numpy.empty(process_len))
+            sampling_rate=samp_rate),
+            data=numpy.empty(int(process_len * samp_rate)))
         stream += tr
 
     _, template_streams, template_names = _prep_data_for_correlation(
