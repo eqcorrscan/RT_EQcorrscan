@@ -24,7 +24,19 @@ from rt_eqcorrscan import RealTimeTribe
 from rt_eqcorrscan import read_config
 
 
-def random_string(length: int):
+def random_string(length: int) -> str:
+    """
+    Generate a random string.
+
+    Parameters
+    ----------
+    length
+        Length of string to generate
+
+    Returns
+    -------
+    A random string.
+    """
     import random
     import string
 
@@ -40,18 +52,24 @@ def make_synthetic_tribe(
     sampling_rate: float = 100.0,
 ) -> Tribe:
     """
+    Generate a synthetic tribe of templates
 
     Parameters
     ----------
     n_templates
+        Number of templates to generate
     n_channels
+        Number of channels for each template
     process_length
+        Process length in seconds
     template_length
+        Template length in seconds
     sampling_rate
+        Sampling rate in Hz
 
     Returns
     -------
-
+    Tribe of synthetic templates
     """
     nslc = [(random_string(2).upper(), random_string(4).upper(),
              random_string(2).upper(), random_string(3).upper())
@@ -83,17 +101,22 @@ def make_synthetic_data(
     nslc: list,
 ) -> Stream:
     """
+    Make a synthetic stream to be correlated with
 
     Parameters
     ----------
     n_channels
+        Number of channels to generate
     length
+        Lenth of data in seconds
     sampling_rate
+        Sampling rate in Hz
     nslc
+        seed-ids to generate
 
     Returns
     -------
-
+    Stream of synthetic data.
     """
     st = Stream()
     for i in range(n_channels):
@@ -111,7 +134,26 @@ def plot_time_memory(
     timings: dict,
     memory: dict,
     process_length: float,
-    show: bool = True):
+    show: bool = True
+):
+    """
+    Plot the time elapsed and memory used by the profiler.
+
+    Parameters
+    ----------
+    timings
+        Dictionary of {number of templates: time in seconds}
+    memory
+        Dictionary of {number of templates: memory use in MB}
+    process_length
+        Process length used in seconds
+    show
+        Whether to show the plot or not.
+
+    Returns
+    -------
+    Figure of the plot.
+    """
     import matplotlib.pyplot as plt
 
     n_templates = sorted(list(timings.keys()))
@@ -152,6 +194,29 @@ def bench(
     reruns: int = 3,
     outfile: str = None,
 ):
+    """
+    Benchmark the matched-filter detection process for a given configuration.
+
+    Profiles time and memory use - note that this only profiles the EQcorrscan
+    Tribe.detect method, not the full real-time process. Use this to give you
+    an idea of how many templates you can run within real-time.
+
+    Parameters
+    ----------
+    n_templates
+        Numbers of templates to profile using
+    n_channels
+        Number of channels of data to profile using
+    process_length
+        Length of data to profile using in seconds
+    template_length
+        Length of templates in seconds
+    sampling_rate
+        Sampling-rate in Hz
+    reruns
+        Number of times to re-run profiling - the average of these runs will
+        be reported
+    """
     import matplotlib.pyplot as plt
 
     timings, memory = dict(), dict()
