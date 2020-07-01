@@ -20,6 +20,8 @@
     down the real-time processing.
   - Templates are reshaped prior to detection use to avoid time-cost associated
     with re-doing this every iteration.
+  - Added a hypocentral_separation parameter for declustering - this also has
+    a default config value set for it (30km)
 
 # 0.0.2
 - First full release. Everything is new!
