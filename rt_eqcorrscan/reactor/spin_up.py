@@ -144,6 +144,7 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
             threshold=config.rt_match_filter.threshold,
             threshold_type=config.rt_match_filter.threshold_type,
             trig_int=config.rt_match_filter.trig_int,
+            hypocentral_separation=config.rt_match_filter.hypocentral_separation,
             keep_detections=86400,
             detect_directory="{name}/detections",
             plot_detections=config.rt_match_filter.plot_detections)
@@ -152,6 +153,7 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
         threshold=config.rt_match_filter.threshold,
         threshold_type=config.rt_match_filter.threshold_type,
         trig_int=config.rt_match_filter.trig_int,
+        hypocentral_separation=config.rt_match_filter.hypocentral_separation,
         min_stations=min_stations,
         keep_detections=86400,
         detect_directory="{name}/detections",
