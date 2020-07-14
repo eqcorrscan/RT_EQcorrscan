@@ -25,7 +25,7 @@ class ListeningTest(unittest.TestCase):
             os.path.abspath(os.path.dirname(__file__)),
             "listener_db")
         if not os.path.isdir(cls.test_path):
-            os.makedirs(cls.test_path)
+            os.makedirs(cls.test_path, exist_ok=True)
 
     def test_listener(self):
         listener = CatalogListener(
@@ -68,11 +68,6 @@ class ListeningTest(unittest.TestCase):
         for event in original_old_events:
             if event not in listener.old_events:
                 self.assertLess(event[1], endtime - listener.keep)
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        if os.path.isdir(cls.test_path):
-            shutil.rmtree(cls.test_path)
 
 
 class StaticFilterTests(unittest.TestCase):

@@ -28,15 +28,17 @@ class ReactorTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.testing_path = os.path.abspath(
             os.path.dirname(__file__)) + os.path.sep + "db"
-        if not os.path.isdir(cls.testing_path):
-            os.makedirs(cls.testing_path)
-        cls.template_bank = TemplateBank(cls.testing_path)
-        cls.listener = CatalogListener(
+
+    def setUp(self) -> None:
+        if not os.path.isdir(self.testing_path):
+            os.makedirs(self.testing_path)
+        self.template_bank = TemplateBank(self.testing_path)
+        self.listener = CatalogListener(
             client=Client("GEONET"), catalog=Catalog(),
             catalog_lookup_kwargs=dict(
                 latitude=-45., longitude=178., maxradius=3.0),
-            template_bank=cls.template_bank, interval=5)
-        cls.trigger_func = partial(
+            template_bank=self.template_bank, interval=5)
+        self.trigger_func = partial(
             magnitude_rate_trigger_func, magnitude_threshold=4,
             rate_threshold=20, rate_bin=0.5)
         config = Config()
@@ -46,7 +48,7 @@ class ReactorTests(unittest.TestCase):
         config.rt_match_filter.threshold_type = "MAD"
         config.rt_match_filter.trig_int = 2
         config.rt_match_filter.plot = False
-        cls.config = config
+        self.config = config
 
     def test_up_time(self):
         reactor = Reactor(
@@ -83,11 +85,6 @@ class ReactorTests(unittest.TestCase):
         time.sleep(10)
         with self.assertRaises(SystemExit):
             reactor.stop()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        if os.path.isdir(cls.testing_path):
-            shutil.rmtree(cls.testing_path)
 
 
 class GetInventoryTests(unittest.TestCase):

@@ -15,15 +15,15 @@ from rt_eqcorrscan.streaming.clients.seedlink import RealTimeClient
 
 
 class SeedLinkTest(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.rt_client = RealTimeClient(
+    def setUp(self):
+        self.rt_client = RealTimeClient(
             server_url="link.geonet.org.nz", buffer_capacity=10.)
 
-    @classmethod
-    def tearDownClass(cls):
-        if os.path.isdir("test_wavebank"):
-            shutil.rmtree("test_wavebank")
+    # Can't run tear down class properly with xdist
+    # @classmethod
+    # def tearDownClass(cls):
+    #     if os.path.isdir("test_wavebank"):
+    #         shutil.rmtree("test_wavebank")
 
     def test_background_streaming(self):
         rt_client = self.rt_client.copy()
@@ -74,6 +74,7 @@ class SeedLinkTest(unittest.TestCase):
         time.sleep(10)
         stream2 = rt_client.stream
         self.assertNotEqual(stream, stream2)
+        rt_client.background_stop()
 
     def test_wavebank_integration(self):
         rt_client = self.rt_client.copy()
@@ -92,7 +93,8 @@ class SeedLinkTest(unittest.TestCase):
         print(buffer_stream[0])
         print(wavebank_stream[0])
         self.assertLessEqual(
-            abs(buffer_stream[0].stats.endtime - wavebank_stream[0].stats.endtime),
+            abs(buffer_stream[0].stats.endtime -
+                wavebank_stream[0].stats.endtime),
             buffer_stream[0].stats.delta * 10)
         endtime = min(buffer_stream[0].stats.endtime,
                       wavebank_stream[0].stats.endtime)
@@ -103,7 +105,7 @@ class SeedLinkTest(unittest.TestCase):
                 starttime=starttime, endtime=endtime)[0].data ==
                    buffer_stream.slice(
                        starttime=starttime, endtime=endtime)[0].data))
-        shutil.rmtree("test_wavebank")
+        # shutil.rmtree("test_wavebank")
 
 
 class SeedLinkThreadedTests(unittest.TestCase):
