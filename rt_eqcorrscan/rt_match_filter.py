@@ -196,6 +196,7 @@ class RealTimeTribe(Tribe):
         self,
         new_party: Party,
         trig_int: float,
+        hypocentral_separation: float,
         endtime: UTCDateTime,
         detect_directory: str,
         save_waveforms: bool,
@@ -211,6 +212,9 @@ class RealTimeTribe(Tribe):
             The party of new detections
         trig_int
             Minimum inter-detection time in seconds.
+        hypocentral_separation
+            Maximum inter-event distance in km to consider detections as being
+            duplicates.
         endtime
             Last detection-time to be kept.
         detect_directory
@@ -231,11 +235,10 @@ class RealTimeTribe(Tribe):
                 d._calculate_event(template=family.template)
             self.party += family
         Logger.info("Removing duplicate detections")
-        # TODO: Decluster on pick time? Find matching picks and calc median
-        #  pick time difference.
         if len(self.party) > 0:
             self.party.decluster(
-                trig_int=trig_int, timing="origin", metric="cor_sum")
+                trig_int=trig_int, timing="origin", metric="cor_sum",
+                hypocentral_separation=hypocentral_separation)
         Logger.info("Completed decluster")
         Logger.info("Writing detections to disk")
         for family in self.party:
@@ -321,6 +324,7 @@ class RealTimeTribe(Tribe):
         threshold: float,
         threshold_type: str,
         trig_int: float,
+        hypocentral_separation: float = None,
         min_stations: int = None,
         keep_detections: float = 86400,
         detect_directory: str = "{name}/detections",
@@ -349,6 +353,9 @@ class RealTimeTribe(Tribe):
             `eqcorrscan.core.match_filter.Tribe.detect` for options.
         trig_int
             Minimum inter-detection time in seconds.
+        hypocentral_separation
+            Maximum inter-event distance in km to consider detections as being
+            duplicates.
         min_stations
             Minimum number of stations required to make a detection.
         keep_detections
@@ -478,10 +485,11 @@ class RealTimeTribe(Tribe):
                           for tr in self.rt_client.stream.merge()])
         detection_kwargs = dict(
             threshold=threshold, threshold_type=threshold_type,
-            trig_int=trig_int, keep_detections=keep_detections,
-            detect_directory=detect_directory, plot_detections=plot_detections,
-            save_waveforms=save_waveforms, maximum_backfill=first_data,
-            endtime=None, min_stations=min_stations)
+            trig_int=trig_int, hypocentral_separation=hypocentral_separation,
+            keep_detections=keep_detections, detect_directory=detect_directory,
+            plot_detections=plot_detections, save_waveforms=save_waveforms,
+            maximum_backfill=first_data, endtime=None,
+            min_stations=min_stations)
         try:
             while self.busy:
                 self._running = True  # Lock tribe
@@ -543,6 +551,7 @@ class RealTimeTribe(Tribe):
                     if len(new_party) > 0:
                         self._handle_detections(
                             new_party, trig_int=trig_int,
+                            hypocentral_separation=hypocentral_separation,
                             endtime=last_data - keep_detections,
                             detect_directory=detect_directory,
                             save_waveforms=save_waveforms,
@@ -727,6 +736,7 @@ class RealTimeTribe(Tribe):
         threshold: float,
         threshold_type: str,
         trig_int: float,
+        hypocentral_separation: float = None,
         keep_detections: float = 86400,
         detect_directory: str = "{name}/detections",
         plot_detections: bool = True,
@@ -752,6 +762,9 @@ class RealTimeTribe(Tribe):
             `eqcorrscan.core.match_filter.Tribe.detect` for options.
         trig_int
             Minimum inter-detection time in seconds.
+        hypocentral_separation
+            Maximum inter-event distance in km to consider detections as being
+            duplicates.
         keep_detections
             Duration to store detection in memory for in seconds.
         detect_directory
@@ -775,8 +788,8 @@ class RealTimeTribe(Tribe):
         backfill_process = Process(
             target=self._backfill,
             args=(templates, threshold, threshold_type, trig_int,
-                  keep_detections, detect_directory, plot_detections,
-                  save_waveforms, maximum_backfill, endtime),
+                  hypocentral_separation, keep_detections, detect_directory,
+                  plot_detections, save_waveforms, maximum_backfill, endtime),
             kwargs=kwargs, name=f"Backfiller_{self._number_of_backfillers}")
         backfill_process.start()
         self._backfillers.append(backfill_process)
@@ -787,6 +800,7 @@ class RealTimeTribe(Tribe):
         threshold: float,
         threshold_type: str,
         trig_int: float,
+        hypocentral_separation: float = None,
         keep_detections: float = 86400,
         detect_directory: str = "{name}/detections",
         plot_detections: bool = True,
@@ -848,13 +862,14 @@ class RealTimeTribe(Tribe):
         Logger.info("Backfill detection completed - handling detections")
         if len(new_party) > 0:
             Logger.info(f"Lock status: {self.lock}")
-            with self.lock:  # The only time the state of RealTimeTribe is altered
+            with self.lock:  # The only time the state is altered
                 Logger.info(f"Lock status: {self.lock}")
                 self._handle_detections(
                     new_party=new_party, detect_directory=detect_directory,
                     endtime=endtime - keep_detections,
-                    plot_detections=plot_detections, save_waveforms=save_waveforms,
-                    st=st, trig_int=trig_int)
+                    plot_detections=plot_detections,
+                    save_waveforms=save_waveforms, st=st, trig_int=trig_int,
+                    hypocentral_separation=hypocentral_separation)
         return
 
     def stop(self, write_stopfile: bool = False) -> None:
