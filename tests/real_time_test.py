@@ -97,10 +97,11 @@ class RealTimeTribeTest(unittest.TestCase):
             self.detect_dir, "????", "???", "*.xml"))
         self.assertGreater(len(detect_files), 0)
 
-    @classmethod
-    def tearDownClass(cls) -> None:
-        if os.path.isdir(cls.detect_dir):
-            shutil.rmtree(cls.detect_dir)
+    # No tear downs with parallel testing :(
+    # @classmethod
+    # def tearDownClass(cls) -> None:
+    #     if os.path.isdir(cls.detect_dir):
+    #         shutil.rmtree(cls.detect_dir)
 
 
 if __name__ == "__main__":

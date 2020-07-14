@@ -1,4 +1,4 @@
-# Current
+# 0.1.0
 - Added rteqcorrscan-bench script to provide a means of benchmarking the users
   set configuration - provides a way to check the limits of real-time processing
   on your machine.

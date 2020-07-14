@@ -56,6 +56,7 @@ def setup_package():
             'License (LGPL)',
             'Programming Language :: Python :: 3.6',
             'Programming Language :: Python :: 3.7',
+            'Programming Language :: Python :: 3.8',
         ],
         'keywords': 'real-time earthquake correlation detection match-filter',
         'scripts': scriptfiles,
