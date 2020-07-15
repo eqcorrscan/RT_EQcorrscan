@@ -997,7 +997,11 @@ def _write_detection(
         fig.savefig(f"{_filename}.png")
         fig.clf()
     if save_waveform:
-        st.split().write(f"{_filename}.ms", format="MSEED")
+        st = st.split()
+        for tr in st:
+            # Ensure data are int32
+            tr.data = tr.data.astype(numpy.int32)
+        st.write(f"{_filename}.ms", format="MSEED")
     return fig
 
 
