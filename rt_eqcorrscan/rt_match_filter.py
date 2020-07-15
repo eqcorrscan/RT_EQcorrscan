@@ -979,7 +979,8 @@ def _write_detection(
     from rt_eqcorrscan.plotting.plot_event import plot_event
 
     _path = os.path.join(
-        detect_directory, detection.detect_time.strftime("%Y/%j"))
+        detect_directory, detection.detect_time.strftime("%Y"),
+        detection.detect_time.strftime("%j"))
     if not os.path.isdir(_path):
         os.makedirs(_path)
     _filename = os.path.join(
@@ -996,7 +997,13 @@ def _write_detection(
         fig.savefig(f"{_filename}.png")
         fig.clf()
     if save_waveform:
-        st.split().write(f"{_filename}.ms", format="MSEED")
+        st = st.split()
+        for tr in st:
+            if tr.data.dtype == numpy.int32 and \
+              tr.data.dtype.type != numpy.int32:
+                # Ensure data are int32, see https://github.com/obspy/obspy/issues/2683
+                tr.data = tr.data.astype(numpy.int32)
+        st.write(f"{_filename}.ms", format="MSEED")
     return fig
 
 
