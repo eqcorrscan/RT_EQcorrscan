@@ -979,7 +979,8 @@ def _write_detection(
     from rt_eqcorrscan.plotting.plot_event import plot_event
 
     _path = os.path.join(
-        detect_directory, detection.detect_time.strftime("%Y/%j"))
+        detect_directory, detection.detect_time.strftime("%Y"),
+        detection.detect_time.strftime("%j"))
     if not os.path.isdir(_path):
         os.makedirs(_path)
     _filename = os.path.join(

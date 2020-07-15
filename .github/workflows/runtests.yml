@@ -1,5 +1,5 @@
 name: test
-on: [push, pull_request]
+on: [pull_request]
 
 jobs:
   # Runs the tests on combinations of the supported python/os matrix.
@@ -8,7 +8,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: [3.7]
+        python-version: [3.7, 3.8]
       fail-fast: false
 
     steps:
@@ -38,7 +38,7 @@ jobs:
         shell: bash -l {0}
         run: |
           export CI="true"
-          py.test -n 2 -v --cov-report=xml
+          py.test -v --cov-report=xml
 
       - name: upload coverage
         uses: codecov/codecov-action@v1
