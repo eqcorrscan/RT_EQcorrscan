@@ -273,9 +273,9 @@ class _StreamingClient(ABC):
             except Exception as e:
                 Logger.error(
                     f"Could not add {trace} to buffer due to {e}")
-        if trace.data.dtype == "int32" and trace.data.dtype != np.int32:
+        if trace.data.dtype == np.int32 and trace.data.dtype.type != np.int32:
             # Cope with a windows error where data come in as 
-            # "int32" not np.int32.
+            # "int32" not np.int32. See https://github.com/obspy/obspy/issues/2683
             trace.data = trace.data.astype(np.int32)
         self._access_wavebank(
             method="put_waveforms", timeout=120., stream=Stream([trace]))
