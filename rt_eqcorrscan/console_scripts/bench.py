@@ -265,7 +265,7 @@ def bench(
     print(f"Written results to {outfile}")
 
 
-if __name__ == "__main__":
+def main():
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -298,3 +298,6 @@ if __name__ == "__main__":
         sampling_rate=config.template.samp_rate,
         outfile=args.outfile)
 
+
+if __name__ == "__main__":
+    main()

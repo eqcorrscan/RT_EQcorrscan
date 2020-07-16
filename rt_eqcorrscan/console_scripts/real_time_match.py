@@ -128,7 +128,7 @@ def run_real_time_matched_filter(**kwargs):
     return party
 
 
-if __name__ == "__main__":
+def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Real Time Matched Filter")
@@ -191,3 +191,7 @@ if __name__ == "__main__":
                    "speed_up": args.speed_up})
 
     run_real_time_matched_filter(**kwargs)
+
+
+if __name__ == "__main__":
+    main()

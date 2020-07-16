@@ -22,7 +22,15 @@ Real-time EQcorrscan: Real-time wrappers for EQcorrscan's earthquake detection
 methods.
 '''
 
-scriptfiles = [f for f in glob.glob("scripts/*") if os.path.isfile(f)]
+# Scripts need to have a `main` function
+scriptfiles = [f for f in glob.glob("rt_eqcorrscan/console_scripts/*")
+               if os.path.isfile(f) and f.split('/')[-1] != "__init__.py"]
+scriptnames = [f.split('/')[-1].rstrip(".py").replace("_", "-")
+               for f in scriptfiles]
+console_entry_points = [
+    f"rteqcorrscan-{name}=rt_eqcorrscan.console_scripts.{name.replace('-', '_')}:main"
+    for name in scriptnames]
+print(console_entry_points)
 
 
 def setup_package():
@@ -59,7 +67,7 @@ def setup_package():
             'Programming Language :: Python :: 3.8',
         ],
         'keywords': 'real-time earthquake correlation detection match-filter',
-        'scripts': scriptfiles,
+        'entry_points': {'console_scripts': console_entry_points},
         'install_requires': install_requires,
         'setup_requires': ['pytest-runner'],
         'tests_require': ['pytest>=2.0.0', 'pytest-cov', 'pytest-pep8',
@@ -82,7 +90,7 @@ def setup_package():
             'rt_eqcorrscan', 'rt_eqcorrscan.config', 'rt_eqcorrscan.database',
             'rt_eqcorrscan.event_trigger', 'rt_eqcorrscan.plotting',
             'rt_eqcorrscan.reactor', 'rt_eqcorrscan.streaming',
-            'rt_eqcorrscan.streaming.clients']
+            'rt_eqcorrscan.streaming.clients', 'rt_eqcorrscan.console_scripts']
     if os.path.isdir("build"):
         shutil.rmtree("build")
     setup(**setup_args)
