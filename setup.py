@@ -23,13 +23,14 @@ methods.
 '''
 
 # Scripts need to have a `main` function
-scriptfiles = [f for f in glob.glob("rt_eqcorrscan/console_scripts/*")
-               if os.path.isfile(f) and f.split('/')[-1] != "__init__.py"]
-scriptnames = [f.split('/')[-1].rstrip(".py").replace("_", "-")
+scriptfiles = [
+    f for f in glob.glob(os.path.join("rt_eqcorrscan", "console_scripts", "*"))
+    if os.path.isfile(f) and os.path.split(f)[-1] != "__init__.py"]
+scriptnames = [os.path.split(f)[-1].rstrip(".py").replace("_", "-")
                for f in scriptfiles]
 console_entry_points = [
-    f"rteqcorrscan-{name}=rt_eqcorrscan.console_scripts.{name.replace('-', '_')}:main"
-    for name in scriptnames]
+    f"rteqcorrscan-{name}=rt_eqcorrscan.console_scripts."
+    f"{name.replace('-', '_')}:main" for name in scriptnames]
 print(console_entry_points)
 
 
