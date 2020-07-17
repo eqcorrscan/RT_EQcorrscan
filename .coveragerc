@@ -5,6 +5,7 @@ omit =
   rt_eqcorrscan/examples/*.py
   rt_eqcorrscan/plotting/plot_buffer.py
   rt_eqcorrscan/tests/*.py
+  rt_eqcorrscan/console_scripts/*.py
 [report]
 exclude_lines =
    pragma: no cover
