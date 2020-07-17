@@ -9,6 +9,8 @@
 
 # Installation
 
+[![Anaconda-Server Badge](https://anaconda.org/conda-forge/rt-eqcorrscan/badges/installer/conda.svg)](https://conda.anaconda.org/conda-forge)
+
 Either install EQcorrscan from conda-forge (recommended) using something like:
 ```bash
 conda install -c conda-forge RT-EQcorrscan
