@@ -851,25 +851,38 @@ class RealTimeTribe(Tribe):
 
         Logger.info("Starting backfill detection run with:")
         Logger.info(st.__str__(extended=True))
-        new_party = new_tribe.detect(
-            stream=st, plot=False, threshold=threshold,
-            threshold_type=threshold_type, trig_int=trig_int,
-            xcorr_func="fftw", concurrency="concurrent",
-            cores=self.max_correlation_cores,
-            parallel_process=self._parallel_processing,
-            process_cores=self.process_cores, **kwargs)
-        detect_directory = detect_directory.format(name=self.name)
-        Logger.info("Backfill detection completed - handling detections")
-        if len(new_party) > 0:
-            Logger.info(f"Lock status: {self.lock}")
-            with self.lock:  # The only time the state is altered
+        # Break into chunks so that detections can be handled as they happen
+        starttime, endtime = (
+            min(tr.stats.starttime for tr in st),
+            max(tr.stats.endtime for tr in st))
+        # Send off twice the minimum data to allow for overlaps.
+        _starttime, _endtime = (
+            starttime, starttime + 2 * self.minimum_data_for_detection)
+        while _endtime < endtime + self.minimum_data_for_detection:
+            st_chunk = st.slice(_starttime, _endtime)
+            new_party = new_tribe.detect(
+                stream=st_chunk, plot=False, threshold=threshold,
+                threshold_type=threshold_type, trig_int=trig_int,
+                xcorr_func="fftw", concurrency="concurrent",
+                cores=self.max_correlation_cores,
+                parallel_process=self._parallel_processing,
+                process_cores=self.process_cores, **kwargs)
+            detect_directory = detect_directory.format(name=self.name)
+            Logger.info(
+                f"Backfill detection between {_starttime} and {_endtime} "
+                f"completed - handling detections")
+            if len(new_party) > 0:
                 Logger.info(f"Lock status: {self.lock}")
-                self._handle_detections(
-                    new_party=new_party, detect_directory=detect_directory,
-                    endtime=endtime - keep_detections,
-                    plot_detections=plot_detections,
-                    save_waveforms=save_waveforms, st=st, trig_int=trig_int,
-                    hypocentral_separation=hypocentral_separation)
+                with self.lock:  # The only time the state is altered
+                    Logger.info(f"Lock status: {self.lock}")
+                    self._handle_detections(
+                        new_party=new_party, detect_directory=detect_directory,
+                        endtime=endtime - keep_detections,
+                        plot_detections=plot_detections,
+                        save_waveforms=save_waveforms, st=st, trig_int=trig_int,
+                        hypocentral_separation=hypocentral_separation)
+            _starttime += self.minimum_data_for_detection
+            _endtime += self.minimum_data_for_detection
         return
 
     def stop(self, write_stopfile: bool = False) -> None:
