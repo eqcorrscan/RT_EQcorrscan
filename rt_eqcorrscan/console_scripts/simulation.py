@@ -165,7 +165,7 @@ def synthesise_real_time(
     reactor.run(max_run_length=config.reactor.max_run_length)
 
 
-if __name__ == "__main__":
+def main():
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -212,3 +212,7 @@ if __name__ == "__main__":
         triggering_event=trigger_event, database_duration=args.db_duration,
         config=config, make_templates=args.templates_made,
         debug=args.debug, speed_up=args.speed_up)
+
+
+if __name__ == "__main__":
+    main()

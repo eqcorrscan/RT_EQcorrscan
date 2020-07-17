@@ -77,7 +77,7 @@ def run(**kwargs):
     return
 
 
-if __name__ == "__main__":
+def main():
     import argparse
 
     kwargs = {}
@@ -103,3 +103,7 @@ if __name__ == "__main__":
                    "update_bank": args.update_bank, 
                    "listener_starttime": args.listener_starttime})
     run(**kwargs)
+
+
+if __name__ == "__main__":
+    main()

@@ -73,7 +73,7 @@ def run(
         Logger.info(f"Made {len(tribe)} templates")
 
 
-if __name__ == "__main__":
+def main():
     import argparse
 
     kwargs = {}
@@ -128,3 +128,7 @@ if __name__ == "__main__":
     run(starttime=starttime, endtime=endtime, 
         chunk_size=args.chunk_interval, rebuild=args.rebuild,
         max_workers=args.max_workers, **kwargs)
+
+
+if __name__ == "__main__":
+    main()

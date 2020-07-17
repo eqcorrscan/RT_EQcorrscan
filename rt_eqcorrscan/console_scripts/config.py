@@ -17,7 +17,7 @@ def run(outfile):
     print(f"Written config file: {outfile}")
 
 
-if __name__ == "__main__":
+def main():
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -29,3 +29,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     run(args.outfile)
+
+
+if __name__ == "__main__":
+    main()
