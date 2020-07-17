@@ -1,19 +1,38 @@
 RT-EQcorrscan installation
 ==========================
 
-RT-EQcorrscan is only supported for Python versions >= 3.6. Currently
-RT-EQcorrscan is only available from source on github. We do plan on releasing full
-releases on PyPi and conda-forge, once the project has stabilised a little more.
+RT-EQcorrscan only supports Python versions >= 3.6. It is tested on Ubuntu, MacOS and Windows.
 
-From conda-forge
-----------------
+From conda-forge (Recommended!)
+-------------------------------
 
-Not yet implemented.
+If you do not have conda installed then see the conda `installation documentation here <https://docs.conda.io/en/latest/miniconda.html>`_.
+
+Option 1:
+.........
+
+If you have an environment that you want to use you can try installing RT-EQcorrscan into that env:
+
+.. code-block:: bash
+
+    conda install -c conda-forge RT-EQcorrscan
+
+Option 2:
+.........
+
+If you run into dependency resolution clashes, or you do not have an environment that you want to
+install RT-EQcorrscan into then you can make a new environment with RT-EQcorrscan using:
+
+.. code-block:: bash
+
+    conda create -n RT-EQcorrscan -c conda-forge RT_EQcorrscan
 
 From PyPi
 ---------
 
-Not yet implemented.
+.. code-block:: bash
+
+    pip install RT-EQcorrscan
 
 From Source
 -----------
