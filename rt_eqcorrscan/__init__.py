@@ -2,7 +2,7 @@
 RT_EQcorrscan: Near real-time matched-filtering for earthquake detection
 """
 
-__version__ = '0.1.2'
+__version__ = '0.1.3'
 
 
 from rt_eqcorrscan.rt_match_filter import RealTimeTribe

@@ -1,3 +1,7 @@
+# 0.1.3
+- Support Windows
+- Handle detections more regularly while backfilling
+- Deploy scripts as "entry-points"
 # 0.1.2
 - Added rteqcorrscan-bench script to provide a means of benchmarking the users
   set configuration - provides a way to check the limits of real-time processing

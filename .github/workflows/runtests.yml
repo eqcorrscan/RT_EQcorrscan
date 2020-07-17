@@ -1,5 +1,9 @@
 name: test
-on: [pull_request, push]
+on:
+  push:
+    branches:
+      - master
+  pull_request:
 
 jobs:
   # Runs the tests on combinations of the supported python/os matrix.
