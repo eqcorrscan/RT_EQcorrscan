@@ -46,4 +46,16 @@ and create a pull-request on Master.
 
 # Funding
 
-This project is funded by the Earthquake Commission of New Zealand (EQC).
+The creation of this project was funded by the Earthquake Commission of New Zealand (EQC).
+Currently the maintainence of this project is unfunded.
+
+# Citation
+
+If you use our software in your research please cite 
+[our paper on the RT-EQcorrscan package](https://pubs.geoscienceworld.org/ssa/srl/article/doi/10.1785/0220200171/590814/RT-EQcorrscan-Near-Real-Time-Matched-Filtering-for).
+These citations help to keep the developers in work and keep maintaining these software!
+
+> Chamberlain, C. J., J. Townend, and M. C. Gerstenberger (2020). 
+> RT-EQcorrscan: Near-Real-Time Matched-Filtering for Rapid Development
+> of Dense Earthquake Catalogs, Seismol. Res. Lett. XX, 1–11, 
+> doi: 10.1785/0220200171.
