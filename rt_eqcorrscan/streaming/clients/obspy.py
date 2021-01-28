@@ -87,6 +87,11 @@ class RealTimeClient(_StreamingClient):
         self.started = True
         return
 
+    def restart(self) -> None:
+        """ Restart the streamer. """
+        self.stop()
+        self.start()
+
     def copy(self, empty_buffer: bool = True):
         if empty_buffer:
             buffer = Stream()

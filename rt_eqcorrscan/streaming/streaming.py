@@ -161,6 +161,12 @@ class _StreamingClient(ABC):
             Whether to start the new client with an empty buffer or not.
         """
 
+    @abstractmethod
+    def restart(self):
+        """
+        Disconnect and reconnect and restart the Streaming Client.
+        """
+
     @property
     def stream(self) -> Stream:
         """ Get a copy of the stream in the buffer. """

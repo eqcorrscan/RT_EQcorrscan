@@ -94,6 +94,11 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
             Logger.warning("Attempted to start connection, but "
                            "connection already started.")
 
+    def restart(self) -> None:
+        """ Restart the streamer. """
+        self.stop()
+        self.start()
+
     @property
     def can_add_streams(self) -> bool:
         return not self._EasySeedLinkClient__streaming_started

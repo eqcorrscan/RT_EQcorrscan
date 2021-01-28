@@ -319,6 +319,23 @@ class RealTimeTribe(Tribe):
             pass
         return
 
+    def _start_streaming(self):
+        if not self.rt_client.started:
+            self.rt_client.start()
+        if self.rt_client.can_add_streams:
+            for tr_id in self.expected_seed_ids:
+                self.rt_client.select_stream(
+                    net=tr_id.split('.')[0], station=tr_id.split('.')[1],
+                    selector=tr_id.split('.')[3])
+        else:
+            Logger.warning("Client already in streaming mode,"
+                           " cannot add channels")
+        if not self.rt_client.busy:
+            self.rt_client.background_run()
+            Logger.info("Started real-time streaming")
+        else:
+            Logger.info("Real-time streaming already running")
+
     def run(
         self,
         threshold: float,
@@ -423,21 +440,8 @@ class RealTimeTribe(Tribe):
         detect_directory = detect_directory.format(name=self.name)
         if not os.path.isdir(detect_directory):
             os.makedirs(detect_directory)
-        if not self.rt_client.started:
-            self.rt_client.start()
-        if self.rt_client.can_add_streams:
-            for tr_id in self.expected_seed_ids:
-                self.rt_client.select_stream(
-                    net=tr_id.split('.')[0], station=tr_id.split('.')[1],
-                    selector=tr_id.split('.')[3])
-        else:
-            Logger.warning("Client already in streaming mode,"
-                           " cannot add channels")
-        if not self.rt_client.busy:
-            self.rt_client.background_run()
-            Logger.info("Started real-time streaming")
-        else:
-            Logger.info("Real-time streaming already running")
+        self._start_streaming()
+
         Logger.info("Detection will use the following data: {0}".format(
             self.expected_seed_ids))
         if backfill_client and backfill_to:
@@ -490,6 +494,7 @@ class RealTimeTribe(Tribe):
             plot_detections=plot_detections, save_waveforms=save_waveforms,
             maximum_backfill=first_data, endtime=None,
             min_stations=min_stations)
+        previous_run_end, stale_count = None, 0  # Track data flow
         try:
             while self.busy:
                 self._running = True  # Lock tribe
@@ -501,6 +506,22 @@ class RealTimeTribe(Tribe):
                     continue
                 # Cope with data that doesn't come
                 last_data = max(tr.stats.endtime for tr in st)
+                # We need to cope with the streamer going stale - e.g. not
+                # getting any new data. If this happens it needs to be
+                # re-started
+                if previous_run_end and last_data <= previous_run_end:
+                    stale_count += 1
+                if stale_count >= 10:
+                    Logger.warning(
+                        "The streaming client has not given any new data for "
+                        "ten iterations. Restarting Streaming client")
+                    self.rt_client.background_stop()
+                    self.rt_client.stop()
+                    # Get a clean instance just in case
+                    self.rt_client = self.rt_client.copy(empty_buffer=False)
+                    self._start_streaming()
+                    stale_count = 0
+                previous_run_end = last_data
                 # Remove any data that shouldn't be there - sometimes GeoNet's
                 # Seedlink client gives old data.
                 st.trim(

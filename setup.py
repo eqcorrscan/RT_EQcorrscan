@@ -31,7 +31,6 @@ scriptnames = [os.path.split(f)[-1].rstrip(".py").replace("_", "-")
 console_entry_points = [
     f"rteqcorrscan-{name}=rt_eqcorrscan.console_scripts."
     f"{name.replace('-', '_')}:main" for name in scriptnames]
-print(console_entry_points)
 
 
 def setup_package():
