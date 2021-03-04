@@ -510,7 +510,13 @@ class RealTimeTribe(Tribe):
                 # getting any new data. If this happens it needs to be
                 # re-started
                 if previous_run_end and last_data <= previous_run_end:
+                    Logger.info(
+                        f"Stale data ending {last_data}, previous run ended"
+                        f" at {previous_run_end}")
                     stale_count += 1
+                elif previous_run_end:
+                    # Reset the counter when we do get new data.
+                    stale_count = 0
                 if stale_count >= 10:
                     Logger.warning(
                         "The streaming client has not given any new data for "
@@ -518,9 +524,10 @@ class RealTimeTribe(Tribe):
                     self.rt_client.background_stop()
                     self.rt_client.stop()
                     # Get a clean instance just in case
-                    self.rt_client = self.rt_client.copy(empty_buffer=False)
+                    # self.rt_client = self.rt_client.copy(empty_buffer=False)
                     self._start_streaming()
-                    stale_count = 0
+                    stale_count = 0  # Reset counter.
+                    st = self.rt_client.stream.split().merge()  # Get data again.
                 previous_run_end = last_data
                 # Remove any data that shouldn't be there - sometimes GeoNet's
                 # Seedlink client gives old data.
