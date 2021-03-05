@@ -9,7 +9,7 @@ License
 import logging
 
 from obspy.clients.seedlink.easyseedlink import EasySeedLinkClient
-from obspy import Stream
+from obspy import Stream, UTCDateTime
 
 from obsplus import WaveBank
 
@@ -44,6 +44,8 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         _StreamingClient.__init__(
             self, server_url=server_url, buffer=buffer,
             buffer_capacity=buffer_capacity, wavebank=wavebank)
+        self.conn.keepalive = 1
+        self.conn.netdly = 10
         Logger.debug("Instantiated RealTime client: {0}".format(self))
 
     def __repr__(self):
@@ -90,14 +92,18 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         if not self.started:
             self.connect()
             self.started = True
+            self._last_data = UTCDateTime.now()
         else:
             Logger.warning("Attempted to start connection, but "
                            "connection already started.")
 
     def restart(self) -> None:
         """ Restart the streamer. """
+        Logger.warning("RESTART: Stopping the streamer")
         self.stop()
+        Logger.warning("RESTART: Starting the streamer")
         self.start()
+        Logger.warning("RESTART: Completed restart")
 
     @property
     def can_add_streams(self) -> bool:

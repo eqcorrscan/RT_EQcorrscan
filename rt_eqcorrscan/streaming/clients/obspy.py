@@ -130,6 +130,7 @@ class RealTimeClient(_StreamingClient):
         assert len(self.bulk) > 0, "Select a stream first"
         self.streaming = True
         now = copy.deepcopy(self.starttime)
+        self._last_data = UTCDateTime.now()
         last_query_start = now - self.query_interval
         while self.streaming:
             _query_start = UTCDateTime.now()

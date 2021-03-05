@@ -16,7 +16,7 @@ import numpy as np
 from abc import ABC, abstractmethod
 from typing import Union, List
 
-from obspy import Stream, Trace
+from obspy import Stream, Trace, UTCDateTime
 from obsplus import WaveBank
 
 from rt_eqcorrscan.streaming.buffers import Buffer
@@ -51,6 +51,7 @@ class _StreamingClient(ABC):
     lock = threading.Lock()  # Lock for buffer access
     wavebank_lock = threading.Lock()
     has_wavebank = False
+    _last_data = None
 
     def __init__(
         self,
@@ -270,7 +271,8 @@ class _StreamingClient(ABC):
         trace
             New data.
         """
-        logging.debug("Packet of {0} samples for {1}".format(
+        self._last_data = UTCDateTime.now()
+        Logger.debug("Packet of {0} samples for {1}".format(
             trace.stats.npts, trace.id))
         with self.lock:
             Logger.debug(f"Adding data: Lock status: {self.lock.locked()}")

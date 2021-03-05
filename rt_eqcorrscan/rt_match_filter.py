@@ -494,7 +494,7 @@ class RealTimeTribe(Tribe):
             plot_detections=plot_detections, save_waveforms=save_waveforms,
             maximum_backfill=first_data, endtime=None,
             min_stations=min_stations)
-        previous_run_end, stale_count = None, 0  # Track data flow
+
         try:
             while self.busy:
                 self._running = True  # Lock tribe
@@ -504,31 +504,23 @@ class RealTimeTribe(Tribe):
                 if len(st) == 0:
                     Logger.warning("No data")
                     continue
+                Logger.info(
+                    f"Streaming Client last recieved data at "
+                    f"{self.rt_client._last_data}")
                 # Cope with data that doesn't come
-                last_data = max(tr.stats.endtime for tr in st)
-                # We need to cope with the streamer going stale - e.g. not
-                # getting any new data. If this happens it needs to be
-                # re-started
-                if previous_run_end and last_data <= previous_run_end:
-                    Logger.info(
-                        f"Stale data ending {last_data}, previous run ended"
-                        f" at {previous_run_end}")
-                    stale_count += 1
-                elif previous_run_end:
-                    # Reset the counter when we do get new data.
-                    stale_count = 0
-                if stale_count >= 10:
+                if start_time - self.rt_client._last_data > 60:
                     Logger.warning(
                         "The streaming client has not given any new data for "
-                        "ten iterations. Restarting Streaming client")
+                        "60 seconds. Restarting Streaming client")
+                    Logger.info("Stopping streamer")
                     self.rt_client.background_stop()
                     self.rt_client.stop()
                     # Get a clean instance just in case
                     # self.rt_client = self.rt_client.copy(empty_buffer=False)
+                    Logger.info("Starting streamer")
                     self._start_streaming()
-                    stale_count = 0  # Reset counter.
                     st = self.rt_client.stream.split().merge()  # Get data again.
-                previous_run_end = last_data
+                Logger.info("Streaming client seems healthy")
                 # Remove any data that shouldn't be there - sometimes GeoNet's
                 # Seedlink client gives old data.
                 st.trim(
@@ -539,6 +531,7 @@ class RealTimeTribe(Tribe):
                     st.trim(
                         starttime=last_data - self.minimum_data_for_detection,
                         endtime=last_data)
+                Logger.info("Trimmed data")
                 if len(st) == 0:
                     Logger.warning("No data")
                     continue
@@ -596,7 +589,8 @@ class RealTimeTribe(Tribe):
                         "{1:.2f}, increasing detect_interval to {2:.2f}".format(
                             self.detect_interval, run_time, run_time + 10))
                     self.detect_interval = run_time + 10
-                Logger.debug("This step took {0:.2f}s total".format(run_time))
+                Logger.info("Iteration {0} took {1:.2f}s total".format(
+                    detection_iteration, run_time))
                 Logger.info("Waiting {0:.2f}s until next run".format(
                     self.detect_interval - run_time))
                 detection_iteration += 1
@@ -812,38 +806,8 @@ class RealTimeTribe(Tribe):
         endtime
             Time to stop the backfill, if None will run to now.
         """
-        self._number_of_backfillers += 1
-        backfill_process = Process(
-            target=self._backfill,
-            args=(templates, threshold, threshold_type, trig_int,
-                  hypocentral_separation, keep_detections, detect_directory,
-                  plot_detections, save_waveforms, maximum_backfill, endtime),
-            kwargs=kwargs, name=f"Backfiller_{self._number_of_backfillers}")
-        backfill_process.start()
-        self._backfillers.append(backfill_process)
-
-    def _backfill(
-        self,
-        templates: Union[List[Template], Tribe],
-        threshold: float,
-        threshold_type: str,
-        trig_int: float,
-        hypocentral_separation: float = None,
-        keep_detections: float = 86400,
-        detect_directory: str = "{name}/detections",
-        plot_detections: bool = True,
-        save_waveforms: bool = True,
-        maximum_backfill: float = None,
-        endtime: UTCDateTime = None,
-        **kwargs
-    ) -> None:
-        """ Background backfill method """
-        if isinstance(templates, Tribe):
-            new_tribe = templates
-        else:
-            new_tribe = Tribe(templates)
-        Logger.info(f"Backfilling with {len(new_tribe)} templates")
-        # Get the stream
+        # Get the stream - Only let the main process get the Stream
+        Logger.info("Acquiring stream from wavebank")
         endtime = endtime or UTCDateTime.now()
         if maximum_backfill is not None:
             if isinstance(maximum_backfill, (float, int)):
@@ -874,6 +838,41 @@ class RealTimeTribe(Tribe):
             return
         Logger.info(f"Getting stations for backfill: {bulk}")
         st = self.rt_client.get_wavebank_stream(bulk)
+        
+        self._number_of_backfillers += 1
+
+        backfill_process = Process(
+            target=self._backfill,
+            args=(templates, st, threshold, threshold_type, trig_int,
+                  hypocentral_separation, keep_detections, detect_directory,
+                  plot_detections, save_waveforms, endtime),
+            kwargs=kwargs, name=f"Backfiller_{self._number_of_backfillers}")
+        backfill_process.start()
+        self._backfillers.append(backfill_process)
+        Logger.info("Backfill process started, returning")
+        return
+
+    def _backfill(
+        self,
+        templates: Union[List[Template], Tribe],
+        st: Stream,
+        threshold: float,
+        threshold_type: str,
+        trig_int: float,
+        hypocentral_separation: float = None,
+        keep_detections: float = 86400,
+        detect_directory: str = "{name}/detections",
+        plot_detections: bool = True,
+        save_waveforms: bool = True,
+        endtime: UTCDateTime = None,
+        **kwargs
+    ) -> None:
+        """ Background backfill method """
+        if isinstance(templates, Tribe):
+            new_tribe = templates
+        else:
+            new_tribe = Tribe(templates)
+        Logger.info(f"Backfilling with {len(new_tribe)} templates")
         Logger.debug("Additional templates to be run: \n{0} "
                      "templates".format(len(new_tribe)))
 
