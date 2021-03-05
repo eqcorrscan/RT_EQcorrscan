@@ -440,6 +440,9 @@ class RealTimeTribe(Tribe):
         detect_directory = detect_directory.format(name=self.name)
         if not os.path.isdir(detect_directory):
             os.makedirs(detect_directory)
+        # Get this locally before streaming starts
+        buffer_capacity = self.rt_client.buffer_capacity  
+        # Start the streamer
         self._start_streaming()
 
         Logger.info("Detection will use the following data: {0}".format(
@@ -454,9 +457,9 @@ class RealTimeTribe(Tribe):
                 except IndexError:
                     continue
                 endtime = tr_in_buffer.stats.starttime
-                if endtime - backfill_to > self.rt_client.buffer_capacity:
+                if endtime - backfill_to > buffer_capacity:
                     Logger.info("Truncating backfill to buffer length")
-                    starttime = endtime - self.rt_client.buffer_capacity
+                    starttime = endtime - buffer_capacity
                 else:
                     starttime = backfill_to
                 try:
@@ -521,10 +524,14 @@ class RealTimeTribe(Tribe):
                     self._start_streaming()
                     st = self.rt_client.stream.split().merge()  # Get data again.
                 Logger.info("Streaming client seems healthy")
+                last_data = max(tr.stats.endtime for tr in st)
                 # Remove any data that shouldn't be there - sometimes GeoNet's
                 # Seedlink client gives old data.
+                Logger.info(
+                    f"Trimming between {last_data - (buffer_capacity + 20.0)} "
+                    f"and {last_data}")
                 st.trim(
-                    starttime=last_data - (self.rt_client.buffer_capacity + 20.0),
+                    starttime=last_data - (buffer_capacity + 20.0),
                     endtime=last_data)
                 if detection_iteration > 0:
                     # For the first run we want to detect in everything we have.
