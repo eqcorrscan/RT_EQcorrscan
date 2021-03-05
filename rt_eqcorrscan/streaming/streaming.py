@@ -12,6 +12,7 @@ import time
 import threading
 import logging
 import numpy as np
+import copy
 
 from abc import ABC, abstractmethod
 from typing import Union, List
@@ -51,7 +52,7 @@ class _StreamingClient(ABC):
     lock = threading.Lock()  # Lock for buffer access
     wavebank_lock = threading.Lock()
     has_wavebank = False
-    _last_data = None
+    __last_data = None
 
     def __init__(
         self,
@@ -150,6 +151,16 @@ class _StreamingClient(ABC):
             self.has_wavebank = True
         else:
             self.has_wavebank = False
+
+    @property
+    def last_data(self) -> UTCDateTime:
+        with self.lock:
+            return copy.deepcopy(self.__last_data)
+
+    @last_data.setter
+    def last_data(self, timestamp: UTCDateTime):
+        with self.lock:
+            self.__last_data = timestamp
 
     @abstractmethod
     def copy(self, empty_buffer: bool = True):
@@ -271,7 +282,7 @@ class _StreamingClient(ABC):
         trace
             New data.
         """
-        self._last_data = UTCDateTime.now()
+        self.last_data = UTCDateTime.now()
         Logger.debug("Packet of {0} samples for {1}".format(
             trace.stats.npts, trace.id))
         with self.lock:

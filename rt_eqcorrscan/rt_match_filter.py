@@ -509,9 +509,9 @@ class RealTimeTribe(Tribe):
                     continue
                 Logger.info(
                     f"Streaming Client last recieved data at "
-                    f"{self.rt_client._last_data}")
+                    f"{self.rt_client.last_data}")
                 # Cope with data that doesn't come
-                if start_time - self.rt_client._last_data > 60:
+                if start_time - self.rt_client.last_data > 60:
                     Logger.warning(
                         "The streaming client has not given any new data for "
                         "60 seconds. Restarting Streaming client")
