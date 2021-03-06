@@ -503,15 +503,19 @@ class RealTimeTribe(Tribe):
                 self._running = True  # Lock tribe
                 start_time = UTCDateTime.now()
                 st = self.rt_client.stream.split().merge()
+                last_data_received = self.rt_client.last_data
                 # Split to remove trailing mask
                 if len(st) == 0:
                     Logger.warning("No data")
                     continue
                 Logger.info(
-                    f"Streaming Client last recieved data at "
+                    f"Streaming Client last received data at "
                     f"{self.rt_client.last_data}")
+                stream_end = max(tr.stats.endtime for tr in st)
+                Logger.info(f"Real-time client provided data: \n{st}")
                 # Cope with data that doesn't come
-                if start_time - self.rt_client.last_data > 60:
+                if start_time - last_data_received > 60 or \
+                        last_data_received - stream_end > 60:
                     Logger.warning(
                         "The streaming client has not given any new data for "
                         "60 seconds. Restarting Streaming client")
@@ -524,20 +528,19 @@ class RealTimeTribe(Tribe):
                     self._start_streaming()
                     st = self.rt_client.stream.split().merge()  # Get data again.
                 Logger.info("Streaming client seems healthy")
-                last_data = max(tr.stats.endtime for tr in st)
                 # Remove any data that shouldn't be there - sometimes GeoNet's
                 # Seedlink client gives old data.
                 Logger.info(
-                    f"Trimming between {last_data - (buffer_capacity + 20.0)} "
-                    f"and {last_data}")
+                    f"Trimming between {last_data_received - (buffer_capacity + 20.0)} "
+                    f"and {last_data_received}")
                 st.trim(
-                    starttime=last_data - (buffer_capacity + 20.0),
-                    endtime=last_data)
+                    starttime=last_data_received - (buffer_capacity + 20.0),
+                    endtime=last_data_received)
                 if detection_iteration > 0:
                     # For the first run we want to detect in everything we have.
                     st.trim(
-                        starttime=last_data - self.minimum_data_for_detection,
-                        endtime=last_data)
+                        starttime=last_data_received - self.minimum_data_for_detection,
+                        endtime=last_data_received)
                 Logger.info("Trimmed data")
                 if len(st) == 0:
                     Logger.warning("No data")
@@ -580,11 +583,12 @@ class RealTimeTribe(Tribe):
                         self._handle_detections(
                             new_party, trig_int=trig_int,
                             hypocentral_separation=hypocentral_separation,
-                            endtime=last_data - keep_detections,
+                            endtime=last_data_received - keep_detections,
                             detect_directory=detect_directory,
                             save_waveforms=save_waveforms,
                             plot_detections=plot_detections, st=st)
-                    self._remove_old_detections(last_data - keep_detections)
+                    self._remove_old_detections(
+                        last_data_received - keep_detections)
                     Logger.info("Party now contains {0} detections".format(
                         len(self.detections)))
                 self._running = False  # Release lock
@@ -611,8 +615,9 @@ class RealTimeTribe(Tribe):
                 if minimum_rate and UTCDateTime.now() > run_start + self._min_run_length:
                     _rate = average_rate(
                         self.detections,
-                        starttime=max(last_data - keep_detections, first_data),
-                        endtime=last_data)
+                        starttime=max(
+                            last_data_received - keep_detections, first_data),
+                        endtime=last_data_received)
                     if _rate < minimum_rate:
                         Logger.critical(
                             "Rate ({0:.2f}) has dropped below minimum rate, "
