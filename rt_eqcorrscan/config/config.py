@@ -134,8 +134,12 @@ class StreamingConfig(_ConfigAttribDict):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+    @property
+    def _local_wave_bank(self):
         if isinstance(self.local_wave_bank, str):
-            self.local_wave_bank = WaveBank(self.local_wave_bank)
+            return WaveBank(self.local_wave_bank)
+        return None
 
     @property
     def rt_client_module(self):
@@ -163,7 +167,7 @@ class StreamingConfig(_ConfigAttribDict):
             rt_client = _client_module.RealTimeClient(
                 server_url=self.rt_client_url,
                 buffer_capacity=self.buffer_capacity,
-                wavebank=self.local_wave_bank,
+                wavebank=self._local_wave_bank,
                 **kwargs)
         except Exception as e:
             Logger.error(e)

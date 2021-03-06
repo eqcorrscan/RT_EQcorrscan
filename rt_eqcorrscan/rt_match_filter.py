@@ -319,6 +319,23 @@ class RealTimeTribe(Tribe):
             pass
         return
 
+    def _start_streaming(self):
+        if not self.rt_client.started:
+            self.rt_client.start()
+        if self.rt_client.can_add_streams:
+            for tr_id in self.expected_seed_ids:
+                self.rt_client.select_stream(
+                    net=tr_id.split('.')[0], station=tr_id.split('.')[1],
+                    selector=tr_id.split('.')[3])
+        else:
+            Logger.warning("Client already in streaming mode,"
+                           " cannot add channels")
+        if not self.rt_client.busy:
+            self.rt_client.background_run()
+            Logger.info("Started real-time streaming")
+        else:
+            Logger.info("Real-time streaming already running")
+
     def run(
         self,
         threshold: float,
@@ -387,6 +404,7 @@ class RealTimeTribe(Tribe):
         The party created - will not contain detections expired by
         `keep_detections` threshold.
         """
+        restart_interval = 600.0
         # Reshape the templates first
         if len(self.templates) > 0:
             self.templates = reshape_templates(
@@ -423,21 +441,11 @@ class RealTimeTribe(Tribe):
         detect_directory = detect_directory.format(name=self.name)
         if not os.path.isdir(detect_directory):
             os.makedirs(detect_directory)
-        if not self.rt_client.started:
-            self.rt_client.start()
-        if self.rt_client.can_add_streams:
-            for tr_id in self.expected_seed_ids:
-                self.rt_client.select_stream(
-                    net=tr_id.split('.')[0], station=tr_id.split('.')[1],
-                    selector=tr_id.split('.')[3])
-        else:
-            Logger.warning("Client already in streaming mode,"
-                           " cannot add channels")
-        if not self.rt_client.busy:
-            self.rt_client.background_run()
-            Logger.info("Started real-time streaming")
-        else:
-            Logger.info("Real-time streaming already running")
+        # Get this locally before streaming starts
+        buffer_capacity = self.rt_client.buffer_capacity  
+        # Start the streamer
+        self._start_streaming()
+
         Logger.info("Detection will use the following data: {0}".format(
             self.expected_seed_ids))
         if backfill_client and backfill_to:
@@ -450,9 +458,9 @@ class RealTimeTribe(Tribe):
                 except IndexError:
                     continue
                 endtime = tr_in_buffer.stats.starttime
-                if endtime - backfill_to > self.rt_client.buffer_capacity:
+                if endtime - backfill_to > buffer_capacity:
                     Logger.info("Truncating backfill to buffer length")
-                    starttime = endtime - self.rt_client.buffer_capacity
+                    starttime = endtime - buffer_capacity
                 else:
                     starttime = backfill_to
                 try:
@@ -490,111 +498,144 @@ class RealTimeTribe(Tribe):
             plot_detections=plot_detections, save_waveforms=save_waveforms,
             maximum_backfill=first_data, endtime=None,
             min_stations=min_stations)
+
         try:
             while self.busy:
-                self._running = True  # Lock tribe
-                start_time = UTCDateTime.now()
-                st = self.rt_client.stream.split().merge()
-                # Split to remove trailing mask
-                if len(st) == 0:
-                    Logger.warning("No data")
-                    continue
-                # Cope with data that doesn't come
-                last_data = max(tr.stats.endtime for tr in st)
-                # Remove any data that shouldn't be there - sometimes GeoNet's
-                # Seedlink client gives old data.
-                st.trim(
-                    starttime=last_data - (self.rt_client.buffer_capacity + 20.0),
-                    endtime=last_data)
-                if detection_iteration > 0:
-                    # For the first run we want to detect in everything we have.
-                    st.trim(
-                        starttime=last_data - self.minimum_data_for_detection,
-                        endtime=last_data)
-                if len(st) == 0:
-                    Logger.warning("No data")
-                    continue
-                # Remove short channels
-                st.traces = [
-                    tr for tr in st
-                    if _numpy_len(tr.data) >= (
-                            .8 * self.minimum_data_for_detection)]
-                Logger.info("Starting detection run")
-                Logger.info("Using data: \n{0}".format(
-                    st.__str__(extended=True)))
                 try:
-                    Logger.debug("Currently have {0} templates in tribe".format(
-                        len(self)))
-                    new_party = self.detect(
-                        stream=st, plot=False, threshold=threshold,
-                        threshold_type=threshold_type, trig_int=trig_int,
-                        xcorr_func="fftw", concurrency="concurrent",
-                        cores=self.max_correlation_cores,
-                        process_cores=self.process_cores,
-                        parallel_process=self._parallel_processing,
-                        ignore_bad_data=True, **kwargs)
-                    Logger.info("Completed detection")
-                except Exception as e:  # pragma: no cover
-                    Logger.error(e)
-                    Logger.error(traceback.format_exc())
-                    if "Cannot allocate memory" in str(e):
-                        Logger.error("Out of memory, stopping this detector")
-                        self.stop()
-                        break
+                    self._running = True  # Lock tribe
+                    start_time = UTCDateTime.now()
+                    st = self.rt_client.stream.split().merge()
+                    last_data_received = self.rt_client.last_data
+                    # Split to remove trailing mask
+                    if len(st) == 0:
+                        Logger.warning("No data")
+                        continue
                     Logger.info(
-                        "Waiting for {0:.2f}s and hoping this gets "
-                        "better".format(self.detect_interval))
-                    time.sleep(self.detect_interval)
-                    continue
-                Logger.info(f"Trying to get lock - lock status: {self.lock}")
-                with self.lock:
-                    if len(new_party) > 0:
-                        self._handle_detections(
-                            new_party, trig_int=trig_int,
-                            hypocentral_separation=hypocentral_separation,
-                            endtime=last_data - keep_detections,
-                            detect_directory=detect_directory,
-                            save_waveforms=save_waveforms,
-                            plot_detections=plot_detections, st=st)
-                    self._remove_old_detections(last_data - keep_detections)
-                    Logger.info("Party now contains {0} detections".format(
-                        len(self.detections)))
-                self._running = False  # Release lock
-                run_time = UTCDateTime.now() - start_time
-                Logger.info("Detection took {0:.2f}s".format(run_time))
-                if self.detect_interval <= run_time:
-                    Logger.warning(
-                        "detect_interval {0:.2f} shorter than run-time "
-                        "{1:.2f}, increasing detect_interval to {2:.2f}".format(
-                            self.detect_interval, run_time, run_time + 10))
-                    self.detect_interval = run_time + 10
-                Logger.debug("This step took {0:.2f}s total".format(run_time))
-                Logger.info("Waiting {0:.2f}s until next run".format(
-                    self.detect_interval - run_time))
-                detection_iteration += 1
-                self._wait(
-                    wait=(self.detect_interval - run_time) / self._speed_up,
-                    detection_kwargs=detection_kwargs)
-                if max_run_length and UTCDateTime.now() > run_start + max_run_length:
-                    Logger.critical("Hit maximum run time, stopping.")
-                    self.stop()
-                    break
-                if minimum_rate and UTCDateTime.now() > run_start + self._min_run_length:
-                    _rate = average_rate(
-                        self.detections,
-                        starttime=max(last_data - keep_detections, first_data),
-                        endtime=last_data)
-                    if _rate < minimum_rate:
-                        Logger.critical(
-                            "Rate ({0:.2f}) has dropped below minimum rate, "
-                            "stopping.".format(_rate))
+                        f"Streaming Client last received data at "
+                        f"{self.rt_client.last_data}")
+                    stream_end = max(tr.stats.endtime for tr in st)
+                    Logger.info(
+                        f"Real-time client provided data: \n{st.__str__(extended=True)}")
+                    # Cope with data that doesn't come
+                    if start_time - last_data_received > restart_interval:
+                        Logger.warning(
+                            "The streaming client has not given any new data for "
+                            f"{restart_interval} seconds. Restarting Streaming client")
+                        Logger.info(f"start_time: {start_time}, last_data_received: {last_data_received}, stream_end: {stream_end}")
+                        Logger.info("Stopping streamer")
+                        self.rt_client.background_stop()
+                        self.rt_client.stop()
+                        # Get a clean instance just in case
+                        # self.rt_client = self.rt_client.copy(empty_buffer=False)
+                        Logger.info("Starting streamer")
+                        self._start_streaming()
+                        Logger.info("Streamer started")
+                        st = self.rt_client.stream.split().merge()  # Get data again.
+                    Logger.info("Streaming client seems healthy")
+                    # Remove any data that shouldn't be there - sometimes GeoNet's
+                    # Seedlink client gives old data.
+                    Logger.info(
+                        f"Trimming between {stream_end - (buffer_capacity + 20.0)} "
+                        f"and {stream_end}")
+                    st.trim(
+                        starttime=stream_end - (buffer_capacity + 20.0),
+                        endtime=stream_end)
+                    if detection_iteration > 0:
+                        # For the first run we want to detect in everything we have.
+                        st.trim(
+                            starttime=stream_end - self.minimum_data_for_detection,
+                            endtime=stream_end)
+                    Logger.info("Trimmed data")
+                    if len(st) == 0:
+                        Logger.warning("No data")
+                        continue
+                    # Remove short channels
+                    st.traces = [
+                        tr for tr in st
+                        if _numpy_len(tr.data) >= (
+                                .8 * self.minimum_data_for_detection)]
+                    Logger.info("Starting detection run")
+                    Logger.info("Using data: \n{0}".format(
+                        st.__str__(extended=True)))
+                    try:
+                        Logger.debug("Currently have {0} templates in tribe".format(
+                            len(self)))
+                        new_party = self.detect(
+                            stream=st, plot=False, threshold=threshold,
+                            threshold_type=threshold_type, trig_int=trig_int,
+                            xcorr_func="fftw", concurrency="concurrent",
+                            cores=self.max_correlation_cores,
+                            process_cores=self.process_cores,
+                            parallel_process=self._parallel_processing,
+                            ignore_bad_data=True, **kwargs)
+                        Logger.info("Completed detection")
+                    except Exception as e:  # pragma: no cover
+                        Logger.error(e)
+                        Logger.error(traceback.format_exc())
+                        if "Cannot allocate memory" in str(e):
+                            Logger.error("Out of memory, stopping this detector")
+                            self.stop()
+                            break
+                        Logger.info(
+                            "Waiting for {0:.2f}s and hoping this gets "
+                            "better".format(self.detect_interval))
+                        time.sleep(self.detect_interval)
+                        continue
+                    Logger.info(f"Trying to get lock - lock status: {self.lock}")
+                    with self.lock:
+                        if len(new_party) > 0:
+                            self._handle_detections(
+                                new_party, trig_int=trig_int,
+                                hypocentral_separation=hypocentral_separation,
+                                endtime=stream_end - keep_detections,
+                                detect_directory=detect_directory,
+                                save_waveforms=save_waveforms,
+                                plot_detections=plot_detections, st=st)
+                        self._remove_old_detections(
+                            stream_end - keep_detections)
+                        Logger.info("Party now contains {0} detections".format(
+                            len(self.detections)))
+                    self._running = False  # Release lock
+                    run_time = UTCDateTime.now() - start_time
+                    Logger.info("Detection took {0:.2f}s".format(run_time))
+                    if self.detect_interval <= run_time:
+                        Logger.warning(
+                            "detect_interval {0:.2f} shorter than run-time "
+                            "{1:.2f}, increasing detect_interval to {2:.2f}".format(
+                                self.detect_interval, run_time, run_time + 10))
+                        self.detect_interval = run_time + 10
+                    Logger.info("Iteration {0} took {1:.2f}s total".format(
+                        detection_iteration, run_time))
+                    Logger.info("Waiting {0:.2f}s until next run".format(
+                        self.detect_interval - run_time))
+                    detection_iteration += 1
+                    self._wait(
+                        wait=(self.detect_interval - run_time) / self._speed_up,
+                        detection_kwargs=detection_kwargs)
+                    if max_run_length and UTCDateTime.now() > run_start + max_run_length:
+                        Logger.critical("Hit maximum run time, stopping.")
                         self.stop()
                         break
-                gc.collect()
-                # Memory output
-                # sum1 = summary.summarize(muppy.get_objects())
-                # summary.print_(sum1)
+                    if minimum_rate and UTCDateTime.now() > run_start + self._min_run_length:
+                        _rate = average_rate(
+                            self.detections,
+                            starttime=max(
+                                stream_end - keep_detections, first_data),
+                            endtime=stream_end)
+                        if _rate < minimum_rate:
+                            Logger.critical(
+                                "Rate ({0:.2f}) has dropped below minimum rate, "
+                                "stopping.".format(_rate))
+                            self.stop()
+                            break
+                    gc.collect()
+                    # Memory output
+                    # sum1 = summary.summarize(muppy.get_objects())
+                    # summary.print_(sum1)
+                except Exception as e:
+                    Logger.critical(f"Uncaught error: {e}")
         finally:
+            Logger.critical("Stopping")
             self.stop()
         return self.party
 
@@ -784,38 +825,8 @@ class RealTimeTribe(Tribe):
         endtime
             Time to stop the backfill, if None will run to now.
         """
-        self._number_of_backfillers += 1
-        backfill_process = Process(
-            target=self._backfill,
-            args=(templates, threshold, threshold_type, trig_int,
-                  hypocentral_separation, keep_detections, detect_directory,
-                  plot_detections, save_waveforms, maximum_backfill, endtime),
-            kwargs=kwargs, name=f"Backfiller_{self._number_of_backfillers}")
-        backfill_process.start()
-        self._backfillers.append(backfill_process)
-
-    def _backfill(
-        self,
-        templates: Union[List[Template], Tribe],
-        threshold: float,
-        threshold_type: str,
-        trig_int: float,
-        hypocentral_separation: float = None,
-        keep_detections: float = 86400,
-        detect_directory: str = "{name}/detections",
-        plot_detections: bool = True,
-        save_waveforms: bool = True,
-        maximum_backfill: float = None,
-        endtime: UTCDateTime = None,
-        **kwargs
-    ) -> None:
-        """ Background backfill method """
-        if isinstance(templates, Tribe):
-            new_tribe = templates
-        else:
-            new_tribe = Tribe(templates)
-        Logger.info(f"Backfilling with {len(new_tribe)} templates")
-        # Get the stream
+        # Get the stream - Only let the main process get the Stream
+        Logger.info("Acquiring stream from wavebank")
         endtime = endtime or UTCDateTime.now()
         if maximum_backfill is not None:
             if isinstance(maximum_backfill, (float, int)):
@@ -846,6 +857,41 @@ class RealTimeTribe(Tribe):
             return
         Logger.info(f"Getting stations for backfill: {bulk}")
         st = self.rt_client.get_wavebank_stream(bulk)
+        
+        self._number_of_backfillers += 1
+
+        backfill_process = Process(
+            target=self._backfill,
+            args=(templates, st, threshold, threshold_type, trig_int,
+                  hypocentral_separation, keep_detections, detect_directory,
+                  plot_detections, save_waveforms, endtime),
+            kwargs=kwargs, name=f"Backfiller_{self._number_of_backfillers}")
+        backfill_process.start()
+        self._backfillers.append(backfill_process)
+        Logger.info("Backfill process started, returning")
+        return
+
+    def _backfill(
+        self,
+        templates: Union[List[Template], Tribe],
+        st: Stream,
+        threshold: float,
+        threshold_type: str,
+        trig_int: float,
+        hypocentral_separation: float = None,
+        keep_detections: float = 86400,
+        detect_directory: str = "{name}/detections",
+        plot_detections: bool = True,
+        save_waveforms: bool = True,
+        endtime: UTCDateTime = None,
+        **kwargs
+    ) -> None:
+        """ Background backfill method """
+        if isinstance(templates, Tribe):
+            new_tribe = templates
+        else:
+            new_tribe = Tribe(templates)
+        Logger.info(f"Backfilling with {len(new_tribe)} templates")
         Logger.debug("Additional templates to be run: \n{0} "
                      "templates".format(len(new_tribe)))
 

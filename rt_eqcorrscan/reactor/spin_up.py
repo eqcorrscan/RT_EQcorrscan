@@ -42,7 +42,7 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
             working_dir,
             os.path.split(working_dir)[-1]))
     # Enforce a local-wave-bank for the streamer
-    config.streaming.local_wave_bank = WaveBank("streaming_wavebank")
+    config.streaming.local_wave_bank = "streaming_wavebank"
 
     triggering_event = read_events('triggering_event.xml')[0]
     Logger.debug(f"Triggered by {triggering_event}")
@@ -149,6 +149,8 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
             detect_directory="{name}/detections",
             plot_detections=config.rt_match_filter.plot_detections)
 
+    Logger.info("Starting real-time run")
+    
     real_time_tribe.run(
         threshold=config.rt_match_filter.threshold,
         threshold_type=config.rt_match_filter.threshold_type,

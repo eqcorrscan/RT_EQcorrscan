@@ -87,6 +87,11 @@ class RealTimeClient(_StreamingClient):
         self.started = True
         return
 
+    def restart(self) -> None:
+        """ Restart the streamer. """
+        self.stop()
+        self.start()
+
     def copy(self, empty_buffer: bool = True):
         if empty_buffer:
             buffer = Stream()
@@ -125,6 +130,7 @@ class RealTimeClient(_StreamingClient):
         assert len(self.bulk) > 0, "Select a stream first"
         self.streaming = True
         now = copy.deepcopy(self.starttime)
+        self._last_data = UTCDateTime.now()
         last_query_start = now - self.query_interval
         while self.streaming:
             _query_start = UTCDateTime.now()
@@ -160,6 +166,7 @@ class RealTimeClient(_StreamingClient):
                 last_query_start = min(_bulk["endtime"] for _bulk in self.bulk)
 
     def stop(self) -> None:
+        self._stop_called = True
         self.busy = False
         self.streaming = False
         self.started = False

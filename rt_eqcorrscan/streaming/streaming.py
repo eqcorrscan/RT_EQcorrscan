@@ -12,11 +12,12 @@ import time
 import threading
 import logging
 import numpy as np
+import copy
 
 from abc import ABC, abstractmethod
 from typing import Union, List
 
-from obspy import Stream, Trace
+from obspy import Stream, Trace, UTCDateTime
 from obsplus import WaveBank
 
 from rt_eqcorrscan.streaming.buffers import Buffer
@@ -51,6 +52,8 @@ class _StreamingClient(ABC):
     lock = threading.Lock()  # Lock for buffer access
     wavebank_lock = threading.Lock()
     has_wavebank = False
+    __last_data = None
+    _stop_called = False
 
     def __init__(
         self,
@@ -150,6 +153,16 @@ class _StreamingClient(ABC):
         else:
             self.has_wavebank = False
 
+    @property
+    def last_data(self) -> UTCDateTime:
+        with self.lock:
+            return copy.deepcopy(self.__last_data)
+
+    @last_data.setter
+    def last_data(self, timestamp: UTCDateTime):
+        with self.lock:
+            self.__last_data = timestamp
+
     @abstractmethod
     def copy(self, empty_buffer: bool = True):
         """
@@ -159,6 +172,12 @@ class _StreamingClient(ABC):
         ----------
         empty_buffer
             Whether to start the new client with an empty buffer or not.
+        """
+
+    @abstractmethod
+    def restart(self):
+        """
+        Disconnect and reconnect and restart the Streaming Client.
         """
 
     @property
@@ -238,6 +257,7 @@ class _StreamingClient(ABC):
     def _bg_run(self):
         while self.busy:
             self.run()
+        Logger.info("Running stopped, busy set to False")
 
     def background_run(self):
         """Run the client in the background."""
@@ -251,9 +271,13 @@ class _StreamingClient(ABC):
 
     def background_stop(self):
         """Stop the background thread."""
+        self._stop_called = True
         self.stop()
         for thread in self.threads:
+            Logger.info("Joining thread")
             thread.join()
+            Logger.info("Thread joined")
+        self.threads = []
 
     def on_data(self, trace: Trace):
         """
@@ -264,7 +288,8 @@ class _StreamingClient(ABC):
         trace
             New data.
         """
-        logging.debug("Packet of {0} samples for {1}".format(
+        self.last_data = UTCDateTime.now()
+        Logger.debug("Packet of {0} samples for {1}".format(
             trace.stats.npts, trace.id))
         with self.lock:
             Logger.debug(f"Adding data: Lock status: {self.lock.locked()}")
@@ -287,6 +312,13 @@ class _StreamingClient(ABC):
         Handle termination gracefully
         """
         Logger.info("Termination of {0}".format(self.__repr__()))
+        if not self._stop_called:  # Make sure we don't double-call stop methods
+            if len(self.threads):
+                self.background_stop()
+            else:
+                self.stop()
+        else:
+            Logger.info("Stop already called - not duplicating")
         return self.stream
 
     @staticmethod
