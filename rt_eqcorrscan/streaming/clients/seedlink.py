@@ -174,7 +174,7 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
 
     @property
     def can_add_streams(self) -> bool:
-        return not self._EasySeedLinkClient__streaming_started
+        return not self.__streaming_started
 
     def stop(self) -> None:
         self._stop_called = True
