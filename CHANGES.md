@@ -1,3 +1,9 @@
+# Current
+- Keep track of data stream coming in from streamer, and restart if stream 
+  goes stale (See PR #12).
+- Add threading exit event to streamers to allow internal stopping of threads
+  (See PR #12).
+
 # 0.1.3
 - Support Windows
 - Handle detections more regularly while backfilling
