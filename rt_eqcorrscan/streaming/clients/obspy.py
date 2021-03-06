@@ -166,6 +166,7 @@ class RealTimeClient(_StreamingClient):
                 last_query_start = min(_bulk["endtime"] for _bulk in self.bulk)
 
     def stop(self) -> None:
+        self._stop_called = True
         self.busy = False
         self.streaming = False
         self.started = False

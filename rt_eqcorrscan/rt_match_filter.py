@@ -517,8 +517,7 @@ class RealTimeTribe(Tribe):
                     Logger.info(
                         f"Real-time client provided data: \n{st.__str__(extended=True)}")
                     # Cope with data that doesn't come
-                    if start_time - last_data_received > restart_interval or \
-                            last_data_received - stream_end > restart_interval:
+                    if start_time - last_data_received > restart_interval:
                         Logger.warning(
                             "The streaming client has not given any new data for "
                             f"{restart_interval} seconds. Restarting Streaming client")
