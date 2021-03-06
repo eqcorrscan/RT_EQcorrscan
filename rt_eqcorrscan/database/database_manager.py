@@ -214,10 +214,6 @@ class TemplateBank(EventBank):
     template_ext
         The extension on the template files. Can be used to avoid parsing
         non-template files.
-    cache_size : int
-        The number of queries to store. Avoids having to read the index of
-        the database multiple times for queries involving the same start and
-        end times.
 
     Notes
     -----
@@ -230,7 +226,6 @@ class TemplateBank(EventBank):
         base_path: Union[str, Path, "EventBank"] = ".",
         path_structure: Optional[str] = None,
         name_structure: Optional[str] = None,
-        cache_size: int = 5,
         event_format="quakeml",
         event_ext=".xml",
         template_ext=".tgz",
@@ -239,7 +234,7 @@ class TemplateBank(EventBank):
         """Initialize the bank."""
         super().__init__(
             base_path=base_path, path_structure=path_structure,
-            name_structure=name_structure, cache_size=cache_size,
+            name_structure=name_structure,
             format=event_format, ext=event_ext)
         self.template_ext = template_ext
         self.executor = executor or _SerialExecutor()
