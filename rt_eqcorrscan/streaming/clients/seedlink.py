@@ -97,7 +97,7 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
                   'a stream.'
             raise EasySeedLinkClientException(msg)
 
-        self.__streaming_started = True
+        self._EasySeedLinkClient__streaming_started = True
 
         # Start the collection loop
         while True:
@@ -174,7 +174,7 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
 
     @property
     def can_add_streams(self) -> bool:
-        return not self.__streaming_started
+        return not self._EasySeedLinkClient__streaming_started
 
     def stop(self) -> None:
         self._stop_called = True
