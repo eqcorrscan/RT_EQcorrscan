@@ -111,9 +111,12 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
 
     def stop(self) -> None:
         self.busy = False
+        Logger.info("Terminating connection")
         self.conn.terminate()
+        Logger.info("Closing connection")
         self.close()
         self.started = False
+        Logger.info("Stopped Streamer")
 
     def on_seedlink_error(self):  # pragma: no cover
         """ Cope with seedlink errors."""

@@ -513,13 +513,15 @@ class RealTimeTribe(Tribe):
                         f"Streaming Client last received data at "
                         f"{self.rt_client.last_data}")
                     stream_end = max(tr.stats.endtime for tr in st)
-                    Logger.info(f"Real-time client provided data: \n{st}")
+                    Logger.info(
+                        f"Real-time client provided data: \n{st.__str__(extended=True)}")
                     # Cope with data that doesn't come
                     if start_time - last_data_received > 60 or \
                             last_data_received - stream_end > 60:
                         Logger.warning(
                             "The streaming client has not given any new data for "
                             "60 seconds. Restarting Streaming client")
+                        Logger.info(f"start_time: {start_time}, last_data_received: {last_data_received}, stream_end: {stream_end}")
                         Logger.info("Stopping streamer")
                         self.rt_client.background_stop()
                         self.rt_client.stop()
@@ -527,6 +529,7 @@ class RealTimeTribe(Tribe):
                         # self.rt_client = self.rt_client.copy(empty_buffer=False)
                         Logger.info("Starting streamer")
                         self._start_streaming()
+                        Logger.info("Streamer started")
                         st = self.rt_client.stream.split().merge()  # Get data again.
                     Logger.info("Streaming client seems healthy")
                     # Remove any data that shouldn't be there - sometimes GeoNet's

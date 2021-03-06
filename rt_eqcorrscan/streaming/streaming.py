@@ -256,6 +256,7 @@ class _StreamingClient(ABC):
     def _bg_run(self):
         while self.busy:
             self.run()
+        Logger.info("Running stopped, busy set to False")
 
     def background_run(self):
         """Run the client in the background."""
@@ -271,7 +272,9 @@ class _StreamingClient(ABC):
         """Stop the background thread."""
         self.stop()
         for thread in self.threads:
+            Logger.info("Joining thread")
             thread.join()
+            Logger.info("Thread joined")
 
     def on_data(self, trace: Trace):
         """
