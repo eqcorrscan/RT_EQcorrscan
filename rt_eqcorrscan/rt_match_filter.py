@@ -536,16 +536,16 @@ class RealTimeTribe(Tribe):
                     # Remove any data that shouldn't be there - sometimes GeoNet's
                     # Seedlink client gives old data.
                     Logger.info(
-                        f"Trimming between {last_data_received - (buffer_capacity + 20.0)} "
-                        f"and {last_data_received}")
+                        f"Trimming between {stream_end - (buffer_capacity + 20.0)} "
+                        f"and {stream_end}")
                     st.trim(
-                        starttime=last_data_received - (buffer_capacity + 20.0),
-                        endtime=last_data_received)
+                        starttime=stream_end - (buffer_capacity + 20.0),
+                        endtime=stream_end)
                     if detection_iteration > 0:
                         # For the first run we want to detect in everything we have.
                         st.trim(
-                            starttime=last_data_received - self.minimum_data_for_detection,
-                            endtime=last_data_received)
+                            starttime=stream_end - self.minimum_data_for_detection,
+                            endtime=stream_end)
                     Logger.info("Trimmed data")
                     if len(st) == 0:
                         Logger.warning("No data")
@@ -588,12 +588,12 @@ class RealTimeTribe(Tribe):
                             self._handle_detections(
                                 new_party, trig_int=trig_int,
                                 hypocentral_separation=hypocentral_separation,
-                                endtime=last_data_received - keep_detections,
+                                endtime=stream_end - keep_detections,
                                 detect_directory=detect_directory,
                                 save_waveforms=save_waveforms,
                                 plot_detections=plot_detections, st=st)
                         self._remove_old_detections(
-                            last_data_received - keep_detections)
+                            stream_end - keep_detections)
                         Logger.info("Party now contains {0} detections".format(
                             len(self.detections)))
                     self._running = False  # Release lock
@@ -621,8 +621,8 @@ class RealTimeTribe(Tribe):
                         _rate = average_rate(
                             self.detections,
                             starttime=max(
-                                last_data_received - keep_detections, first_data),
-                            endtime=last_data_received)
+                                stream_end - keep_detections, first_data),
+                            endtime=stream_end)
                         if _rate < minimum_rate:
                             Logger.critical(
                                 "Rate ({0:.2f}) has dropped below minimum rate, "
