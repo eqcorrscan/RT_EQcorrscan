@@ -25,6 +25,9 @@ from rt_eqcorrscan.streaming.buffers import Buffer
 Logger = logging.getLogger(__name__)
 
 
+exit_event = threading.Event()
+
+
 class _StreamingClient(ABC):
     """
     Abstract Base Class for streaming clients
@@ -256,6 +259,9 @@ class _StreamingClient(ABC):
     def _bg_run(self):
         while self.busy:
             self.run()
+            if exit_event.is_set():
+                Logger.critical("Exit Event is set - stopping run loop")
+                break
         Logger.info("Running stopped, busy set to False")
 
     def background_run(self):
@@ -271,10 +277,12 @@ class _StreamingClient(ABC):
     def background_stop(self):
         """Stop the background thread."""
         self.stop()
+        exit_event.set()
         for thread in self.threads:
             Logger.info("Joining thread")
             thread.join()
             Logger.info("Thread joined")
+        exit_event.clear()
 
     def on_data(self, trace: Trace):
         """

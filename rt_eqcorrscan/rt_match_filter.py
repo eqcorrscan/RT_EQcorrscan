@@ -404,6 +404,7 @@ class RealTimeTribe(Tribe):
         The party created - will not contain detections expired by
         `keep_detections` threshold.
         """
+        restart_interval = 600.0
         # Reshape the templates first
         if len(self.templates) > 0:
             self.templates = reshape_templates(
@@ -516,11 +517,11 @@ class RealTimeTribe(Tribe):
                     Logger.info(
                         f"Real-time client provided data: \n{st.__str__(extended=True)}")
                     # Cope with data that doesn't come
-                    if start_time - last_data_received > 60 or \
-                            last_data_received - stream_end > 60:
+                    if start_time - last_data_received > restart_interval or \
+                            last_data_received - stream_end > restart_interval:
                         Logger.warning(
                             "The streaming client has not given any new data for "
-                            "60 seconds. Restarting Streaming client")
+                            f"{restart_interval} seconds. Restarting Streaming client")
                         Logger.info(f"start_time: {start_time}, last_data_received: {last_data_received}, stream_end: {stream_end}")
                         Logger.info("Stopping streamer")
                         self.rt_client.background_stop()
