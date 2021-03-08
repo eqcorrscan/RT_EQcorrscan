@@ -504,7 +504,7 @@ class RealTimeTribe(Tribe):
                 try:
                     self._running = True  # Lock tribe
                     start_time = UTCDateTime.now()
-                    st = self.rt_client.stream.split().merge()
+                    st = self.rt_client.stream.split()
                     last_data_received = self.rt_client.last_data
                     # Split to remove trailing mask
                     if len(st) == 0:
@@ -514,6 +514,8 @@ class RealTimeTribe(Tribe):
                         f"Streaming Client last received data at "
                         f"{self.rt_client.last_data}")
                     stream_end = max(tr.stats.endtime for tr in st)
+                    min_stream_end = min(tr.stats.endtime for tr in st)
+                    st.merge()
                     Logger.info(
                         f"Real-time client provided data: \n{st.__str__(extended=True)}")
                     # Cope with data that doesn't come
@@ -542,8 +544,9 @@ class RealTimeTribe(Tribe):
                         endtime=stream_end)
                     if detection_iteration > 0:
                         # For the first run we want to detect in everything we have.
+                        # Otherwise trim so that all channels have at-least minimum data for detection
                         st.trim(
-                            starttime=stream_end - self.minimum_data_for_detection,
+                            starttime=min_stream_end - self.minimum_data_for_detection,
                             endtime=stream_end)
                     Logger.info("Trimmed data")
                     if len(st) == 0:
