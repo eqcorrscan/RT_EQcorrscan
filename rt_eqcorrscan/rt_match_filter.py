@@ -405,6 +405,8 @@ class RealTimeTribe(Tribe):
         `keep_detections` threshold.
         """
         restart_interval = 600.0
+        # Squash duplicate channels to avoid excessive channels
+        self.templates = [squash_duplicates(t) for t in self.templates]
         # Reshape the templates first
         if len(self.templates) > 0:
             self.templates = reshape_templates(
@@ -504,7 +506,7 @@ class RealTimeTribe(Tribe):
                 try:
                     self._running = True  # Lock tribe
                     start_time = UTCDateTime.now()
-                    st = self.rt_client.stream.split()
+                    st = self.rt_client.stream.split().merge()
                     last_data_received = self.rt_client.last_data
                     # Split to remove trailing mask
                     if len(st) == 0:
@@ -515,7 +517,6 @@ class RealTimeTribe(Tribe):
                         f"{self.rt_client.last_data}")
                     stream_end = max(tr.stats.endtime for tr in st)
                     min_stream_end = min(tr.stats.endtime for tr in st)
-                    st.merge()
                     Logger.info(
                         f"Real-time client provided data: \n{st.__str__(extended=True)}")
                     # Cope with data that doesn't come
@@ -570,7 +571,8 @@ class RealTimeTribe(Tribe):
                             cores=self.max_correlation_cores,
                             process_cores=self.process_cores,
                             parallel_process=self._parallel_processing,
-                            ignore_bad_data=True, **kwargs)
+                            ignore_bad_data=True, copy_data=False,
+                            **kwargs)
                         Logger.info("Completed detection")
                     except Exception as e:  # pragma: no cover
                         Logger.error(e)
@@ -751,6 +753,8 @@ class RealTimeTribe(Tribe):
             new_tribe = Tribe(templates)
         else:
             new_tribe = templates
+        # Squash duplicate channels to avoid excessive channels
+        new_tribe.templates = [squash_duplicates(t) for t in new_tribe.templates]
         # Reshape
         new_tribe.templates = reshape_templates(
             templates=new_tribe.templates, used_seed_ids=self.expected_seed_ids)
@@ -894,6 +898,11 @@ class RealTimeTribe(Tribe):
             new_tribe = templates
         else:
             new_tribe = Tribe(templates)
+        # Squash duplicate channels to avoid excessive channels
+        new_tribe.templates = [squash_duplicates(t) for t in new_tribe.templates]
+        # Reshape
+        new_tribe.templates = reshape_templates(
+            templates=new_tribe.templates, used_seed_ids=self.expected_seed_ids)
         Logger.info(f"Backfilling with {len(new_tribe)} templates")
         Logger.debug("Additional templates to be run: \n{0} "
                      "templates".format(len(new_tribe)))
@@ -915,7 +924,8 @@ class RealTimeTribe(Tribe):
                 xcorr_func="fftw", concurrency="concurrent",
                 cores=self.max_correlation_cores,
                 parallel_process=self._parallel_processing,
-                process_cores=self.process_cores, **kwargs)
+                process_cores=self.process_cores, copy_data=False,
+                **kwargs)
             detect_directory = detect_directory.format(name=self.name)
             Logger.info(
                 f"Backfill detection between {_starttime} and {_endtime} "
@@ -1003,6 +1013,58 @@ def reshape_templates(
         original.st = template_st
         templates_back.append(original)
     return templates_back
+
+
+def squash_duplicates(template: Template):
+    """
+    Remove duplicate channels in templates. 
+
+    This happens when there are duplicate picks, and it fucks shit up.
+    More explicitly (less?): when there are duplicate picks, duplicate
+    channels appear in the template, which are then extended to all
+    templates meaning that many copies of a template are run, resulting
+    in excessive detection bias on one channel, and very expensive templates
+    without good reason.
+    """
+    from collections import Counter
+    # Check if there are duplicate channels first
+    seed_ids = Counter(tr.id for tr in template.st)
+    if seed_ids.most_common(1)[0][1] == 1:
+        # Do nothing, no duplicates
+        return template
+    unique_template_st = Stream()
+    unique_event_picks = []
+    for seed_id, repeats in seed_ids.most_common():
+        seed_id_picks = [p for p in template.event.picks 
+                         if p.waveform_id.get_seed_string() == seed_id 
+                         and p.phase_hint[0] in "PS"]
+        if repeats == 1:
+            unique_template_st += template.st.select(id=seed_id)
+            unique_event_picks.append(seed_id_picks[0])
+            continue
+        # Now we get to doing something - get the stream and the picks
+        repeat_stream = template.st.select(id=seed_id)
+        # Get the unique start-times
+        unique_traces = {tr.stats.starttime.datetime: tr 
+                         for tr in repeat_stream.traces}
+        if len(unique_traces) == 1:
+            unique_template_st += unique_traces.popitem()[1]
+            unique_event_picks.append(seed_id_picks[0])
+            continue
+        # If there are more than one unique start-time then we need to 
+        # find the appropriate pick for each
+        unique_picks = {f"{p.phase_hint}_{p.time}": p for p in seed_id_picks}
+        for pick in unique_picks.values():
+            expected_starttime = pick.time - template.prepick
+            tr = unique_traces.get(expected_starttime.datetime, None)
+            if tr:
+                unique_event_picks.append(pick)
+                unique_template_st += tr
+            else:
+                Logger.debug(f"No trace for pick at {pick.time}")
+    template.st = unique_template_st
+    template.event.picks = unique_event_picks
+    return template
 
 
 def _write_detection(

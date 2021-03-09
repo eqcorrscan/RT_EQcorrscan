@@ -89,6 +89,7 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         for connection closure from another thread.
         """
         # Note: This somewhat resembles the run() method in SLClient.
+        EXIT_EVENT.clear()  # Clear the exit event
 
         # Check if any streams have been specified (otherwise this will result
         # in an infinite reconnect loop in the SeedLinkConnection)
@@ -103,8 +104,12 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         while True:
             data = self.conn.collect()
 
-            if data == SLPacket.SLTERMINATE or EXIT_EVENT.is_set():
-                Logger.warning("Run termination called.")
+            if data == SLPacket.SLTERMINATE:
+                Logger.warning("Recieved Terminate request from host")
+                self.on_terminate()
+                break
+            if EXIT_EVENT.is_set():
+                Logger.warning("Run termination called - EXIT_EVENT is set.")
                 self.on_terminate()
                 break
             elif data == SLPacket.SLERROR:
@@ -186,6 +191,22 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         self.close()
         self.started = False
         Logger.info("Stopped Streamer")
+
+    def on_terminate(self) -> Stream:  # pragma: no cover
+        """
+        Handle termination gracefully
+        """
+        Logger.info("Termination of {0}".format(self.__repr__()))
+        if not self._stop_called:  # Make sure we don't double-call stop methods
+            if len(self.threads):
+                self.background_stop()
+            else:
+                self.stop()
+        else:
+            Logger.info("Stop already called - not duplicating")
+        EXIT_EVENT.clear()
+        return self.stream
+
 
     def on_seedlink_error(self):  # pragma: no cover
         """ Cope with seedlink errors."""
