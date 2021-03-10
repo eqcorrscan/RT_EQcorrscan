@@ -66,7 +66,7 @@ class SeedLinkTest(unittest.TestCase):
                 net=net, station=station, selector=selector)
 
         rt_client.background_run()
-        while len(rt_client.buffer) < 7:
+        while len(rt_client.stream) < 7:
             # Wait until we have some data
             time.sleep(SLEEP_STEP)
 

@@ -9,13 +9,13 @@ License
 """
 
 import time
-import threading
+import multiprocessing
 import logging
 import numpy as np
-import copy
 
 from abc import ABC, abstractmethod
 from typing import Union, List
+from queue import Empty, Full
 
 from obspy import Stream, Trace, UTCDateTime
 from obsplus import WaveBank
@@ -49,8 +49,8 @@ class _StreamingClient(ABC):
     """
     busy = False
     started = False
-    lock = threading.Lock()  # Lock for buffer access
-    wavebank_lock = threading.Lock()
+    lock = multiprocessing.Lock()  # Lock for buffer access
+    wavebank_lock = multiprocessing.Lock()
     has_wavebank = False
     __last_data = None
     _stop_called = False
@@ -70,11 +70,24 @@ class _StreamingClient(ABC):
         self._buffer = buffer
         self.buffer_capacity = buffer_capacity
 
+        # Queues for communication
+        self._stream_queue = multiprocessing.Queue(maxsize=1)
+        self._last_data_queue = multiprocessing.Queue(maxsize=1)
+        self._buffer_full_queue = multiprocessing.Queue(maxsize=1)
+        # Poison!
+        self._killer_queue = multiprocessing.Queue(maxsize=1)
+
+        # Private attributes for properties
+        self.__stream = Stream()
+        self.__last_data = None
+        self.__buffer_full = False
+
         # Wavebank status to avoid accessing the underlying, lockable, wavebank
         self.__wavebank = wavebank
         if wavebank:
             self.has_wavebank = True
-        self.threads = []
+        self._wavebank_warned = False  # Reduce duplicate warnings
+        self.processes = []
 
     def __repr__(self):
         """
@@ -107,39 +120,96 @@ class _StreamingClient(ABC):
         return self._buffer
 
     def clear_buffer(self):
-        """ Clear the current buffer. """
+        """Clear the current buffer. Cannot be accessed outside the process."""
         with self.lock:
             self._buffer = Buffer(traces=[], maxlen=self.buffer_capacity)
 
     @property
     def buffer_full(self) -> bool:
-        with self.lock:
-            if len(self.buffer) == 0:
-                full = False
-            else:
-                full = self.buffer.is_full()
-        return full
+        try:
+            self.__buffer_full = self._buffer_full_queue.get(block=False)
+        except Empty:
+            pass
+        return self.__buffer_full
+
+    @buffer_full.setter
+    def buffer_full(self, full: bool):
+        try:
+            self._buffer_full_queue.put(full, block=False)
+        except Full:
+            try:
+                self._buffer_full_queue.get(False)
+            except Empty:
+                pass
+            try:
+                self._buffer_full_queue.put(full, timeout=10)
+            except Full:
+                Logger.error("Could not update buffer full - queue is full")
+
+    @property
+    def last_data(self) -> UTCDateTime:
+        try:
+            self.__last_data = self._last_data_queue.get(block=False)
+        except Empty:
+            pass
+        return self.__last_data
+
+    @last_data.setter
+    def last_data(self, timestamp: UTCDateTime):
+        try:
+            self._last_data_queue.put(timestamp, block=False)
+        except Full:
+            # Empty it!
+            try:
+                self._last_data_queue.get(block=False)
+            except Empty:
+                # Just in case the state changed...
+                pass
+            try:
+                self._last_data_queue.put(timestamp, timeout=10)
+            except Full:
+                Logger.error("Could not update the state of last data - queue is full")
+
+    @property
+    def stream(self) -> Stream:
+        try:
+            self.__stream = self._stream_queue.get(block=False)
+        except Empty:
+            pass
+        # If the queue is empty then return current state - this happens
+        # if the queue has not been updated since we last checked.
+        return self.__stream
+
+    @stream.setter
+    def stream(self, st: Stream):
+        try:
+            self._stream_queue.put(st, block=False)
+        except Full:
+            # Empty it!
+            try:
+                self._stream_queue.get(block=False)
+            except Empty:
+                # Just in case the state changed...
+                pass
+            try:
+                self._stream_queue.put(st, timeout=10)
+            except Full:
+                Logger.error(
+                    "Could not update the state of stream - queue is full")
 
     @property
     def buffer_length(self) -> float:
         """
         Return the maximum length of the buffer in seconds.
         """
-        with self.lock:
-            if len(self.buffer) == 0:
-                buffer_length = 0.
-            else:
-                buffer_length = max([tr.data_len for tr in self.buffer])
-        return buffer_length
+        st = self.stream
+        if len(st) == 0:
+            return 0.0
+        return max([tr.stats.npts / tr.stats.sampling_rate for tr in st])
 
     @property
     def buffer_ids(self) -> set:
-        with self.lock:
-            if len(self.buffer) == 0:
-                chans = set()
-            else:
-                chans = {tr.id for tr in self.buffer}
-        return chans
+        return {tr.id for tr in self.stream}
 
     @property
     def wavebank(self):
@@ -152,16 +222,6 @@ class _StreamingClient(ABC):
             self.has_wavebank = True
         else:
             self.has_wavebank = False
-
-    @property
-    def last_data(self) -> UTCDateTime:
-        with self.lock:
-            return copy.deepcopy(self.__last_data)
-
-    @last_data.setter
-    def last_data(self, timestamp: UTCDateTime):
-        with self.lock:
-            self.__last_data = timestamp
 
     @abstractmethod
     def copy(self, empty_buffer: bool = True):
@@ -179,20 +239,6 @@ class _StreamingClient(ABC):
         """
         Disconnect and reconnect and restart the Streaming Client.
         """
-
-    @property
-    def stream(self) -> Stream:
-        """ Get a copy of the stream in the buffer. """
-        return self._get_stream()
-
-    def _get_stream(self) -> Stream:
-        """ Get a copy of the current data in buffer. """
-        with self.lock:
-            Logger.info(f"Copying data: Lock status: {self.lock.locked()}")
-            stream = self.buffer.stream
-        Logger.info(
-            f"Finished getting the data: Lock status: {self.lock.locked()}")
-        return stream
 
     def _access_wavebank(
         self,
@@ -222,7 +268,8 @@ class _StreamingClient(ABC):
         Whatever should be returned by the method.
         """
         if not self.has_wavebank:
-            Logger.error("No wavebank attached to streamer")
+            if not self._wavebank_warned:
+                Logger.error("No wavebank attached to streamer")
             return None
         timer, wait_step = 0.0, 0.5
         with self.wavebank_lock:
@@ -249,7 +296,7 @@ class _StreamingClient(ABC):
         return out
 
     def get_wavebank_stream(self, bulk: List[tuple]) -> Stream:
-        """ threadsafe get-waveforms-bulk call """
+        """ processsafe get-waveforms-bulk call """
         st = self._access_wavebank(
             method="get_waveforms_bulk", timeout=120., bulk=bulk)
         return st
@@ -258,26 +305,37 @@ class _StreamingClient(ABC):
         while self.busy:
             self.run()
         Logger.info("Running stopped, busy set to False")
+        return
+
+    def _clear_killer(self):
+        """ Clear the killer Queue. """
+        while True:
+            try:
+                self._killer_queue.get(block=False)
+            except Empty:
+                break
 
     def background_run(self):
         """Run the client in the background."""
-        self.busy = True
-        streaming_thread = threading.Thread(
-            target=self._bg_run, name="StreamThread")
-        streaming_thread.daemon = True
-        streaming_thread.start()
-        self.threads.append(streaming_thread)
+        self.busy, self.started = True, True
+        self._clear_killer()   # Clear the kill queue
+        streaming_process = multiprocessing.Process(
+            target=self._bg_run, name="StreamProcess")
+        # streaming_process.daemon = True
+        streaming_process.start()
+        self.processes.append(streaming_process)
         Logger.info("Started streaming")
 
     def background_stop(self):
-        """Stop the background thread."""
+        """Stop the background process."""
         self._stop_called = True
+        self._killer_queue.put(True)
         self.stop()
-        for thread in self.threads:
-            Logger.info("Joining thread")
-            thread.join()
+        for process in self.processes:
+            Logger.info("Joining process")
+            process.join()
             Logger.info("Thread joined")
-        self.threads = []
+        self.processes = []
 
     def on_data(self, trace: Trace):
         """
@@ -292,34 +350,38 @@ class _StreamingClient(ABC):
         Logger.debug("Packet of {0} samples for {1}".format(
             trace.stats.npts, trace.id))
         with self.lock:
-            Logger.debug(f"Adding data: Lock status: {self.lock.locked()}")
+            Logger.debug(f"Adding data: Lock status: {self.lock}")
             try:
                 self.buffer.add_stream(trace)
             except Exception as e:
                 Logger.error(
                     f"Could not add {trace} to buffer due to {e}")
+            self.buffer_full = self.buffer.is_full()
         if trace.data.dtype == np.int32 and trace.data.dtype.type != np.int32:
             # Cope with a windows error where data come in as 
             # "int32" not np.int32. See https://github.com/obspy/obspy/issues/2683
             trace.data = trace.data.astype(np.int32)
-        self._access_wavebank(
-            method="put_waveforms", timeout=120., stream=Stream([trace]))
+        if self.has_wavebank:
+            self._access_wavebank(
+                method="put_waveforms", timeout=120., stream=Stream([trace]))
         Logger.debug("Buffer contains {0}".format(self.buffer))
-        Logger.debug(f"Finished adding data: Lock status: {self.lock.locked()}")
+        Logger.debug(f"Finished adding data: Lock status: {self.lock}")
+        self.stream = self.buffer.stream
 
     def on_terminate(self) -> Stream:  # pragma: no cover
         """
         Handle termination gracefully
         """
+        st = self.stream   # Get stream before termination - cannot communicate
         Logger.info("Termination of {0}".format(self.__repr__()))
         if not self._stop_called:  # Make sure we don't double-call stop methods
-            if len(self.threads):
+            if len(self.processes):
                 self.background_stop()
             else:
                 self.stop()
         else:
             Logger.info("Stop already called - not duplicating")
-        return self.stream
+        return st
 
     @staticmethod
     def on_error():  # pragma: no cover

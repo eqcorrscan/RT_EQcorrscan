@@ -14,6 +14,7 @@ from numpy import random
 import importlib
 
 from obspy import Stream, UTCDateTime
+from queue import Empty
 
 from obsplus import WaveBank
 
@@ -130,9 +131,18 @@ class RealTimeClient(_StreamingClient):
         assert len(self.bulk) > 0, "Select a stream first"
         self.streaming = True
         now = copy.deepcopy(self.starttime)
-        self._last_data = UTCDateTime.now()
+        self.last_data = UTCDateTime.now()
         last_query_start = now - self.query_interval
         while self.streaming:
+            # If this is running in a process then we need to check the queue
+            try:
+                kill = self._killer_queue.get(block=False)
+            except Empty:
+                kill = False
+            if kill:
+                Logger.warning("Termination called, stopping collect loop")
+                self.on_terminate()
+                return
             _query_start = UTCDateTime.now()
             st = Stream()
             query_passed = True
@@ -164,6 +174,7 @@ class RealTimeClient(_StreamingClient):
             now += max(self.query_interval, _query_duration)
             if query_passed:
                 last_query_start = min(_bulk["endtime"] for _bulk in self.bulk)
+        return
 
     def stop(self) -> None:
         self._stop_called = True

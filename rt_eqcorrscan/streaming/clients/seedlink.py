@@ -7,7 +7,8 @@ License
     GPL v3.0
 """
 import logging
-import threading
+
+from queue import Empty
 
 from obspy.clients.seedlink.easyseedlink import (
     EasySeedLinkClient, EasySeedLinkClientException)
@@ -20,8 +21,6 @@ from rt_eqcorrscan.streaming.streaming import _StreamingClient
 
 
 Logger = logging.getLogger(__name__)
-
-EXIT_EVENT = threading.Event()
 
 
 class RealTimeClient(_StreamingClient, EasySeedLinkClient):
@@ -86,10 +85,9 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         when events occur.
 
         This is an edited version of EasySeedlinkClient from ObsPy allowing
-        for connection closure from another thread.
+        for connection closure from another process.
         """
         # Note: This somewhat resembles the run() method in SLClient.
-        EXIT_EVENT.clear()  # Clear the exit event
 
         # Check if any streams have been specified (otherwise this will result
         # in an infinite reconnect loop in the SeedLinkConnection)
@@ -104,12 +102,18 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         while True:
             data = self.conn.collect()
 
-            if data == SLPacket.SLTERMINATE:
-                Logger.warning("Recieved Terminate request from host")
+            try:
+                kill = self._killer_queue.get(block=False)
+            except Empty:
+                kill = False
+            if kill:
+                Logger.warning(
+                    "Run termination called - poison received is set.")
                 self.on_terminate()
-                break
-            if EXIT_EVENT.is_set():
-                Logger.warning("Run termination called - EXIT_EVENT is set.")
+                return
+
+            if data == SLPacket.SLTERMINATE:
+                Logger.warning("Received Terminate request from host")
                 self.on_terminate()
                 break
             elif data == SLPacket.SLERROR:
@@ -149,25 +153,30 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
 
     def start(self) -> None:
         """ Start the connection. """
-        if not self.started:
+        try:
             self.connect()
-            self.started = True
-            self._last_data = UTCDateTime.now()
-        else:
-            Logger.warning("Attempted to start connection, but "
-                           "connection already started.")
+        except Exception as e:
+            Logger.warning(f"Could not connect due to {e}, has a "
+                           "connection already started?")
+        self.started = True
+        self.last_data = UTCDateTime.now()
 
     def background_stop(self):
-        """Stop the background thread."""
+        """Stop the background process."""
         self._stop_called = True
-        EXIT_EVENT.set()
+        Logger.info("Adding Poison to Kill Queue")
+        self._killer_queue.put(True)
         self.stop()
-        for thread in self.threads:
-            Logger.info("Joining thread")
-            thread.join()
-            Logger.info("Thread joined")
-        self.threads = []
-        EXIT_EVENT.clear()
+        for process in self.processes:
+            Logger.info("Joining process")
+            process.join(5)
+            if process.exitcode:
+                Logger.info("Process failed to join, terminating")
+                process.terminate()
+                Logger.info("Terminated")
+                process.join()
+            Logger.info("Process joined")
+        self.processes = []
 
     def restart(self) -> None:
         """ Restart the streamer. """
@@ -179,7 +188,32 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
 
     @property
     def can_add_streams(self) -> bool:
-        return not self._EasySeedLinkClient__streaming_started
+        return not self.started
+
+    def select_stream(self, net: str, station: str, selector: str = None):
+        """
+        Select a stream for data transfer.
+
+        Adapted from Obspy EasySeedLinkClient
+
+        Parameters:
+        net:
+            Network ID
+        station:
+            Station ID
+        selector:
+            Valid Seedlink Channel selector
+        """
+        if not self.has_capability('multistation'):
+            msg = 'SeedLink server does not support multi-station mode'
+            raise EasySeedLinkClientException(msg)
+
+        if not self.can_add_streams:
+            msg = 'Adding streams is not supported after the SeedLink ' + \
+                  'connection has entered streaming mode.'
+            raise EasySeedLinkClientException(msg)
+
+        self.conn.add_stream(net, station, selector, seqnum=-1, timestamp=None)
 
     def stop(self) -> None:
         self._stop_called = True
@@ -189,24 +223,23 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         self.conn.do_terminate()
         Logger.info("Closing connection")
         self.close()
-        self.started = False
         Logger.info("Stopped Streamer")
+        self._stop_called = False
 
     def on_terminate(self) -> Stream:  # pragma: no cover
         """
         Handle termination gracefully
         """
+        st = self.stream
         Logger.info("Termination of {0}".format(self.__repr__()))
         if not self._stop_called:  # Make sure we don't double-call stop methods
-            if len(self.threads):
+            if len(self.processes):
                 self.background_stop()
             else:
                 self.stop()
         else:
             Logger.info("Stop already called - not duplicating")
-        EXIT_EVENT.clear()
-        return self.stream
-
+        return st
 
     def on_seedlink_error(self):  # pragma: no cover
         """ Cope with seedlink errors."""

@@ -639,6 +639,7 @@ class RealTimeTribe(Tribe):
                     # summary.print_(sum1)
                 except Exception as e:
                     Logger.critical(f"Uncaught error: {e}")
+                    Logger.error(traceback.format_exc())
         finally:
             Logger.critical("Stopping")
             self.stop()
