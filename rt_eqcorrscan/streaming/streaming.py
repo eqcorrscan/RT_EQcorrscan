@@ -175,6 +175,7 @@ class _StreamingClient(ABC):
         try:
             self.__stream = self._stream_queue.get(block=False)
         except Empty:
+            Logger.debug("No stream in queue")
             pass
         # If the queue is empty then return current state - this happens
         # if the queue has not been updated since we last checked.
@@ -184,6 +185,7 @@ class _StreamingClient(ABC):
     def stream(self, st: Stream):
         try:
             self._stream_queue.put(st, block=False)
+            Logger.debug("Put stream into queue")
         except Full:
             # Empty it!
             try:
@@ -193,6 +195,7 @@ class _StreamingClient(ABC):
                 pass
             try:
                 self._stream_queue.put(st, timeout=10)
+                Logger.debug("Put stream into queue")
             except Full:
                 Logger.error(
                     "Could not update the state of stream - queue is full")
@@ -366,13 +369,16 @@ class _StreamingClient(ABC):
                 method="put_waveforms", timeout=120., stream=Stream([trace]))
         Logger.debug("Buffer contains {0}".format(self.buffer))
         Logger.debug(f"Finished adding data: Lock status: {self.lock}")
+        Logger.debug(f"Buffer stream: \n{self.buffer.stream}")
         self.stream = self.buffer.stream
+        Logger.debug(f"Stream: \n{self.stream}")
 
     def on_terminate(self) -> Stream:  # pragma: no cover
         """
         Handle termination gracefully
         """
         st = self.stream   # Get stream before termination - cannot communicate
+        Logger.debug(f"Stream on termination: \n{st}")
         Logger.info("Termination of {0}".format(self.__repr__()))
         if not self._stop_called:  # Make sure we don't double-call stop methods
             if len(self.processes):
@@ -381,6 +387,7 @@ class _StreamingClient(ABC):
                 self.stop()
         else:
             Logger.info("Stop already called - not duplicating")
+        self.stream = st
         return st
 
     @staticmethod

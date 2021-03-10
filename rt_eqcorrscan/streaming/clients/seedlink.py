@@ -226,21 +226,6 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         Logger.info("Stopped Streamer")
         self._stop_called = False
 
-    def on_terminate(self) -> Stream:  # pragma: no cover
-        """
-        Handle termination gracefully
-        """
-        st = self.stream
-        Logger.info("Termination of {0}".format(self.__repr__()))
-        if not self._stop_called:  # Make sure we don't double-call stop methods
-            if len(self.processes):
-                self.background_stop()
-            else:
-                self.stop()
-        else:
-            Logger.info("Stop already called - not duplicating")
-        return st
-
     def on_seedlink_error(self):  # pragma: no cover
         """ Cope with seedlink errors."""
         self.on_error()
