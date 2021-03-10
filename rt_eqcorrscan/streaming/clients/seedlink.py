@@ -70,7 +70,7 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
             print_str = (
                 "Seed-link client at {0}, status: {1}, buffer capacity: "
                 "{2:.1f}s\n\tCurrent Buffer:\n{3}".format(
-                    self.server_hostname, status_map[self.busy],
+                    self.server_hostname, status_map[self.streaming],
                     self.buffer_capacity, self.buffer))
         return print_str
 
@@ -99,9 +99,12 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         self._EasySeedLinkClient__streaming_started = True
 
         # Start the collection loop
-        while True:
-            data = self.conn.collect()
+        self._stop_called = False  # Reset this - if someone called run,
+        # they probably want us to run!
 
+        # This only works for local running, not background
+        while not self._stop_called:
+            data = self.conn.collect()
             try:
                 kill = self._killer_queue.get(block=False)
             except Empty:
@@ -115,7 +118,7 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
             if data == SLPacket.SLTERMINATE:
                 Logger.warning("Received Terminate request from host")
                 self.on_terminate()
-                break
+                return
             elif data == SLPacket.SLERROR:
                 self.on_seedlink_error()
                 continue
@@ -133,6 +136,10 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
                 trace = data.get_trace()
                 # Pass the trace to the on_data callback
                 self.on_data(trace)
+
+        # If we get to here, stop has been called so we can terminate
+        self.on_terminate()
+        return
 
     def copy(self, empty_buffer: bool = True):
         """
@@ -163,7 +170,6 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
 
     def background_stop(self):
         """Stop the background process."""
-        self._stop_called = True
         Logger.info("Adding Poison to Kill Queue")
         self._killer_queue.put(True)
         self.stop()
@@ -177,6 +183,7 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
                 process.join()
             Logger.info("Process joined")
         self.processes = []
+        self.streaming = False
 
     def restart(self) -> None:
         """ Restart the streamer. """
@@ -188,7 +195,7 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
 
     @property
     def can_add_streams(self) -> bool:
-        return not self.started
+        return not self.streaming
 
     def select_stream(self, net: str, station: str, selector: str = None):
         """
@@ -217,14 +224,13 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
 
     def stop(self) -> None:
         self._stop_called = True
-        self.busy = False
         Logger.info("Terminating connection")
         self.conn.terminate()
         self.conn.do_terminate()
         Logger.info("Closing connection")
         self.close()
         Logger.info("Stopped Streamer")
-        self._stop_called = False
+        self.streaming = False
 
     def on_seedlink_error(self):  # pragma: no cover
         """ Cope with seedlink errors."""

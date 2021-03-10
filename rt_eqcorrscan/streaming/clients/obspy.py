@@ -133,7 +133,7 @@ class RealTimeClient(_StreamingClient):
         now = copy.deepcopy(self.starttime)
         self.last_data = UTCDateTime.now()
         last_query_start = now - self.query_interval
-        while self.streaming:
+        while not self._stop_called:
             # If this is running in a process then we need to check the queue
             try:
                 kill = self._killer_queue.get(block=False)
@@ -174,11 +174,11 @@ class RealTimeClient(_StreamingClient):
             now += max(self.query_interval, _query_duration)
             if query_passed:
                 last_query_start = min(_bulk["endtime"] for _bulk in self.bulk)
+        self.streaming = False
         return
 
     def stop(self) -> None:
         self._stop_called = True
-        self.busy = False
         self.streaming = False
         self.started = False
 

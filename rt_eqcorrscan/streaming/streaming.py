@@ -47,7 +47,7 @@ class _StreamingClient(ABC):
         added here as abstract methods because they clash with instantiation of
         `EasySeedLinkClient`.
     """
-    busy = False
+    streaming = False
     started = False
     lock = multiprocessing.Lock()  # Lock for buffer access
     wavebank_lock = multiprocessing.Lock()
@@ -71,9 +71,13 @@ class _StreamingClient(ABC):
         self.buffer_capacity = buffer_capacity
 
         # Queues for communication
+
+        # Outgoing data
         self._stream_queue = multiprocessing.Queue(maxsize=1)
+        # Quereyable attributes to get a view of the size of the buffer
         self._last_data_queue = multiprocessing.Queue(maxsize=1)
         self._buffer_full_queue = multiprocessing.Queue(maxsize=1)
+
         # Poison!
         self._killer_queue = multiprocessing.Queue(maxsize=1)
 
@@ -98,13 +102,26 @@ class _StreamingClient(ABC):
             print_str = (
                 "Client at {0}, status: {1}, buffer capacity: {2:.1f}s\n"
                 "\tCurrent Buffer:\n{3}".format(
-                    self.server_url, status_map[self.busy],
+                    self.server_url, status_map[self.streaming],
                     self.buffer_capacity, self.buffer))
         return print_str
 
     @abstractmethod
     def start(self) -> None:
         """ Open the connection to the streaming service. """
+
+    @abstractmethod
+    def select_stream(self, net: str, station: str, selector: str) -> None:
+        """
+        Select streams to "stream".
+
+        net
+            The network id
+        station
+            The station id
+        selector
+            a valid SEED ID channel selector, e.g. ``EHZ`` or ``EH?``
+        """
 
     @abstractmethod
     def stop(self) -> None:
@@ -305,9 +322,9 @@ class _StreamingClient(ABC):
         return st
 
     def _bg_run(self):
-        while self.busy:
+        while self.streaming:
             self.run()
-        Logger.info("Running stopped, busy set to False")
+        Logger.info("Running stopped, streaming set to False")
         return
 
     def _clear_killer(self):
@@ -320,7 +337,7 @@ class _StreamingClient(ABC):
 
     def background_run(self):
         """Run the client in the background."""
-        self.busy, self.started = True, True
+        self.streaming, self.started = True, True
         self._clear_killer()   # Clear the kill queue
         streaming_process = multiprocessing.Process(
             target=self._bg_run, name="StreamProcess")
@@ -361,7 +378,7 @@ class _StreamingClient(ABC):
                     f"Could not add {trace} to buffer due to {e}")
             self.buffer_full = self.buffer.is_full()
         if trace.data.dtype == np.int32 and trace.data.dtype.type != np.int32:
-            # Cope with a windows error where data come in as 
+            # Cope with a windows error where data come in as
             # "int32" not np.int32. See https://github.com/obspy/obspy/issues/2683
             trace.data = trace.data.astype(np.int32)
         if self.has_wavebank:

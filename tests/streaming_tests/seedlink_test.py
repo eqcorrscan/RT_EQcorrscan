@@ -27,7 +27,7 @@ class SeedLinkTest(unittest.TestCase):
         rt_client = self.rt_client.copy()
         rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
         rt_client.background_run()
-        time.sleep(60)
+        time.sleep(30)
         rt_client.background_stop()
         self.assertEqual(rt_client.buffer_length,
                          rt_client.buffer_capacity)
@@ -38,7 +38,7 @@ class SeedLinkTest(unittest.TestCase):
         rt_client.clear_buffer()
         rt_client.background_run()
         self.assertFalse(rt_client.buffer_full)
-        time.sleep(60)
+        time.sleep(30)
         rt_client.background_stop()
         self.assertTrue(rt_client.buffer_full)
 
@@ -70,7 +70,7 @@ class SeedLinkTest(unittest.TestCase):
         rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
         rt_client.wavebank = WaveBank(base_path="test_wavebank")
         rt_client.background_run()
-        time.sleep(60)
+        time.sleep(30)
         rt_client.background_stop()
         self.assertTrue(rt_client.buffer_full)  # Need a full buffer to work
         wavebank_traces = rt_client.wavebank.get_waveforms()
@@ -117,11 +117,15 @@ class SeedLinkThreadedTests(unittest.TestCase):
         tic, toc = time.time(), time.time()
         st = Stream()
         while toc - tic < 10.0:
-            st = rt_client.stream  # This waits then acquires the lock
+            st = rt_client.stream
             toc = time.time()
         rt_client.background_stop()
         assert len(st) != 0
         # If we got here without error, then we should be safe.
+
+    def test_add_trace_from_mainprocess(self):
+        """ Check that adding a trace from the main process works. """
+        assert False
 
 
 if __name__ == "__main__":
