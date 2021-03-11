@@ -53,7 +53,6 @@ class _StreamingClient(ABC):
     lock = multiprocessing.Lock()  # Lock for buffer access
     wavebank_lock = multiprocessing.Lock()
     has_wavebank = False
-    __last_data = None
     _stop_called = False
 
     def __init__(
@@ -354,7 +353,11 @@ class _StreamingClient(ABC):
     def background_stop(self):
         """Stop the background process."""
         Logger.info("Adding Poison to Kill Queue")
+        # Run communications before termination
         st = self.stream
+        self.__buffer_full = self.buffer_full
+        self.__last_data = self.last_data
+
         Logger.debug(f"Stream on termination: {st}")
         self._killer_queue.put(True)
         self.stop()
