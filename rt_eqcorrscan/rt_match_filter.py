@@ -322,10 +322,14 @@ class RealTimeTribe(Tribe):
     def _start_streaming(self):
         if not self.rt_client.started:
             self.rt_client.start()
-        for tr_id in self.expected_seed_ids:
-            self.rt_client.select_stream(
-                net=tr_id.split('.')[0], station=tr_id.split('.')[1],
-                selector=tr_id.split('.')[3])
+        if self.rt_client.can_add_streams:
+            for tr_id in self.expected_seed_ids:
+                self.rt_client.select_stream(
+                    net=tr_id.split('.')[0], station=tr_id.split('.')[1],
+                    selector=tr_id.split('.')[3])
+        else:
+            Logger.warning("Client already in streaming mode,"
+                           " cannot add channels")
         if not self.rt_client.streaming:
             self.rt_client.background_run()
             Logger.info("Started real-time streaming")

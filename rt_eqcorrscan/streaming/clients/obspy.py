@@ -49,6 +49,7 @@ class RealTimeClient(_StreamingClient):
         Length of buffer in seconds. Old data are removed in a FIFO style.
     """
     client_base = "obspy.clients"
+    can_add_streams = True
 
     def __init__(
         self,
@@ -104,10 +105,6 @@ class RealTimeClient(_StreamingClient):
             query_interval=self.query_interval, speed_up=self.speed_up,
             buffer=buffer, buffer_capacity=self.buffer_capacity,
             wavebank=self.wavebank)
-
-    @property
-    def can_add_streams(self) -> bool:
-        return True  # We can always add streams
 
     def select_stream(self, net: str, station: str, selector: str) -> None:
         """

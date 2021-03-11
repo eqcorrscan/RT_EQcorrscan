@@ -87,6 +87,7 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         This is an edited version of EasySeedlinkClient from ObsPy allowing
         for connection closure from another process.
         """
+        self.can_add_streams = False
         # Note: This somewhat resembles the run() method in SLClient.
 
         # Check if any streams have been specified (otherwise this will result
@@ -192,10 +193,6 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         Logger.warning("RESTART: Starting the streamer")
         self.start()
         Logger.warning("RESTART: Completed restart")
-
-    @property
-    def can_add_streams(self) -> bool:
-        return not self.streaming
 
     def select_stream(self, net: str, station: str, selector: str = None):
         """

@@ -49,6 +49,7 @@ class _StreamingClient(ABC):
     """
     streaming = False
     started = False
+    can_add_streams = True
     lock = multiprocessing.Lock()  # Lock for buffer access
     wavebank_lock = multiprocessing.Lock()
     has_wavebank = False
@@ -126,11 +127,6 @@ class _StreamingClient(ABC):
     @abstractmethod
     def stop(self) -> None:
         """ Stop the system. """
-
-    @property
-    @abstractmethod
-    def can_add_streams(self) -> bool:
-        """ Whether streams can be added."""
 
     @property
     def buffer(self) -> Buffer:
@@ -337,7 +333,7 @@ class _StreamingClient(ABC):
 
     def background_run(self):
         """Run the client in the background."""
-        self.streaming, self.started = True, True
+        self.streaming, self.started, self.can_add_streams = True, True, False
         self._clear_killer()   # Clear the kill queue
         streaming_process = multiprocessing.Process(
             target=self._bg_run, name="StreamProcess")

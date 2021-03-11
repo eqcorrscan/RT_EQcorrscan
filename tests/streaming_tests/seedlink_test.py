@@ -125,7 +125,22 @@ class SeedLinkThreadedTests(unittest.TestCase):
 
     def test_add_trace_from_mainprocess(self):
         """ Check that adding a trace from the main process works. """
-        assert False
+        rt_client = self.rt_client.copy()
+        rt_client.buffer_capacity = 600  # Set to a long capacity for this
+        rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
+        rt_client.background_run()
+        time.sleep(20)
+        st = rt_client.stream
+        assert len(st) > 0, "Empty Stream, cannot perform test"
+        tr = st[0]
+        tr.stats.starttime -= 100
+        rt_client.on_data(tr)
+        time.sleep(20)
+        rt_client.background_stop()
+        st = rt_client.stream.merge()
+        assert len(st) == 1, "More than one trace in stream!"
+        assert st[0].stats.starttime == tr.stats.starttime
+        assert st[0].stats.endtime > tr.stats.endtime
 
 
 if __name__ == "__main__":
