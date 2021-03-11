@@ -138,6 +138,12 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
                 # Pass the trace to the on_data callback
                 self.on_data(trace)
 
+            # Check the incoming queue for data and add it to the buffer
+            # Doing this outside of "on_data" should allow external Processes
+            # to add data to the buffer
+            Logger.debug("Checking the incoming queue")
+            self._add_data_from_queue()
+
         # If we get to here, stop has been called so we can terminate
         self.on_terminate()
         return
@@ -168,23 +174,6 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
                            "connection already started?")
         self.started = True
         self.last_data = UTCDateTime.now()
-
-    def background_stop(self):
-        """Stop the background process."""
-        Logger.info("Adding Poison to Kill Queue")
-        self._killer_queue.put(True)
-        self.stop()
-        for process in self.processes:
-            Logger.info("Joining process")
-            process.join(5)
-            if process.exitcode:
-                Logger.info("Process failed to join, terminating")
-                process.terminate()
-                Logger.info("Terminated")
-                process.join()
-            Logger.info("Process joined")
-        self.processes = []
-        self.streaming = False
 
     def restart(self) -> None:
         """ Restart the streamer. """

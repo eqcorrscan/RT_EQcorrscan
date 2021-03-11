@@ -60,7 +60,7 @@ class SeedLinkTest(unittest.TestCase):
         time.sleep(10)
         stream = rt_client.stream
         self.assertIsInstance(stream, Stream)
-        time.sleep(10)
+        time.sleep(20)
         stream2 = rt_client.stream
         self.assertNotEqual(stream, stream2)
         rt_client.background_stop()
@@ -116,7 +116,7 @@ class SeedLinkThreadedTests(unittest.TestCase):
         rt_client.background_run()
         tic, toc = time.time(), time.time()
         st = Stream()
-        while toc - tic < 10.0:
+        while toc - tic < 20.0:
             st = rt_client.stream
             toc = time.time()
         rt_client.background_stop()
@@ -125,22 +125,39 @@ class SeedLinkThreadedTests(unittest.TestCase):
 
     def test_add_trace_from_mainprocess(self):
         """ Check that adding a trace from the main process works. """
-        rt_client = self.rt_client.copy()
-        rt_client.buffer_capacity = 600  # Set to a long capacity for this
+        rt_client = RealTimeClient(
+            server_url="link.geonet.org.nz", buffer_capacity=600.)
         rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
         rt_client.background_run()
         time.sleep(20)
-        st = rt_client.stream
+        st = rt_client.stream.split()
         assert len(st) > 0, "Empty Stream, cannot perform test"
         tr = st[0]
         tr.stats.starttime -= 100
         rt_client.on_data(tr)
         time.sleep(20)
         rt_client.background_stop()
-        st = rt_client.stream.merge()
+        st = rt_client.stream.split().merge()
         assert len(st) == 1, "More than one trace in stream!"
-        assert st[0].stats.starttime == tr.stats.starttime
-        assert st[0].stats.endtime > tr.stats.endtime
+        self.assertLess(st[0].stats.starttime - tr.stats.starttime, 0.01)
+        self.assertGreater(st[0].stats.endtime, tr.stats.endtime)
+
+    def test_add_data_not_streaming(self):
+        rt_client = RealTimeClient(
+            server_url="link.geonet.org.nz", buffer_capacity=600.)
+        rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
+        rt_client.background_run()
+        time.sleep(30)
+        rt_client.background_stop()
+        st = rt_client.stream.split().merge()
+        self.assertGreater(len(st), 0)
+        tr = st[0].copy()
+        tr.stats.starttime -= 100
+        # Try to add the trace.
+        rt_client.on_data(tr)
+        st2 = rt_client.stream.split().merge()
+        self.assertLess(st2[0].stats.starttime - tr.stats.starttime, 0.01)
+        self.assertGreater(st2[0].stats.endtime, tr.stats.endtime)
 
 
 if __name__ == "__main__":

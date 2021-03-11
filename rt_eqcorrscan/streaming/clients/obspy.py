@@ -158,6 +158,8 @@ class RealTimeClient(_StreamingClient):
                     continue
             for tr in st:
                 self.on_data(tr)
+            # Put the data in the buffer
+            self._add_data_from_queue()
             _query_duration = UTCDateTime.now() - _query_start
             Logger.debug(
                 "It took {0:.2f}s to query the database and sort data".format(

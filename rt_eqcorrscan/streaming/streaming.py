@@ -75,6 +75,9 @@ class _StreamingClient(ABC):
 
         # Outgoing data
         self._stream_queue = multiprocessing.Queue(maxsize=1)
+        # Incoming data - no limit on size, just empty it!
+        self._incoming_queue = multiprocessing.Queue()
+
         # Quereyable attributes to get a view of the size of the buffer
         self._last_data_queue = multiprocessing.Queue(maxsize=1)
         self._buffer_full_queue = multiprocessing.Queue(maxsize=1)
@@ -187,6 +190,12 @@ class _StreamingClient(ABC):
     def stream(self) -> Stream:
         try:
             self.__stream = self._stream_queue.get(block=False)
+            # Need to put it back for future Processes!
+            try:
+                self._stream_queue.put(self.__stream, block=False)
+            except Full:
+                # Something else has added while we were not looking! Okay
+                pass
         except Empty:
             Logger.debug("No stream in queue")
             pass
@@ -344,14 +353,34 @@ class _StreamingClient(ABC):
 
     def background_stop(self):
         """Stop the background process."""
-        self._stop_called = True
+        Logger.info("Adding Poison to Kill Queue")
+        st = self.stream
+        Logger.debug(f"Stream on termination: {st}")
         self._killer_queue.put(True)
         self.stop()
         for process in self.processes:
             Logger.info("Joining process")
-            process.join()
-            Logger.info("Thread joined")
+            process.join(5)
+            if process.exitcode:
+                Logger.info("Process failed to join, terminating")
+                process.terminate()
+                Logger.info("Terminated")
+                process.join()
+            Logger.info("Process joined")
         self.processes = []
+        self.streaming = False
+        # Local buffer
+        for tr in st:
+            Logger.debug("Adding trace to local buffer")
+            self.buffer.add_stream(tr)
+        # Empty queues
+        for queue in [self._incoming_queue, self._stream_queue,
+                      self._killer_queue, self._last_data_queue]:
+            while True:
+                try:
+                    queue.get(block=False)
+                except Empty:
+                    break
 
     def on_data(self, trace: Trace):
         """
@@ -365,6 +394,46 @@ class _StreamingClient(ABC):
         self.last_data = UTCDateTime.now()
         Logger.debug("Packet of {0} samples for {1}".format(
             trace.stats.npts, trace.id))
+        # Put data into queue - get the run process to handle it!
+        if self.streaming:
+            self._incoming_queue.put(trace)
+            Logger.debug("Added trace to queue")
+        else:
+            # If the streamer is not running somewhere else, then we have to
+            # add data in this Process.
+            Logger.debug("Not streaming - will add directly now.")
+            self._add_trace_to_buffer(trace)
+
+    def _add_data_from_queue(self):
+        """
+        Check the incoming data queue for any data and add it to the queue!
+        """
+        # Empty the queue into Process-local memory
+        traces = []
+        while True:
+            try:
+                trace = self._incoming_queue.get(block=False)
+                Logger.debug(f"Extracted trace from incoming queue: \n{trace}")
+                traces.append(trace)
+            except Empty:
+                Logger.debug("Incoming data queue is empty")
+                break
+        if len(traces) == 0:
+            Logger.debug("No traces extracted from incoming queue")
+            return
+        for trace in traces:
+            self._add_trace_to_buffer(trace)
+
+    def _add_trace_to_buffer(self, trace: Trace):
+        """
+        Add a trace to the buffer.
+
+        Parameters
+        ----------
+        trace
+            Trace to add to the internal buffer
+        """
+
         with self.lock:
             Logger.debug(f"Adding data: Lock status: {self.lock}")
             try:
