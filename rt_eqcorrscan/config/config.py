@@ -136,12 +136,6 @@ class StreamingConfig(_ConfigAttribDict):
         super().__init__(*args, **kwargs)
 
     @property
-    def _local_wave_bank(self):
-        if isinstance(self.local_wave_bank, str):
-            return WaveBank(self.local_wave_bank)
-        return None
-
-    @property
     def rt_client_module(self):
         return importlib.import_module(
             f"{self.rt_client_base}.{self.rt_client_type.lower()}")

@@ -93,7 +93,7 @@ class RealTimeTribe(Tribe):
         detect_interval: float = 60.,
         plot: bool = True,
         plot_options: dict = None,
-        wavebank: WaveBank = WaveBank("Streaming_WaveBank"),
+        wavebank: Union[str, WaveBank] = WaveBank("Streaming_WaveBank"),
     ) -> None:
         super().__init__(templates=tribe.templates)
         self.rt_client = rt_client
@@ -114,6 +114,8 @@ class RealTimeTribe(Tribe):
         self.detections = []
 
         # Wavebank status to avoid accessing the underlying, lockable, wavebank
+        if isinstance(wavebank, str):
+            wavebank = WaveBank(wavebank)
         self.__wavebank = wavebank
         if wavebank:
             self.has_wavebank = True

@@ -41,8 +41,8 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
         filename="{0}/rt_eqcorrscan_{1}.log".format(
             working_dir,
             os.path.split(working_dir)[-1]))
-    # Enforce a local-wave-bank for the streamer
-    config.streaming.local_wave_bank = "streaming_wavebank"
+    # Enforce a local-wave-bank for the spun-up real-time instance
+    config.rt_match_filter.local_wave_bank = "streaming_wavebank"
 
     triggering_event = read_events('triggering_event.xml')[0]
     Logger.debug(f"Triggered by {triggering_event}")
