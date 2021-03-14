@@ -41,13 +41,12 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         server_url: str,
         buffer: Stream = None,
         buffer_capacity: float = 600.,
-        wavebank: WaveBank = None,
     ) -> None:
         EasySeedLinkClient.__init__(
             self, server_url=server_url, autoconnect=False)
         _StreamingClient.__init__(
             self, server_url=server_url, buffer=buffer,
-            buffer_capacity=buffer_capacity, wavebank=wavebank)
+            buffer_capacity=buffer_capacity)
         self.conn.keepalive = 0
         self.conn.netdly = 30
         Logger.debug("Instantiated RealTime client: {0}".format(self))
@@ -163,7 +162,7 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
             buffer = self.stream
         return RealTimeClient(
             server_url=self.server_hostname, buffer=buffer,
-            buffer_capacity=self.buffer_capacity, wavebank=self.wavebank)
+            buffer_capacity=self.buffer_capacity)
 
     def start(self) -> None:
         """ Start the connection. """

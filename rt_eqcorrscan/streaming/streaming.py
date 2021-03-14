@@ -8,17 +8,15 @@ License
     GPL v3.0
 """
 
-import time
 import multiprocessing
 import logging
 import numpy as np
 
 from abc import ABC, abstractmethod
-from typing import Union, List
+from typing import Union
 from queue import Empty, Full
 
 from obspy import Stream, Trace, UTCDateTime
-from obsplus import WaveBank
 
 from rt_eqcorrscan.streaming.buffers import Buffer
 
@@ -37,9 +35,6 @@ class _StreamingClient(ABC):
         Stream to buffer data into
     buffer_capacity
         Length of buffer in seconds. Old data are removed in a FIFO style.
-    wavebank
-        WaveBank to save data to. Used for backfilling by RealTimeTribe.
-        Set to `None` to not use a WaveBank.
 
     Notes
     -----
@@ -51,8 +46,6 @@ class _StreamingClient(ABC):
     started = False
     can_add_streams = True
     lock = multiprocessing.Lock()  # Lock for buffer access
-    wavebank_lock = multiprocessing.Lock()
-    has_wavebank = False
     _stop_called = False
 
     def __init__(
@@ -60,7 +53,6 @@ class _StreamingClient(ABC):
         server_url: str = None,
         buffer: Union[Stream, Buffer] = None,
         buffer_capacity: float = 600.,
-        wavebank: WaveBank = WaveBank("Streaming_WaveBank"),
     ) -> None:
         self.server_url = server_url
         if buffer is None:
@@ -89,11 +81,6 @@ class _StreamingClient(ABC):
         self.__last_data = None
         self.__buffer_full = False
 
-        # Wavebank status to avoid accessing the underlying, lockable, wavebank
-        self.__wavebank = wavebank
-        if wavebank:
-            self.has_wavebank = True
-        self._wavebank_warned = False  # Reduce duplicate warnings
         self.processes = []
 
     def __repr__(self):
@@ -235,18 +222,6 @@ class _StreamingClient(ABC):
     def buffer_ids(self) -> set:
         return {tr.id for tr in self.stream}
 
-    @property
-    def wavebank(self):
-        return self.__wavebank
-
-    @wavebank.setter
-    def wavebank(self, wavebank: WaveBank):
-        self.__wavebank = wavebank
-        if wavebank:
-            self.has_wavebank = True
-        else:
-            self.has_wavebank = False
-
     @abstractmethod
     def copy(self, empty_buffer: bool = True):
         """
@@ -263,67 +238,6 @@ class _StreamingClient(ABC):
         """
         Disconnect and reconnect and restart the Streaming Client.
         """
-
-    def _access_wavebank(
-        self,
-        method: str,
-        timeout: float = None,
-        *args, **kwargs
-    ):
-        """
-        Thread and process safe access to the wavebank.
-
-        Multiple processes cannot access the underlying HDF5 file at the same
-        time.  This method waits until access to the HDF5 file is available and
-
-        Parameters
-        ----------
-        method
-            Method of wavebank to call
-        timeout
-            Maximum time to try to get access to the file
-        args
-            Arguments passed to method
-        kwargs
-            Keyword arguments passed to method
-
-        Returns
-        -------
-        Whatever should be returned by the method.
-        """
-        if not self.has_wavebank:
-            if not self._wavebank_warned:
-                Logger.error("No wavebank attached to streamer")
-            return None
-        timer, wait_step = 0.0, 0.5
-        with self.wavebank_lock:
-            try:
-                func = self.wavebank.__getattribute__(method)
-            except AttributeError:
-                Logger.error(f"No wavebank method named {method}")
-                return None
-            # Attempt to access the underlying wavebank
-            out = None
-            while timer < timeout:
-                tic = time.time()
-                try:
-                    out = func(*args, **kwargs)
-                    break
-                except (IOError, OSError) as e:
-                    time.sleep(wait_step)
-                toc = time.time()
-                timer += toc - tic
-            else:
-                Logger.error(
-                    f"Waited {timer} s and could not access the wavebank "
-                    f"due to {e}")
-        return out
-
-    def get_wavebank_stream(self, bulk: List[tuple]) -> Stream:
-        """ processsafe get-waveforms-bulk call """
-        st = self._access_wavebank(
-            method="get_waveforms_bulk", timeout=120., bulk=bulk)
-        return st
 
     def _bg_run(self):
         while self.streaming:
@@ -449,9 +363,6 @@ class _StreamingClient(ABC):
             # Cope with a windows error where data come in as
             # "int32" not np.int32. See https://github.com/obspy/obspy/issues/2683
             trace.data = trace.data.astype(np.int32)
-        if self.has_wavebank:
-            self._access_wavebank(
-                method="put_waveforms", timeout=120., stream=Stream([trace]))
         Logger.debug("Buffer contains {0}".format(self.buffer))
         Logger.debug(f"Finished adding data: Lock status: {self.lock}")
         Logger.debug(f"Buffer stream: \n{self.buffer.stream}")

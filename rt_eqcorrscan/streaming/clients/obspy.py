@@ -61,7 +61,6 @@ class RealTimeClient(_StreamingClient):
         speed_up: float = 1.,
         buffer: Stream = None,
         buffer_capacity: float = 600.,
-        wavebank: WaveBank = None,
     ) -> None:
         if client is None:
             try:
@@ -74,7 +73,7 @@ class RealTimeClient(_StreamingClient):
         self.client = client
         super().__init__(
             server_url=self.client.base_url, buffer=buffer,
-            buffer_capacity=buffer_capacity, wavebank=wavebank)
+            buffer_capacity=buffer_capacity)
         self.starttime = starttime
         self.query_interval = query_interval
         self.speed_up = speed_up
@@ -103,8 +102,7 @@ class RealTimeClient(_StreamingClient):
             server_url=self.client.base_url,
             client=self.client, starttime=self.starttime,
             query_interval=self.query_interval, speed_up=self.speed_up,
-            buffer=buffer, buffer_capacity=self.buffer_capacity,
-            wavebank=self.wavebank)
+            buffer=buffer, buffer_capacity=self.buffer_capacity)
 
     def select_stream(self, net: str, station: str, selector: str) -> None:
         """

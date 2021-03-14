@@ -65,35 +65,35 @@ class SeedLinkTest(unittest.TestCase):
         self.assertNotEqual(stream, stream2)
         rt_client.background_stop()
 
-    def test_wavebank_integration(self):
-        rt_client = self.rt_client.copy()
-        rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
-        rt_client.wavebank = WaveBank(base_path="test_wavebank")
-        rt_client.background_run()
-        time.sleep(30)
-        rt_client.background_stop()
-        self.assertTrue(rt_client.buffer_full)  # Need a full buffer to work
-        wavebank_traces = rt_client.wavebank.get_waveforms()
-        wavebank_stream = wavebank_traces.merge()
-        buffer_stream = rt_client.stream
-        wavebank_stream.sort()
-        buffer_stream.sort()
-        self.assertEqual(buffer_stream[0].id, wavebank_stream[0].id)
-        print(buffer_stream[0])
-        print(wavebank_stream[0])
-        self.assertLessEqual(
-            abs(buffer_stream[0].stats.endtime -
-                wavebank_stream[0].stats.endtime),
-            buffer_stream[0].stats.delta * 10)
-        endtime = min(buffer_stream[0].stats.endtime,
-                      wavebank_stream[0].stats.endtime)
-        starttime = max(buffer_stream[0].stats.starttime,
-                        wavebank_stream[0].stats.starttime)
-        self.assertTrue(
-            np.all(wavebank_stream.slice(
-                starttime=starttime, endtime=endtime)[0].data ==
-                   buffer_stream.slice(
-                       starttime=starttime, endtime=endtime)[0].data))
+    # def test_wavebank_integration(self):
+    #     rt_client = self.rt_client.copy()
+    #     rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
+    #     rt_client.wavebank = WaveBank(base_path="test_wavebank")
+    #     rt_client.background_run()
+    #     time.sleep(30)
+    #     rt_client.background_stop()
+    #     self.assertTrue(rt_client.buffer_full)  # Need a full buffer to work
+    #     wavebank_traces = rt_client.wavebank.get_waveforms()
+    #     wavebank_stream = wavebank_traces.merge()
+    #     buffer_stream = rt_client.stream
+    #     wavebank_stream.sort()
+    #     buffer_stream.sort()
+    #     self.assertEqual(buffer_stream[0].id, wavebank_stream[0].id)
+    #     print(buffer_stream[0])
+    #     print(wavebank_stream[0])
+    #     self.assertLessEqual(
+    #         abs(buffer_stream[0].stats.endtime -
+    #             wavebank_stream[0].stats.endtime),
+    #         buffer_stream[0].stats.delta * 10)
+    #     endtime = min(buffer_stream[0].stats.endtime,
+    #                   wavebank_stream[0].stats.endtime)
+    #     starttime = max(buffer_stream[0].stats.starttime,
+    #                     wavebank_stream[0].stats.starttime)
+    #     self.assertTrue(
+    #         np.all(wavebank_stream.slice(
+    #             starttime=starttime, endtime=endtime)[0].data ==
+    #                buffer_stream.slice(
+    #                    starttime=starttime, endtime=endtime)[0].data))
         # shutil.rmtree("test_wavebank")
 
 
