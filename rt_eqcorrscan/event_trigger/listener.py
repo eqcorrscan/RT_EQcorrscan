@@ -72,7 +72,7 @@ class _Listener(ABC):
         if len(self.old_events) == 0:
             return
         time_diffs = np.array([endtime - tup[1] for tup in self.old_events])
-        filt = time_diffs <= self.keep
+        filt = time_diffs >= self.keep
         # Need to remove in-place, without creating a new list
         for i, old_event in enumerate(list(self.old_events)):
             if not filt[i]:
