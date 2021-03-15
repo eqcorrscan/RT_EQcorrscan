@@ -150,10 +150,19 @@ class Reactor(object):
         max_run_length
             Maximum run length in seconds, if None, will run indefinitely.
         """
+        # Get the original keep value - we will over-write this temporarily
+        listener_keep = deepcopy(self.listener.keep)
+        if self._listener_kwargs.get("starttime"):
+            # Set to keep at least until the starttime
+            _keep_len = (UTCDateTime.now() -
+                self._listener_kwargs["starttime"]) + 3600
+            self.listener.keep = max(_keep_len, listener_keep)
+            Logger.info(f"Setting listener keep to {self.listener.keep}")
         self.listener.background_run(**self._listener_kwargs)
         self._run_start = UTCDateTime.now()
         # Query the catalog in the listener every so often and check
         self._running = True
+        first_iteration = True
         while self._running:
             old_events = deepcopy(self.listener.old_events)
             # Get these locally to avoid accessing shared memory multiple times
@@ -163,7 +172,7 @@ class Reactor(object):
                     eventid=working_ids)
             else:
                 working_cat = []
-            Logger.debug("Currently analysing a catalog of {0} events".format(
+            Logger.info("Currently analysing a catalog of {0} events".format(
                 len(working_cat)))
             self.process_new_events(new_events=working_cat)
             Logger.debug("Finished processing new events")
@@ -176,6 +185,11 @@ class Reactor(object):
             Logger.debug(f"Sleeping for {self.sleep_step} seconds")
             time.sleep(self.sleep_step)
             Logger.debug("Waking up")
+            if first_iteration and len(working_cat):
+                # Revert keep to original value
+                Logger.info(f"Reverting keep to {listener_keep}")
+                self.listener.keep = listener_keep
+                first_iteration = False
 
     def check_running_tribes(self) -> None:
         """ 
