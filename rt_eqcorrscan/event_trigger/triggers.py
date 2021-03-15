@@ -2,6 +2,7 @@
 Standardised trigger functions for use with a Reactor.
 """
 import logging
+import numpy as np
 from typing import Union, List, Optional
 
 from obspy import UTCDateTime
@@ -42,6 +43,14 @@ def get_nearby_events(
     return sub_catalog
 
 
+def _event_magnitude(event):
+    try:
+        magnitude = event.preferred_magnitude() or event.magnitudes[-1]
+    except IndexError:
+        return -9
+    return magnitude.mag
+
+
 def magnitude_rate_trigger_func(
         catalog: Catalog,
         magnitude_threshold: float = 5.5,
@@ -70,12 +79,12 @@ def magnitude_rate_trigger_func(
     The events that forced the trigger.
     """
     trigger_events = Catalog()
-    for event in catalog:
-        try:
-            magnitude = event.preferred_magnitude() or event.magnitudes[0]
-        except IndexError:
-            continue
-        if magnitude.mag >= magnitude_threshold:
+    # Sort by magnitude
+    magnitudes = np.array([_event_magnitude(ev) for ev in catalog])
+    sorted_indices = np.argsort(magnitudes)[::-1]
+    for event_index in sorted_indices:
+        event = catalog[event_index]
+        if magnitudes[event_index] >= magnitude_threshold:
             trigger_events.events.append(event)
     for event in catalog:
         sub_catalog = get_nearby_events(event, catalog, radius=rate_bin)
