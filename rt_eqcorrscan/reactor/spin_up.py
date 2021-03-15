@@ -105,7 +105,7 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
     backfill_to = event_time(triggering_event) - 180
     backfill_client = config.rt_match_filter.get_waveform_client()
 
-    if backfill_client and rt_client.wavebank:
+    if backfill_client and real_time_tribe.wavebank:
         # Download the required data and write it to disk.
         endtime = UTCDateTime.now()
         Logger.info(
@@ -133,7 +133,7 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
             Logger.warning("No backfill available, skipping")
         else:
             st = st.split()  # Cannot write masked data
-            rt_client.wavebank.put_waveforms(st)
+            real_time_tribe.wavebank.put_waveforms(st)
         backfill_stations = {tr.stats.station for tr in st}
         backfill_templates = [
             t for t in real_time_tribe.templates
