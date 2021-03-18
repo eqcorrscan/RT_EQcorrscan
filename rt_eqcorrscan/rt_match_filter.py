@@ -941,7 +941,7 @@ class RealTimeTribe(Tribe):
         else:
             starttime = UTCDateTime(0)
         Logger.info(f"Backfilling between {starttime} and {endtime}")
-        if starttime >= endtime or not self.rt_client.has_wavebank:
+        if starttime >= endtime or not self.has_wavebank:
             return
         if self.expected_seed_ids and len(self.expected_seed_ids) > 0:
             bulk = []
