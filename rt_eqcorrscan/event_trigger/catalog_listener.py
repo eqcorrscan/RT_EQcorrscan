@@ -310,8 +310,12 @@ class CatalogListener(_Listener):
                     else:
                         self.template_bank.put_events(new_events)
                     # Putting the events in the bank clears the catalog.
-                    self.extend(event_info)
-                    Logger.debug("Old events current state: {0}".format(
+                    Logger.info(f"Putting events into old_events: \n{event_info}")
+                    # Try looping... extend seems unstable?
+                    for ev_info in event_info:
+                        self.append(ev_info)
+                    # self.extend(event_info)
+                    Logger.info("Old events current state: {0}".format(
                         self.old_events))
             self.previous_time = now
             # Sleep in steps to make death responsive
