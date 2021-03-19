@@ -1011,14 +1011,20 @@ class RealTimeTribe(Tribe):
             starttime, starttime + 2 * self.minimum_data_for_detection)
         while _endtime < endtime + self.minimum_data_for_detection:
             st_chunk = st.slice(_starttime, _endtime)
-            new_party = new_tribe.detect(
-                stream=st_chunk, plot=False, threshold=threshold,
-                threshold_type=threshold_type, trig_int=trig_int,
-                xcorr_func="fftw", concurrency="concurrent",
-                cores=self.max_correlation_cores,
-                parallel_process=self._parallel_processing,
-                process_cores=self.process_cores, copy_data=False,
-                **kwargs)
+            try:
+                new_party = new_tribe.detect(
+                    stream=st_chunk, plot=False, threshold=threshold,
+                    threshold_type=threshold_type, trig_int=trig_int,
+                    xcorr_func="fftw", concurrency="concurrent",
+                    cores=self.max_correlation_cores,
+                    parallel_process=self._parallel_processing,
+                    process_cores=self.process_cores, copy_data=False,
+                    **kwargs)
+            except Exception as e:
+                Logger.error(e)
+                _starttime += self.minimum_data_for_detection
+                _endtime += self.minimum_data_for_detection
+                continue
             detect_directory = detect_directory.format(name=self.name)
             Logger.info(
                 f"Backfill detection between {_starttime} and {_endtime} "
