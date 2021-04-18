@@ -55,13 +55,13 @@ class LongSeedLinkTest(unittest.TestCase):
             time.sleep(SLEEP_INTERVAL)
             now = UTCDateTime.now()
             st = rt_client.stream.split().merge()
-            logger.info(f"Currently have the stream: \n{st}")
+            logger.info(f"Currently (at {now}) have the stream: \n{st}")
             for tr in st:
                 if np.ma.is_masked(tr.data):
                     # Check that the data are not super gappy.
                     self.assertLess(tr.data.mask.sum(), len(tr.data) / 4)
                 # Check that data are recent.
-                self.assertLess(abs(now - tr.stats.endtime), 20.0)
+                self.assertLess(abs(now - tr.stats.endtime), 40.0)
             sleepy_time += SLEEP_INTERVAL
         rt_client.background_stop()
 
