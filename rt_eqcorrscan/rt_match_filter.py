@@ -1237,9 +1237,11 @@ def _write_detection(
     if save_waveform:
         st = st.split()
         for tr in st:
+            # Ensure data are int32, see https://github.com/obspy/obspy/issues/2683
             if tr.data.dtype == numpy.int32 and \
               tr.data.dtype.type != numpy.int32:
-                # Ensure data are int32, see https://github.com/obspy/obspy/issues/2683
+                tr.data = tr.data.astype(numpy.int32)
+            if tr.data.dtype.type == numpy.intc:
                 tr.data = tr.data.astype(numpy.int32)
         st.write(f"{_filename}.ms", format="MSEED")
     return fig
