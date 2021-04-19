@@ -6,6 +6,7 @@ import unittest
 import time
 import shutil
 import os
+import pytest
 
 from obspy import Stream
 
@@ -30,6 +31,7 @@ class SeedLinkTest(unittest.TestCase):
         for client in cls.clients:
             client.background_stop()
 
+    @pytest.mark.flaky(reruns=2)
     def test_background_streaming(self):
         rt_client = self.rt_client.copy()
         self.clients.append(rt_client)
@@ -39,6 +41,7 @@ class SeedLinkTest(unittest.TestCase):
         self.assertEqual(rt_client.buffer_length,
                          rt_client.buffer_capacity)
 
+    @pytest.mark.flaky(reruns=2)
     def test_full_buffer(self):
         rt_client = self.rt_client.copy()
         self.clients.append(rt_client)
@@ -49,6 +52,7 @@ class SeedLinkTest(unittest.TestCase):
         time.sleep(30)
         self.assertTrue(rt_client.buffer_full)
 
+    @pytest.mark.flaky(reruns=2)
     def test_can_add_streams(self):
         rt_client = self.rt_client.copy()
         self.clients.append(rt_client)
@@ -61,6 +65,7 @@ class SeedLinkTest(unittest.TestCase):
         rt_client = self.rt_client.copy(empty_buffer=False)
         self.assertTrue(rt_client.can_add_streams)
 
+    @pytest.mark.flaky(reruns=2)
     def test_get_stream(self):
         rt_client = self.rt_client.copy()
         self.clients.append(rt_client)
