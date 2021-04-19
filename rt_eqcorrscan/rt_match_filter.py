@@ -426,6 +426,16 @@ class RealTimeTribe(Tribe):
         else:
             Logger.info("Real-time streaming already running")
 
+    def _runtime_check(self, run_start, max_run_length):
+        run_time = UTCDateTime.now() - run_start
+        Logger.info(
+            f"Run time: {run_time:.2f}s, max_run_length: {max_run_length:.2f}s")
+        if max_run_length and run_time > max_run_length:
+            Logger.critical("Hit maximum run time, stopping.")
+            self.stop()
+            return False
+        return True
+
     def run(
         self,
         threshold: float,
@@ -673,6 +683,9 @@ class RealTimeTribe(Tribe):
                             Logger.error("Out of memory, stopping this detector")
                             self.stop()
                             break
+                        if not self._runtime_check(
+                                run_start=run_start, max_run_length=max_run_length):
+                            break
                         Logger.info(
                             "Waiting for {0:.2f}s and hoping this gets "
                             "better".format(self.detect_interval))
@@ -709,9 +722,8 @@ class RealTimeTribe(Tribe):
                     self._wait(
                         wait=(self.detect_interval - run_time) / self._speed_up,
                         detection_kwargs=detection_kwargs)
-                    if max_run_length and UTCDateTime.now() > run_start + max_run_length:
-                        Logger.critical("Hit maximum run time, stopping.")
-                        self.stop()
+                    if not self._runtime_check(
+                            run_start=run_start, max_run_length=max_run_length):
                         break
                     if minimum_rate and UTCDateTime.now() > run_start + self._min_run_length:
                         _rate = average_rate(
@@ -732,6 +744,9 @@ class RealTimeTribe(Tribe):
                 except Exception as e:
                     Logger.critical(f"Uncaught error: {e}")
                     Logger.error(traceback.format_exc())
+                    if not self._runtime_check(
+                            run_start=run_start, max_run_length=max_run_length):
+                        break
         finally:
             Logger.critical("Stopping")
             self.stop()
