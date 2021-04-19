@@ -6,44 +6,52 @@ import unittest
 import time
 import shutil
 import os
-import numpy as np
 
 from obspy import Stream
-from obsplus import WaveBank
 
 from rt_eqcorrscan.streaming.clients.seedlink import RealTimeClient
 
 import logging
 
-logging.basicConfig(level="DEBUG")
+logging.basicConfig(
+    level="DEBUG",
+    format="%(asctime)s\t%(name)s\t%(levelname)s\t%(message)s")
 
 
 class SeedLinkTest(unittest.TestCase):
-    def setUp(self):
-        self.rt_client = RealTimeClient(
+    @classmethod
+    def setUpClass(cls):
+        cls.rt_client = RealTimeClient(
             server_url="link.geonet.org.nz", buffer_capacity=10.)
+        cls.clients = [cls.rt_client]
+
+    @classmethod
+    def tearDownClass(cls):
+        for client in cls.clients:
+            client.background_stop()
 
     def test_background_streaming(self):
         rt_client = self.rt_client.copy()
+        self.clients.append(rt_client)
         rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
         rt_client.background_run()
         time.sleep(30)
-        rt_client.background_stop()
         self.assertEqual(rt_client.buffer_length,
                          rt_client.buffer_capacity)
 
     def test_full_buffer(self):
         rt_client = self.rt_client.copy()
+        self.clients.append(rt_client)
         rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
         rt_client.clear_buffer()
         rt_client.background_run()
         self.assertFalse(rt_client.buffer_full)
         time.sleep(30)
-        rt_client.background_stop()
         self.assertTrue(rt_client.buffer_full)
 
     def test_can_add_streams(self):
         rt_client = self.rt_client.copy()
+        self.clients.append(rt_client)
         self.assertTrue(rt_client.can_add_streams)
         rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
         rt_client.background_run()
@@ -55,6 +63,7 @@ class SeedLinkTest(unittest.TestCase):
 
     def test_get_stream(self):
         rt_client = self.rt_client.copy()
+        self.clients.append(rt_client)
         rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
         rt_client.background_run()
         time.sleep(10)
@@ -63,7 +72,6 @@ class SeedLinkTest(unittest.TestCase):
         time.sleep(20)
         stream2 = rt_client.stream
         self.assertNotEqual(stream, stream2)
-        rt_client.background_stop()
 
     # def test_wavebank_integration(self):
     #     rt_client = self.rt_client.copy()
