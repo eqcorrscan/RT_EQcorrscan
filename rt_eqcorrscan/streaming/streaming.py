@@ -54,6 +54,7 @@ class _StreamingClient(ABC):
     has_wavebank = False
     __last_data = None
     _stop_called = False
+    _wavebank_warned = False
 
     def __init__(
         self,
@@ -222,7 +223,9 @@ class _StreamingClient(ABC):
         Whatever should be returned by the method.
         """
         if not self.has_wavebank:
-            Logger.error("No wavebank attached to streamer")
+            if not self._wavebank_warned:
+                Logger.error("No wavebank attached to streamer")
+                self._wavebank_warned = True
             return None
         timer, wait_step = 0.0, 0.5
         with self.wavebank_lock:
