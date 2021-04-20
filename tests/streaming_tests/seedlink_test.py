@@ -20,6 +20,7 @@ logging.basicConfig(
 
 SLEEP_STEP = 30
 
+
 # Note:: Must always have try: finally: to stop the streamer to avoid
 # continuous running on fail!
 class SeedLinkTest(unittest.TestCase):
@@ -28,7 +29,7 @@ class SeedLinkTest(unittest.TestCase):
         cls.rt_client = RealTimeClient(
             server_url="link.geonet.org.nz", buffer_capacity=10.)
 
-    @pytest.mark.flaky(reruns=2)
+    @pytest.mark.flaky(reruns=1)
     def test_background_streaming(self):
         rt_client = self.rt_client.copy()
         rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
@@ -40,7 +41,7 @@ class SeedLinkTest(unittest.TestCase):
         finally:
             rt_client.background_stop()
 
-    @pytest.mark.flaky(reruns=2)
+    @pytest.mark.flaky(reruns=1)
     def test_full_buffer(self):
         rt_client = self.rt_client.copy()
         rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
@@ -53,7 +54,7 @@ class SeedLinkTest(unittest.TestCase):
         finally:
             rt_client.background_stop()
 
-    @pytest.mark.flaky(reruns=2)
+    @pytest.mark.flaky(reruns=1)
     def test_can_add_streams(self):
         rt_client = self.rt_client.copy()
         self.assertTrue(rt_client.can_add_streams)
@@ -67,7 +68,7 @@ class SeedLinkTest(unittest.TestCase):
         rt_client = self.rt_client.copy(empty_buffer=False)
         self.assertTrue(rt_client.can_add_streams)
 
-    @pytest.mark.flaky(reruns=2)
+    @pytest.mark.flaky(reruns=1)
     def test_get_stream(self):
         initial_sleep = 10
         rt_client = self.rt_client.copy()
