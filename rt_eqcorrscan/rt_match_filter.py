@@ -1240,9 +1240,9 @@ def _write_detection(
             # Ensure data are int32, see https://github.com/obspy/obspy/issues/2683
             if tr.data.dtype == numpy.int32 and \
               tr.data.dtype.type != numpy.int32:
-                tr.data = tr.data.astype(numpy.int32)
+                tr.data = tr.data.astype(numpy.int32, subok=False)
             if tr.data.dtype.type == numpy.intc:
-                tr.data = tr.data.astype(numpy.int32)
+                tr.data = tr.data.astype(numpy.int32, subok=False)
         st.write(f"{_filename}.ms", format="MSEED")
     return fig
 
