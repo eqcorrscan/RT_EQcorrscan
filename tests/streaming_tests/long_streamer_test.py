@@ -61,7 +61,7 @@ class LongSeedLinkTest(unittest.TestCase):
                     # Check that the data are not super gappy.
                     self.assertLess(tr.data.mask.sum(), len(tr.data) / 4)
                 # Check that data are recent.
-                self.assertLess(abs(now - tr.stats.endtime), 40.0)
+                self.assertLess(abs(now - tr.stats.endtime), 60.0)
             sleepy_time += SLEEP_INTERVAL
         rt_client.background_stop()
 

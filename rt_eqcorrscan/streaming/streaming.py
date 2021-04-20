@@ -9,6 +9,7 @@ License
 """
 
 import logging
+import time
 import numpy as np
 
 from abc import ABC, abstractmethod
@@ -83,6 +84,7 @@ class _StreamingClient(ABC):
 
         # Poison!
         self._killer_queue = Queue(maxsize=1)
+        self._dead_queue = Queue(maxsize=1)
 
         # Private attributes for properties
         self.__stream = Stream()
@@ -169,11 +171,13 @@ class _StreamingClient(ABC):
         try:
             self._last_data_queue.put(timestamp, block=False)
         except Full:
+            Logger.debug("_last_data is full")
             # Empty it!
             try:
                 self._last_data_queue.get(block=False)
             except Empty:
                 # Just in case the state changed...
+                Logger.debug("_last_data is empty :(")
                 pass
             try:
                 self._last_data_queue.put(timestamp, timeout=10)
@@ -254,13 +258,29 @@ class _StreamingClient(ABC):
                 self._killer_queue.get(block=False)
             except Empty:
                 break
+        while True:
+            try:
+                self._dead_queue.get(block=False)
+            except Empty:
+                break
+
+    def _bg_run(self):
+        while self.streaming:
+            self.run()
+        Logger.info("Running stopped, busy set to False")
+        try:
+            self._dead_queue.get(block=False)
+        except Empty:
+            pass
+        self._dead_queue.put(True)
+        return
 
     def background_run(self):
         """Run the client in the background."""
         self.streaming, self.started, self.can_add_streams = True, True, False
         self._clear_killer()   # Clear the kill queue
         streaming_process = Process(
-            target=_bg_run, name="StreamProcess", args=(self, ))
+            target=self._bg_run, name="StreamProcess")
         # streaming_process.daemon = True
         streaming_process.start()
         self.processes.append(streaming_process)
@@ -279,8 +299,18 @@ class _StreamingClient(ABC):
         self.stop()
         # Local buffer
         for tr in st:
-            Logger.debug("Adding trace to local buffer")
+            Logger.info("Adding trace to local buffer")
             self.buffer.add_stream(tr)
+        # Wait until streaming has stopped
+        Logger.debug(
+            f"Waiting for streaming to stop: status = {self.streaming}")
+        while self.streaming:
+            try:
+                self.streaming = not self._dead_queue.get(block=False)
+            except Empty:
+                time.sleep(1)
+                pass
+        Logger.debug("Streaming stopped")
         # Empty queues
         for queue in [self._incoming_queue, self._stream_queue,
                       self._killer_queue, self._last_data_queue]:
@@ -398,11 +428,11 @@ class _StreamingClient(ABC):
         pass
 
 
-def _bg_run(streamer: _StreamingClient):
-    Logger.debug(streamer)
-    streamer.run()
-    Logger.info("Running stopped, streaming set to False")
-    return
+# def _bg_run(streamer: _StreamingClient):
+#     Logger.debug(streamer)
+#     streamer.run()
+#     Logger.info("Running stopped, streaming set to False")
+#     return
 
 
 if __name__ == "__main__":

@@ -4,13 +4,18 @@ Tests for simulating a real-time client.
 
 import unittest
 import time
+import logging
 
 from obspy import UTCDateTime
 from obspy.clients.fdsn import Client
 
 from rt_eqcorrscan.streaming.clients.obspy import RealTimeClient
 
-SLEEP_STEP = 60
+SLEEP_STEP = 20
+
+logging.basicConfig(
+    level="INFO",
+    format="%(asctime)s\t%(name)s\t%(levelname)s\t%(message)s")
 
 
 class FDSNTest(unittest.TestCase):
@@ -26,12 +31,13 @@ class FDSNTest(unittest.TestCase):
     def test_background_streaming(self):
         rt_client = self.rt_client.copy()
         self.clients.append(rt_client)  # To allow tear-down
-        rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
+        rt_client.select_stream(net="NZ", station="JCZ", selector="HHZ")
         rt_client.background_run()
         self.assertFalse(rt_client.buffer_full)
         time.sleep(SLEEP_STEP)
-        self.assertTrue(rt_client.buffer_full)
         rt_client.background_stop()
+        print(rt_client.stream)
+        self.assertTrue(rt_client.buffer_full)
         self.assertEqual(rt_client.buffer_length,
                          rt_client.buffer_capacity)
 
@@ -68,12 +74,12 @@ class FDSNTest(unittest.TestCase):
                                     "Current Buffer:\nBuffer(0 traces, "
                                     "maxlen=10)")
 
-    @classmethod
-    def tearDownClass(cls):
-        n = len(cls.clients)
-        for i, rt_client in enumerate(cls.clients):
-            print(f"Killing client {i + 1} of {n}")
-            rt_client.background_stop()
+    # @classmethod
+    # def tearDownClass(cls):
+    #     n = len(cls.clients)
+    #     for i, rt_client in enumerate(cls.clients):
+    #         print(f"Killing client {i + 1} of {n}")
+    #         rt_client.background_stop()
 
 
 if __name__ == "__main__":
