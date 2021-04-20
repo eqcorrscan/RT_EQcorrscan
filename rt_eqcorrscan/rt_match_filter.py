@@ -1243,7 +1243,10 @@ def _write_detection(
                 tr.data = tr.data.astype(numpy.int32, subok=False)
             if tr.data.dtype.type == numpy.intc:
                 tr.data = tr.data.astype(numpy.int32, subok=False)
-        st.write(f"{_filename}.ms", format="MSEED")
+        try:
+            st.write(f"{_filename}.ms", format="MSEED")
+        except Exception as e:
+            Logger.error(f"Could not write stream due to {e}")
     return fig
 
 
