@@ -608,8 +608,14 @@ class RealTimeTribe(Tribe):
                     start_time = UTCDateTime.now()
                     st = self.rt_client.stream.split().merge()
                     if self.has_wavebank:
-                        self._access_wavebank(
-                            method="put_waveforms", timeout=120., stream=st)
+                        st = _check_stream_is_int(st)
+                        try:
+                            self._access_wavebank(
+                                method="put_waveforms", timeout=120.,
+                                stream=st)
+                        except Exception as e:
+                            Logger.error(
+                                f"Could not write to wavebank due to {e}")
                     last_data_received = self.rt_client.last_data
                     # Split to remove trailing mask
                     if len(st) == 0:
@@ -1235,19 +1241,24 @@ def _write_detection(
         fig.savefig(f"{_filename}.png")
         fig.clf()
     if save_waveform:
-        st = st.split()
-        for tr in st:
-            # Ensure data are int32, see https://github.com/obspy/obspy/issues/2683
-            if tr.data.dtype == numpy.int32 and \
-              tr.data.dtype.type != numpy.int32:
-                tr.data = tr.data.astype(numpy.int32, subok=False)
-            if tr.data.dtype.type == numpy.intc:
-                tr.data = tr.data.astype(numpy.int32, subok=False)
+        st = _check_stream_is_int(st)
         try:
             st.write(f"{_filename}.ms", format="MSEED")
         except Exception as e:
             Logger.error(f"Could not write stream due to {e}")
     return fig
+
+
+def _check_stream_is_int(st):
+    st = st.split()
+    for tr in st:
+        # Ensure data are int32, see https://github.com/obspy/obspy/issues/2683
+        if tr.data.dtype == numpy.int32 and \
+                tr.data.dtype.type != numpy.int32:
+            tr.data = tr.data.astype(numpy.int32, subok=False)
+        if tr.data.dtype.type == numpy.intc:
+            tr.data = tr.data.astype(numpy.int32, subok=False)
+    return st
 
 
 def _numpy_len(arr: Union[numpy.ndarray, numpy.ma.MaskedArray]) -> int:
