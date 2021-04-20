@@ -46,7 +46,7 @@ jobs:
         shell: bash -l {0}
         run: |
           export CI="true"
-          py.test -n 4 --dist=loadscope -v --cov-report=xml
+          py.test -v --cov-report=xml
 
       - name: upload coverage
         uses: codecov/codecov-action@v1
