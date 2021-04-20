@@ -11,6 +11,7 @@ License
 import logging
 import time
 import numpy as np
+import warnings
 
 from abc import ABC, abstractmethod
 from typing import Union
@@ -21,7 +22,10 @@ from obspy import Stream, Trace, UTCDateTime
 from rt_eqcorrscan.streaming.buffers import Buffer
 
 import platform
-if platform.system() == "Windows":
+if platform.system() != "Linux":
+    warnings.warn("Currently Process-based streaming is only supported on "
+                  "Linux, defaulting to Thread-based streaming - you may run "
+                  "into issues when detecting frequently")
     import threading as multiprocessing
     from queue import Queue
     from threading import Thread as Process
