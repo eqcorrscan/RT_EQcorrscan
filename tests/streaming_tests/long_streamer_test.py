@@ -43,7 +43,6 @@ class LongSeedLinkTest(unittest.TestCase):
             ("NZ", "SYZ", "HHZ"),
             ("NZ", "MQZ", "HHZ"),
         ]
-        cls.clients = []
 
     def run_streamer(self, rt_client, logger):
         for net, sta, chan in self.selectors:
@@ -51,31 +50,28 @@ class LongSeedLinkTest(unittest.TestCase):
 
         rt_client.background_run()
         sleepy_time = 0
-        while sleepy_time <= RUN_LENGTH:
-            time.sleep(SLEEP_INTERVAL)
-            now = UTCDateTime.now()
-            st = rt_client.stream.split().merge()
-            logger.info(f"Currently (at {now}) have the stream: \n{st}")
-            for tr in st:
-                if np.ma.is_masked(tr.data):
-                    # Check that the data are not super gappy.
-                    self.assertLess(tr.data.mask.sum(), len(tr.data) / 4)
-                # Check that data are recent.
-                self.assertLess(abs(now - tr.stats.endtime), 60.0)
-            sleepy_time += SLEEP_INTERVAL
-        rt_client.background_stop()
+        try:
+            while sleepy_time <= RUN_LENGTH:
+                time.sleep(SLEEP_INTERVAL)
+                now = UTCDateTime.now()
+                st = rt_client.stream.split().merge()
+                logger.info(f"Currently (at {now}) have the stream: \n{st}")
+                for tr in st:
+                    if np.ma.is_masked(tr.data):
+                        # Check that the data are not super gappy.
+                        self.assertLess(tr.data.mask.sum(), len(tr.data) / 4)
+                    # Check that data are recent.
+                    self.assertLess(abs(now - rt_client.last_data), 60.0)
+                    self.assertLess(abs(now - tr.stats.endtime), 120.0)
+                sleepy_time += SLEEP_INTERVAL
+        finally:  # We MUST stop the streamer even if we fail.
+            rt_client.background_stop()
 
     def test_no_wavebank(self):
         """ Run without a wavebank. """
         logger = logging.getLogger("NoWaveBank")
         rt_client = self.rt_client.copy()
-        self.clients.append(rt_client)
         self.run_streamer(rt_client=rt_client, logger=logger)
-
-    @classmethod
-    def tearDownClass(cls):
-        for rt_client in cls.clients:
-            rt_client.background_stop()
 
 
 if __name__ == "__main__":

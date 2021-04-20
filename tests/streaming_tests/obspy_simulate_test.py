@@ -26,24 +26,24 @@ class FDSNTest(unittest.TestCase):
             server_url="Unreal-streamer",
             client=cls.client, buffer_capacity=10,
             starttime=UTCDateTime(2017, 1, 1), speed_up=4., query_interval=5.)
-        cls.clients = [cls.rt_client]
 
     def test_background_streaming(self):
         rt_client = self.rt_client.copy()
-        self.clients.append(rt_client)  # To allow tear-down
         rt_client.select_stream(net="NZ", station="JCZ", selector="HHZ")
         rt_client.background_run()
-        self.assertFalse(rt_client.buffer_full)
+        try:
+            self.assertFalse(rt_client.buffer_full)
+        except Exception as e:
+            rt_client.background_stop()
+            raise e
         time.sleep(SLEEP_STEP)
         rt_client.background_stop()
-        print(rt_client.stream)
         self.assertTrue(rt_client.buffer_full)
         self.assertEqual(rt_client.buffer_length,
                          rt_client.buffer_capacity)
 
     def test_always_started(self):
         rt_client = self.rt_client.copy()
-        self.clients.append(rt_client)  # To allow tear-down
         rt_client.start()
         self.assertTrue(rt_client.started)
         rt_client.stop()
@@ -73,13 +73,6 @@ class FDSNTest(unittest.TestCase):
                                     "status: Stopped, buffer capacity: 10.0s\n	"
                                     "Current Buffer:\nBuffer(0 traces, "
                                     "maxlen=10)")
-
-    # @classmethod
-    # def tearDownClass(cls):
-    #     n = len(cls.clients)
-    #     for i, rt_client in enumerate(cls.clients):
-    #         print(f"Killing client {i + 1} of {n}")
-    #         rt_client.background_stop()
 
 
 if __name__ == "__main__":
