@@ -1,13 +1,16 @@
-# Current
+# 0.1.4
 - Keep track of data stream coming in from streamer, and restart if stream 
   goes stale (See PR #12).
 - Add threading exit event to streamers to allow internal stopping of threads
   (See PR #12).
+- Move streamers to processes for Linux (not yet supported for Windows and 
+  MacOS) and migrate wavebank handling to RTTribe (#13)
 
 # 0.1.3
 - Support Windows
 - Handle detections more regularly while backfilling
 - Deploy scripts as "entry-points"
+
 # 0.1.2
 - Added rteqcorrscan-bench script to provide a means of benchmarking the users
   set configuration - provides a way to check the limits of real-time processing
