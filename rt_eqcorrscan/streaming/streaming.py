@@ -8,9 +8,10 @@ License
     GPL v3.0
 """
 
-import multiprocessing
 import logging
+import time
 import numpy as np
+import warnings
 
 from abc import ABC, abstractmethod
 from typing import Union
@@ -19,6 +20,18 @@ from queue import Empty, Full
 from obspy import Stream, Trace, UTCDateTime
 
 from rt_eqcorrscan.streaming.buffers import Buffer
+
+import platform
+if platform.system() != "Linux":
+    warnings.warn("Currently Process-based streaming is only supported on "
+                  "Linux, defaulting to Thread-based streaming - you may run "
+                  "into issues when detecting frequently")
+    import threading as multiprocessing
+    from queue import Queue
+    from threading import Thread as Process
+else:
+    import multiprocessing
+    from multiprocessing import Queue, Process
 
 Logger = logging.getLogger(__name__)
 
@@ -65,16 +78,17 @@ class _StreamingClient(ABC):
         # Queues for communication
 
         # Outgoing data
-        self._stream_queue = multiprocessing.Queue(maxsize=1)
+        self._stream_queue = Queue(maxsize=1)
         # Incoming data - no limit on size, just empty it!
-        self._incoming_queue = multiprocessing.Queue()
+        self._incoming_queue = Queue()
 
         # Quereyable attributes to get a view of the size of the buffer
-        self._last_data_queue = multiprocessing.Queue(maxsize=1)
-        self._buffer_full_queue = multiprocessing.Queue(maxsize=1)
+        self._last_data_queue = Queue(maxsize=1)
+        self._buffer_full_queue = Queue(maxsize=1)
 
         # Poison!
-        self._killer_queue = multiprocessing.Queue(maxsize=1)
+        self._killer_queue = Queue(maxsize=1)
+        self._dead_queue = Queue(maxsize=1)
 
         # Private attributes for properties
         self.__stream = Stream()
@@ -161,11 +175,13 @@ class _StreamingClient(ABC):
         try:
             self._last_data_queue.put(timestamp, block=False)
         except Full:
+            Logger.debug("_last_data is full")
             # Empty it!
             try:
                 self._last_data_queue.get(block=False)
             except Empty:
                 # Just in case the state changed...
+                Logger.debug("_last_data is empty :(")
                 pass
             try:
                 self._last_data_queue.put(timestamp, timeout=10)
@@ -239,12 +255,6 @@ class _StreamingClient(ABC):
         Disconnect and reconnect and restart the Streaming Client.
         """
 
-    def _bg_run(self):
-        while self.streaming:
-            self.run()
-        Logger.info("Running stopped, streaming set to False")
-        return
-
     def _clear_killer(self):
         """ Clear the killer Queue. """
         while True:
@@ -252,12 +262,28 @@ class _StreamingClient(ABC):
                 self._killer_queue.get(block=False)
             except Empty:
                 break
+        while True:
+            try:
+                self._dead_queue.get(block=False)
+            except Empty:
+                break
+
+    def _bg_run(self):
+        while self.streaming:
+            self.run()
+        Logger.info("Running stopped, busy set to False")
+        try:
+            self._dead_queue.get(block=False)
+        except Empty:
+            pass
+        self._dead_queue.put(True)
+        return
 
     def background_run(self):
         """Run the client in the background."""
         self.streaming, self.started, self.can_add_streams = True, True, False
         self._clear_killer()   # Clear the kill queue
-        streaming_process = multiprocessing.Process(
+        streaming_process = Process(
             target=self._bg_run, name="StreamProcess")
         # streaming_process.daemon = True
         streaming_process.start()
@@ -275,21 +301,20 @@ class _StreamingClient(ABC):
         Logger.debug(f"Stream on termination: {st}")
         self._killer_queue.put(True)
         self.stop()
-        for process in self.processes:
-            Logger.info("Joining process")
-            process.join(5)
-            if process.exitcode:
-                Logger.info("Process failed to join, terminating")
-                process.terminate()
-                Logger.info("Terminated")
-                process.join()
-            Logger.info("Process joined")
-        self.processes = []
-        self.streaming = False
         # Local buffer
         for tr in st:
-            Logger.debug("Adding trace to local buffer")
+            Logger.info("Adding trace to local buffer")
             self.buffer.add_stream(tr)
+        # Wait until streaming has stopped
+        Logger.debug(
+            f"Waiting for streaming to stop: status = {self.streaming}")
+        while self.streaming:
+            try:
+                self.streaming = not self._dead_queue.get(block=False)
+            except Empty:
+                time.sleep(1)
+                pass
+        Logger.debug("Streaming stopped")
         # Empty queues
         for queue in [self._incoming_queue, self._stream_queue,
                       self._killer_queue, self._last_data_queue]:
@@ -298,6 +323,18 @@ class _StreamingClient(ABC):
                     queue.get(block=False)
                 except Empty:
                     break
+        # join the processes
+        for process in self.processes:
+            Logger.info("Joining process")
+            process.join(5)
+            if hasattr(process, 'exitcode') and process.exitcode:
+                Logger.info("Process failed to join, terminating")
+                process.terminate()
+                Logger.info("Terminated")
+                process.join()
+            Logger.info("Process joined")
+        self.processes = []
+        self.streaming = False
 
     def on_data(self, trace: Trace):
         """
@@ -393,6 +430,13 @@ class _StreamingClient(ABC):
         """
         Logger.error("Client error")
         pass
+
+
+# def _bg_run(streamer: _StreamingClient):
+#     Logger.debug(streamer)
+#     streamer.run()
+#     Logger.info("Running stopped, streaming set to False")
+#     return
 
 
 if __name__ == "__main__":

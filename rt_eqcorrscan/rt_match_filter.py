@@ -426,6 +426,16 @@ class RealTimeTribe(Tribe):
         else:
             Logger.info("Real-time streaming already running")
 
+    def _runtime_check(self, run_start, max_run_length):
+        run_time = UTCDateTime.now() - run_start
+        Logger.info(
+            f"Run time: {run_time:.2f}s, max_run_length: {max_run_length:.2f}s")
+        if max_run_length and run_time > max_run_length:
+            Logger.critical("Hit maximum run time, stopping.")
+            self.stop()
+            return False
+        return True
+
     def run(
         self,
         threshold: float,
@@ -598,8 +608,14 @@ class RealTimeTribe(Tribe):
                     start_time = UTCDateTime.now()
                     st = self.rt_client.stream.split().merge()
                     if self.has_wavebank:
-                        self._access_wavebank(
-                            method="put_waveforms", timeout=120., stream=st)
+                        st = _check_stream_is_int(st)
+                        try:
+                            self._access_wavebank(
+                                method="put_waveforms", timeout=120.,
+                                stream=st)
+                        except Exception as e:
+                            Logger.error(
+                                f"Could not write to wavebank due to {e}")
                     last_data_received = self.rt_client.last_data
                     # Split to remove trailing mask
                     if len(st) == 0:
@@ -673,6 +689,9 @@ class RealTimeTribe(Tribe):
                             Logger.error("Out of memory, stopping this detector")
                             self.stop()
                             break
+                        if not self._runtime_check(
+                                run_start=run_start, max_run_length=max_run_length):
+                            break
                         Logger.info(
                             "Waiting for {0:.2f}s and hoping this gets "
                             "better".format(self.detect_interval))
@@ -709,9 +728,8 @@ class RealTimeTribe(Tribe):
                     self._wait(
                         wait=(self.detect_interval - run_time) / self._speed_up,
                         detection_kwargs=detection_kwargs)
-                    if max_run_length and UTCDateTime.now() > run_start + max_run_length:
-                        Logger.critical("Hit maximum run time, stopping.")
-                        self.stop()
+                    if not self._runtime_check(
+                            run_start=run_start, max_run_length=max_run_length):
                         break
                     if minimum_rate and UTCDateTime.now() > run_start + self._min_run_length:
                         _rate = average_rate(
@@ -732,6 +750,9 @@ class RealTimeTribe(Tribe):
                 except Exception as e:
                     Logger.critical(f"Uncaught error: {e}")
                     Logger.error(traceback.format_exc())
+                    if not self._runtime_check(
+                            run_start=run_start, max_run_length=max_run_length):
+                        break
         finally:
             Logger.critical("Stopping")
             self.stop()
@@ -1226,17 +1247,24 @@ def _write_detection(
             Logger.error(f"Could not write plot due to {e}")
         fig.clf()
     if save_waveform:
-        st = st.split()
-        for tr in st:
-            if tr.data.dtype == numpy.int32 and \
-              tr.data.dtype.type != numpy.int32:
-                # Ensure data are int32, see https://github.com/obspy/obspy/issues/2683
-                tr.data = tr.data.astype(numpy.int32)
+        st = _check_stream_is_int(st)
         try:
             st.write(f"{_filename}.ms", format="MSEED")
         except Exception as e:
             Logger.error(f"Could not write stream due to {e}")
     return fig
+
+
+def _check_stream_is_int(st):
+    st = st.split()
+    for tr in st:
+        # Ensure data are int32, see https://github.com/obspy/obspy/issues/2683
+        if tr.data.dtype == numpy.int32 and \
+                tr.data.dtype.type != numpy.int32:
+            tr.data = tr.data.astype(numpy.int32, subok=False)
+        if tr.data.dtype.type == numpy.intc:
+            tr.data = tr.data.astype(numpy.int32, subok=False)
+    return st
 
 
 def _numpy_len(arr: Union[numpy.ndarray, numpy.ma.MaskedArray]) -> int:

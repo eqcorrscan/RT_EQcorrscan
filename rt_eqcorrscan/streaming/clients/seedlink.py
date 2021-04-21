@@ -111,9 +111,10 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
                 kill = False
             if kill:
                 Logger.warning(
-                    "Run termination called - poison received is set.")
+                    "Run termination called - poison received.")
                 self.on_terminate()
-                return
+                self._stop_called = True
+                break
 
             if data == SLPacket.SLTERMINATE:
                 Logger.warning("Received Terminate request from host")
@@ -145,6 +146,7 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
 
         # If we get to here, stop has been called so we can terminate
         self.on_terminate()
+        self.streaming = False
         return
 
     def copy(self, empty_buffer: bool = True):
@@ -215,7 +217,6 @@ class RealTimeClient(_StreamingClient, EasySeedLinkClient):
         Logger.info("Closing connection")
         self.close()
         Logger.info("Stopped Streamer")
-        self.streaming = False
 
     def on_seedlink_error(self):  # pragma: no cover
         """ Cope with seedlink errors."""

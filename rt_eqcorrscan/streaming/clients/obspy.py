@@ -134,10 +134,11 @@ class RealTimeClient(_StreamingClient):
                 kill = self._killer_queue.get(block=False)
             except Empty:
                 kill = False
+            Logger.info(f"Kill status: {kill}")
             if kill:
                 Logger.warning("Termination called, stopping collect loop")
                 self.on_terminate()
-                return
+                break
             _query_start = UTCDateTime.now()
             st = Stream()
             query_passed = True
@@ -175,9 +176,8 @@ class RealTimeClient(_StreamingClient):
         return
 
     def stop(self) -> None:
-        self._stop_called = True
-        self.streaming = False
-        self.started = False
+        Logger.info("STOP!")
+        self._stop_called, self.started = True, False
 
 
 if __name__ == "__main__":
