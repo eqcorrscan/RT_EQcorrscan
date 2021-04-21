@@ -7,7 +7,7 @@ import threading
 import datetime as dt
 import asyncio
 
-from pyproj import Proj, transform
+from pyproj import Proj, Transformer
 
 from bokeh.document import Document
 from bokeh.plotting import figure
@@ -195,6 +195,7 @@ def define_plot(
         will be real-time
     """
     # Set up the data source
+    Logger.info("Getting stream to define plot")
     stream = rt_client.stream.copy().split().detrend()
     if lowcut and highcut:
         stream.filter("bandpass", freqmin=lowcut, freqmax=highcut)
@@ -208,6 +209,7 @@ def define_plot(
     else:
         title = "Raw streaming data"
     stream.merge()
+    Logger.info(f"Have the stream: \n{stream}")
 
     template_lats, template_lons, template_alphas, template_ids = (
         [], [], [], [])
@@ -218,7 +220,7 @@ def define_plot(
         except IndexError:
             continue
         template_lats.append(origin.latitude)
-        template_lons.append(origin.longitude)
+        template_lons.append(origin.longitude % 360)
         template_alphas.append(0)
         template_ids.append(template.event.resource_id.id.split("/")[-1])
 
@@ -226,12 +228,13 @@ def define_plot(
     for network in inventory:
         for station in network:
             station_lats.append(station.latitude)
-            station_lons.append(station.longitude)
+            station_lons.append(station.longitude % 360)
             station_ids.append(station.code)
 
     # Get plot bounds in web mercator
-    wgs_84 = Proj(init='epsg:4326')
-    wm = Proj(init='epsg:3857')
+    Logger.info("Defining map")
+    transformer = Transformer.from_crs(
+        "epsg:4326", "epsg:3857", always_xy=True)
     try:
         min_lat, min_lon, max_lat, max_lon = (
             min(template_lats + station_lats),
@@ -242,20 +245,21 @@ def define_plot(
         Logger.error(e)
         Logger.info("Setting map bounds to NZ")
         min_lat, min_lon, max_lat, max_lon = (-47., 165., -34., 179.9)
-    bottom_left = transform(wgs_84, wm, min_lon, min_lat)
-    top_right = transform(wgs_84, wm, max_lon, max_lat)
+    Logger.info(f"Map bounds: {min_lon}, {min_lat} - {max_lon}, {max_lat}")
+    bottom_left = transformer.transform(min_lon, min_lat)
+    top_right = transformer.transform(max_lon, max_lat)
     map_x_range = (bottom_left[0], top_right[0])
     map_y_range = (bottom_left[1], top_right[1])
 
     template_x, template_y = ([], [])
     for lon, lat in zip(template_lons, template_lats):
-        _x, _y = transform(wgs_84, wm, lon, lat)
+        _x, _y = transformer.transform(lon, lat)
         template_x.append(_x)
         template_y.append(_y)
 
     station_x, station_y = ([], [])
     for lon, lat in zip(station_lons, station_lats):
-        _x, _y = transform(wgs_84, wm, lon, lat)
+        _x, _y = transformer.transform(lon, lat)
         station_x.append(_x)
         station_y.append(_y)
 
@@ -267,6 +271,7 @@ def define_plot(
         'y': station_y, 'x': station_x,
         'lats': station_lats, 'lons': station_lons, 'id': station_ids})
 
+    Logger.info("Allocated data sources")
     trace_sources = {}
     trace_data_range = {}
     # Allocate empty arrays
@@ -282,6 +287,7 @@ def define_plot(
         trace_data_range.update({channel: (data.min(), data.max())})
 
     # Set up the map to go on the left side
+    Logger.info("Adding features to map")
     map_plot = figure(
         title="Template map", x_range=map_x_range, y_range=map_y_range,
         x_axis_type="mercator", y_axis_type="mercator", **map_options)
@@ -296,6 +302,7 @@ def define_plot(
         x="x", y="y", size=10, source=station_source, color="blue", alpha=1.0)
 
     # Set up the trace plots
+    Logger.info("Setting up streaming plot")
     trace_plots = []
     if not offline:
         now = dt.datetime.utcnow()
@@ -327,6 +334,7 @@ def define_plot(
     p1.xaxis.formatter = datetick_formatter
 
     # Add detection lines
+    Logger.info("Adding detection artists")
     detection_source = _get_pick_times(detections, channels[0])
     detection_source.update(
         {"pick_values": [[
@@ -437,10 +445,11 @@ def define_plot(
         _update_template_alphas(
             detections, tribe, decay=plot_length, now=now,
             datastream=template_source)
-
+    Logger.info("Adding callback")
     doc.add_periodic_callback(update, update_interval)
     doc.title = "EQcorrscan Real-time plotter"
     doc.add_root(plots)
+    Logger.info("Plot defined")
 
 
 def _update_template_alphas(
@@ -464,8 +473,8 @@ def _update_template_alphas(
     datastream
         Data stream to update
     """
-    wgs_84 = Proj(init='epsg:4326')
-    wm = Proj(init='epsg:3857')
+    transformer = Transformer.from_crs(
+        "epsg:4326", "epsg:3857", always_xy=True)
     template_lats, template_lons, template_alphas, template_ids = (
         [], [], [], [])
     template_x, template_y = ([], [])
@@ -479,7 +488,7 @@ def _update_template_alphas(
         template_lons.append(origin.longitude)
 
         template_ids.append(template.event.resource_id.id.split("/")[-1])
-        _x, _y = transform(wgs_84, wm, origin.longitude, origin.latitude)
+        _x, _y = transformer.transform(origin.longitude, origin.latitude)
         template_x.append(_x)
         template_y.append(_y)
         template_detections = [

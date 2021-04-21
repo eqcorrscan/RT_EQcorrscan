@@ -398,7 +398,7 @@ class NumpyDeque(object):
         else:
             mask_value = np.zeros(length)
         self._data[-length:] = data[-length:]
-        self._mask = np.zeros_like(self._data, dtype=np.bool)
+        self._mask = np.zeros_like(self._data, dtype=bool)
         self._mask[0:-length] = np.ones(maxlen - length)
         self._mask[-length:] = mask_value
 

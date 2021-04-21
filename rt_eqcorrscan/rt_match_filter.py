@@ -15,6 +15,7 @@ import glob
 from typing import Union, List, Iterable
 
 from obspy import Stream, UTCDateTime, Inventory, Trace
+from obsplus import WaveBank
 from matplotlib.figure import Figure
 from multiprocessing import Process, Lock
 from eqcorrscan import Tribe, Template, Party, Detection
@@ -50,6 +51,9 @@ class RealTimeTribe(Tribe):
         Whether to generate the real-time bokeh plot
     plot_options
         Plotting options parsed to `rt_eqcorrscan.plotting.plot_buffer`
+    wavebank
+        WaveBank to save data to. Used for backfilling by RealTimeTribe.
+        Set to `None` to not use a WaveBank.
     
     sleep_step
         Default sleep-step in seconds while waiting for data. Defaults to 1.0
@@ -76,6 +80,10 @@ class RealTimeTribe(Tribe):
     _min_run_length = 24 * 3600  # Minimum run-length in seconds.
     # Usurped by max_run_length, used to set a threshold for rate calculation.
 
+    # WaveBank management
+    wavebank_lock = Lock()
+    has_wavebank = False
+
     def __init__(
         self,
         name: str = None,
@@ -85,6 +93,7 @@ class RealTimeTribe(Tribe):
         detect_interval: float = 60.,
         plot: bool = True,
         plot_options: dict = None,
+        wavebank: Union[str, WaveBank] = WaveBank("Streaming_WaveBank"),
     ) -> None:
         super().__init__(templates=tribe.templates)
         self.rt_client = rt_client
@@ -103,6 +112,14 @@ class RealTimeTribe(Tribe):
                 key: value for key, value in plot_options.items()
                 if key != "plot_length"})
         self.detections = []
+
+        # Wavebank status to avoid accessing the underlying, lockable, wavebank
+        if isinstance(wavebank, str):
+            wavebank = WaveBank(wavebank)
+        self.__wavebank = wavebank
+        if wavebank:
+            self.has_wavebank = True
+        self._wavebank_warned = False  # Reduce duplicate warnings
 
     def __repr__(self):
         """
@@ -167,6 +184,18 @@ class RealTimeTribe(Tribe):
         """
         return {t.name for t in self.templates}
 
+    @property
+    def wavebank(self):
+        return self.__wavebank
+
+    @wavebank.setter
+    def wavebank(self, wavebank: WaveBank):
+        self.__wavebank = wavebank
+        if wavebank:
+            self.has_wavebank = True
+        else:
+            self.has_wavebank = False
+
     def _ensure_templates_have_enough_stations(self, min_stations):
         """ Remove templates that don't have enough stations. """
         self.templates = [
@@ -191,6 +220,67 @@ class RealTimeTribe(Tribe):
             else:
                 active_backfillers.append(backfill_process)
         self._backfillers = active_backfillers
+
+    def _access_wavebank(
+        self,
+        method: str,
+        timeout: float = None,
+        *args, **kwargs
+    ):
+        """
+        Thread and process safe access to the wavebank.
+
+        Multiple processes cannot access the underlying HDF5 file at the same
+        time.  This method waits until access to the HDF5 file is available and
+
+        Parameters
+        ----------
+        method
+            Method of wavebank to call
+        timeout
+            Maximum time to try to get access to the file
+        args
+            Arguments passed to method
+        kwargs
+            Keyword arguments passed to method
+
+        Returns
+        -------
+        Whatever should be returned by the method.
+        """
+        if not self.has_wavebank:
+            if not self._wavebank_warned:
+                Logger.error("No wavebank attached to streamer")
+            return None
+        timer, wait_step = 0.0, 0.5
+        with self.wavebank_lock:
+            try:
+                func = self.wavebank.__getattribute__(method)
+            except AttributeError:
+                Logger.error(f"No wavebank method named {method}")
+                return None
+            # Attempt to access the underlying wavebank
+            out = None
+            while timer < timeout:
+                tic = time.time()
+                try:
+                    out = func(*args, **kwargs)
+                    break
+                except (IOError, OSError) as e:
+                    time.sleep(wait_step)
+                toc = time.time()
+                timer += toc - tic
+            else:
+                Logger.error(
+                    f"Waited {timer} s and could not access the wavebank "
+                    f"due to {e}")
+        return out
+
+    def get_wavebank_stream(self, bulk: List[tuple]) -> Stream:
+        """ processsafe get-waveforms-bulk call """
+        st = self._access_wavebank(
+            method="get_waveforms_bulk", timeout=120., bulk=bulk)
+        return st
 
     def _handle_detections(
         self,
@@ -330,11 +420,21 @@ class RealTimeTribe(Tribe):
         else:
             Logger.warning("Client already in streaming mode,"
                            " cannot add channels")
-        if not self.rt_client.busy:
+        if not self.rt_client.streaming:
             self.rt_client.background_run()
             Logger.info("Started real-time streaming")
         else:
             Logger.info("Real-time streaming already running")
+
+    def _runtime_check(self, run_start, max_run_length):
+        run_time = UTCDateTime.now() - run_start
+        Logger.info(
+            f"Run time: {run_time:.2f}s, max_run_length: {max_run_length:.2f}s")
+        if max_run_length and run_time > max_run_length:
+            Logger.critical("Hit maximum run time, stopping.")
+            self.stop()
+            return False
+        return True
 
     def run(
         self,
@@ -507,6 +607,15 @@ class RealTimeTribe(Tribe):
                     self._running = True  # Lock tribe
                     start_time = UTCDateTime.now()
                     st = self.rt_client.stream.split().merge()
+                    if self.has_wavebank:
+                        st = _check_stream_is_int(st)
+                        try:
+                            self._access_wavebank(
+                                method="put_waveforms", timeout=120.,
+                                stream=st)
+                        except Exception as e:
+                            Logger.error(
+                                f"Could not write to wavebank due to {e}")
                     last_data_received = self.rt_client.last_data
                     # Split to remove trailing mask
                     if len(st) == 0:
@@ -529,7 +638,6 @@ class RealTimeTribe(Tribe):
                         self.rt_client.background_stop()
                         self.rt_client.stop()
                         # Get a clean instance just in case
-                        # self.rt_client = self.rt_client.copy(empty_buffer=False)
                         Logger.info("Starting streamer")
                         self._start_streaming()
                         Logger.info("Streamer started")
@@ -581,6 +689,9 @@ class RealTimeTribe(Tribe):
                             Logger.error("Out of memory, stopping this detector")
                             self.stop()
                             break
+                        if not self._runtime_check(
+                                run_start=run_start, max_run_length=max_run_length):
+                            break
                         Logger.info(
                             "Waiting for {0:.2f}s and hoping this gets "
                             "better".format(self.detect_interval))
@@ -617,9 +728,8 @@ class RealTimeTribe(Tribe):
                     self._wait(
                         wait=(self.detect_interval - run_time) / self._speed_up,
                         detection_kwargs=detection_kwargs)
-                    if max_run_length and UTCDateTime.now() > run_start + max_run_length:
-                        Logger.critical("Hit maximum run time, stopping.")
-                        self.stop()
+                    if not self._runtime_check(
+                            run_start=run_start, max_run_length=max_run_length):
                         break
                     if minimum_rate and UTCDateTime.now() > run_start + self._min_run_length:
                         _rate = average_rate(
@@ -639,6 +749,10 @@ class RealTimeTribe(Tribe):
                     # summary.print_(sum1)
                 except Exception as e:
                     Logger.critical(f"Uncaught error: {e}")
+                    Logger.error(traceback.format_exc())
+                    if not self._runtime_check(
+                            run_start=run_start, max_run_length=max_run_length):
+                        break
         finally:
             Logger.critical("Stopping")
             self.stop()
@@ -848,7 +962,7 @@ class RealTimeTribe(Tribe):
         else:
             starttime = UTCDateTime(0)
         Logger.info(f"Backfilling between {starttime} and {endtime}")
-        if starttime >= endtime or not self.rt_client.has_wavebank:
+        if starttime >= endtime or not self.has_wavebank:
             return
         if self.expected_seed_ids and len(self.expected_seed_ids) > 0:
             bulk = []
@@ -863,7 +977,7 @@ class RealTimeTribe(Tribe):
             Logger.warning("No bulk")
             return
         Logger.info(f"Getting stations for backfill: {bulk}")
-        st = self.rt_client.get_wavebank_stream(bulk)
+        st = self.get_wavebank_stream(bulk)
         
         self._number_of_backfillers += 1
 
@@ -918,14 +1032,20 @@ class RealTimeTribe(Tribe):
             starttime, starttime + 2 * self.minimum_data_for_detection)
         while _endtime < endtime + self.minimum_data_for_detection:
             st_chunk = st.slice(_starttime, _endtime)
-            new_party = new_tribe.detect(
-                stream=st_chunk, plot=False, threshold=threshold,
-                threshold_type=threshold_type, trig_int=trig_int,
-                xcorr_func="fftw", concurrency="concurrent",
-                cores=self.max_correlation_cores,
-                parallel_process=self._parallel_processing,
-                process_cores=self.process_cores, copy_data=False,
-                **kwargs)
+            try:
+                new_party = new_tribe.detect(
+                    stream=st_chunk, plot=False, threshold=threshold,
+                    threshold_type=threshold_type, trig_int=trig_int,
+                    xcorr_func="fftw", concurrency="concurrent",
+                    cores=self.max_correlation_cores,
+                    parallel_process=self._parallel_processing,
+                    process_cores=self.process_cores, copy_data=False,
+                    **kwargs)
+            except Exception as e:
+                Logger.error(e)
+                _starttime += self.minimum_data_for_detection
+                _endtime += self.minimum_data_for_detection
+                continue
             detect_directory = detect_directory.format(name=self.name)
             Logger.info(
                 f"Backfill detection between {_starttime} and {_endtime} "
@@ -1109,7 +1229,10 @@ def _write_detection(
         os.makedirs(_path)
     _filename = os.path.join(
         _path, detection.detect_time.strftime("%Y%m%dT%H%M%S"))
-    detection.event.write(f"{_filename}.xml", format="QUAKEML")
+    try:
+        detection.event.write(f"{_filename}.xml", format="QUAKEML")
+    except Exception as e:
+        Logger.error(f"Could not write event file due to {e}")
     detection.event.picks.sort(key=lambda p: p.time)
     st = stream.slice(
         detection.event.picks[0].time - 10,
@@ -1118,17 +1241,30 @@ def _write_detection(
         # Make plot
         fig = plot_event(fig=fig, event=detection.event, st=st,
                          length=90, show=False)
-        fig.savefig(f"{_filename}.png")
+        try:
+            fig.savefig(f"{_filename}.png")
+        except Exception as e:
+            Logger.error(f"Could not write plot due to {e}")
         fig.clf()
     if save_waveform:
-        st = st.split()
-        for tr in st:
-            if tr.data.dtype == numpy.int32 and \
-              tr.data.dtype.type != numpy.int32:
-                # Ensure data are int32, see https://github.com/obspy/obspy/issues/2683
-                tr.data = tr.data.astype(numpy.int32)
-        st.write(f"{_filename}.ms", format="MSEED")
+        st = _check_stream_is_int(st)
+        try:
+            st.write(f"{_filename}.ms", format="MSEED")
+        except Exception as e:
+            Logger.error(f"Could not write stream due to {e}")
     return fig
+
+
+def _check_stream_is_int(st):
+    st = st.split()
+    for tr in st:
+        # Ensure data are int32, see https://github.com/obspy/obspy/issues/2683
+        if tr.data.dtype == numpy.int32 and \
+                tr.data.dtype.type != numpy.int32:
+            tr.data = tr.data.astype(numpy.int32, subok=False)
+        if tr.data.dtype.type == numpy.intc:
+            tr.data = tr.data.astype(numpy.int32, subok=False)
+    return st
 
 
 def _numpy_len(arr: Union[numpy.ndarray, numpy.ma.MaskedArray]) -> int:

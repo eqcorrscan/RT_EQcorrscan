@@ -14,6 +14,7 @@ from numpy import random
 import importlib
 
 from obspy import Stream, UTCDateTime
+from queue import Empty
 
 from obsplus import WaveBank
 
@@ -48,6 +49,7 @@ class RealTimeClient(_StreamingClient):
         Length of buffer in seconds. Old data are removed in a FIFO style.
     """
     client_base = "obspy.clients"
+    can_add_streams = True
 
     def __init__(
         self,
@@ -59,7 +61,6 @@ class RealTimeClient(_StreamingClient):
         speed_up: float = 1.,
         buffer: Stream = None,
         buffer_capacity: float = 600.,
-        wavebank: WaveBank = None,
     ) -> None:
         if client is None:
             try:
@@ -72,7 +73,7 @@ class RealTimeClient(_StreamingClient):
         self.client = client
         super().__init__(
             server_url=self.client.base_url, buffer=buffer,
-            buffer_capacity=buffer_capacity, wavebank=wavebank)
+            buffer_capacity=buffer_capacity)
         self.starttime = starttime
         self.query_interval = query_interval
         self.speed_up = speed_up
@@ -101,12 +102,7 @@ class RealTimeClient(_StreamingClient):
             server_url=self.client.base_url,
             client=self.client, starttime=self.starttime,
             query_interval=self.query_interval, speed_up=self.speed_up,
-            buffer=buffer, buffer_capacity=self.buffer_capacity,
-            wavebank=self.wavebank)
-
-    @property
-    def can_add_streams(self) -> bool:
-        return True  # We can always add streams
+            buffer=buffer, buffer_capacity=self.buffer_capacity)
 
     def select_stream(self, net: str, station: str, selector: str) -> None:
         """
@@ -130,9 +126,19 @@ class RealTimeClient(_StreamingClient):
         assert len(self.bulk) > 0, "Select a stream first"
         self.streaming = True
         now = copy.deepcopy(self.starttime)
-        self._last_data = UTCDateTime.now()
+        self.last_data = UTCDateTime.now()
         last_query_start = now - self.query_interval
-        while self.streaming:
+        while not self._stop_called:
+            # If this is running in a process then we need to check the queue
+            try:
+                kill = self._killer_queue.get(block=False)
+            except Empty:
+                kill = False
+            Logger.info(f"Kill status: {kill}")
+            if kill:
+                Logger.warning("Termination called, stopping collect loop")
+                self.on_terminate()
+                break
             _query_start = UTCDateTime.now()
             st = Stream()
             query_passed = True
@@ -151,6 +157,8 @@ class RealTimeClient(_StreamingClient):
                     continue
             for tr in st:
                 self.on_data(tr)
+            # Put the data in the buffer
+            self._add_data_from_queue()
             _query_duration = UTCDateTime.now() - _query_start
             Logger.debug(
                 "It took {0:.2f}s to query the database and sort data".format(
@@ -164,12 +172,12 @@ class RealTimeClient(_StreamingClient):
             now += max(self.query_interval, _query_duration)
             if query_passed:
                 last_query_start = min(_bulk["endtime"] for _bulk in self.bulk)
+        self.streaming = False
+        return
 
     def stop(self) -> None:
-        self._stop_called = True
-        self.busy = False
-        self.streaming = False
-        self.started = False
+        Logger.info("STOP!")
+        self._stop_called, self.started = True, False
 
 
 if __name__ == "__main__":

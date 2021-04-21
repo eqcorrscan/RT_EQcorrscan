@@ -59,6 +59,11 @@ class _Listener(ABC):
         with self.lock:
             self._old_events.extend(events)
 
+    def append(self, other: EventInfo):
+        assert isinstance(other, EventInfo)
+        with self.lock:
+            self._old_events.append(other)
+
     def _remove_old_events(self, endtime: UTCDateTime) -> None:
         """
         Expire old events from the cache.
@@ -72,10 +77,11 @@ class _Listener(ABC):
         if len(self.old_events) == 0:
             return
         time_diffs = np.array([endtime - tup[1] for tup in self.old_events])
-        filt = time_diffs <= self.keep
+        filt = time_diffs >= self.keep
         # Need to remove in-place, without creating a new list
         for i, old_event in enumerate(list(self.old_events)):
-            if not filt[i]:
+            if filt[i]:
+                Logger.info(f"Removing event {old_event} which is {time_diffs[i]} old, older than {self.keep}")
                 self.remove_old_event(old_event)
 
     def background_run(self, *args, **kwargs):

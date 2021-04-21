@@ -6,7 +6,7 @@ obspy>=1.0.3
 h5py
 pyyaml
 pyfftw>=0.12.0
-pyproj<2
+pyproj>2.1
 codecov
 EQcorrscan>=0.4.2
 urllib3>=1.24.3

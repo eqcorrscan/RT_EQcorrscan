@@ -48,6 +48,12 @@ jobs:
           export CI="true"
           py.test -n 2 --dist=loadscope --cov-report=xml
 
+#      - name: run streamer tests
+#        shell: bash -l {0}
+#        run: |
+#          export CI="true"
+#          py.test tests/streaming_tests -v --cov-report=xml
+
       - name: upload coverage
         uses: codecov/codecov-action@v1
         with:

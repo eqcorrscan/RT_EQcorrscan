@@ -4,13 +4,18 @@ Tests for simulating a real-time client.
 
 import unittest
 import time
+import logging
 
 from obspy import UTCDateTime
 from obspy.clients.fdsn import Client
 
 from rt_eqcorrscan.streaming.clients.obspy import RealTimeClient
 
-SLEEP_STEP = 60
+SLEEP_STEP = 20
+
+logging.basicConfig(
+    level="INFO",
+    format="%(asctime)s\t%(name)s\t%(levelname)s\t%(message)s")
 
 
 class FDSNTest(unittest.TestCase):
@@ -24,21 +29,18 @@ class FDSNTest(unittest.TestCase):
 
     def test_background_streaming(self):
         rt_client = self.rt_client.copy()
-        rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
+        rt_client.select_stream(net="NZ", station="JCZ", selector="HHZ")
         rt_client.background_run()
-        time.sleep(SLEEP_STEP)
-        rt_client.background_stop()
-        self.assertEqual(rt_client.buffer_length,
-                         rt_client.buffer_capacity)
-
-    def test_full_buffer(self):
-        rt_client = self.rt_client.copy()
-        rt_client.select_stream(net="NZ", station="FOZ", selector="HHZ")
-        rt_client.background_run()
-        self.assertFalse(rt_client.buffer_full)
+        try:
+            self.assertFalse(rt_client.buffer_full)
+        except Exception as e:
+            rt_client.background_stop()
+            raise e
         time.sleep(SLEEP_STEP)
         rt_client.background_stop()
         self.assertTrue(rt_client.buffer_full)
+        self.assertEqual(rt_client.buffer_length,
+                         rt_client.buffer_capacity)
 
     def test_always_started(self):
         rt_client = self.rt_client.copy()

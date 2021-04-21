@@ -41,8 +41,8 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
         filename="{0}/rt_eqcorrscan_{1}.log".format(
             working_dir,
             os.path.split(working_dir)[-1]))
-    # Enforce a local-wave-bank for the streamer
-    config.streaming.local_wave_bank = "streaming_wavebank"
+    # Enforce a local-wave-bank for the spun-up real-time instance
+    config.rt_match_filter.local_wave_bank = "streaming_wavebank"
 
     triggering_event = read_events('triggering_event.xml')[0]
     Logger.debug(f"Triggered by {triggering_event}")
@@ -83,7 +83,8 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
         tribe=tribe, inventory=inventory, rt_client=rt_client,
         detect_interval=detect_interval, plot=plot,
         plot_options=config.plot,
-        name=triggering_event.resource_id.id.split('/')[-1])
+        name=triggering_event.resource_id.id.split('/')[-1],
+        wavebank=config.rt_match_filter.local_wave_bank)
     if real_time_tribe.expected_seed_ids is None:
         Logger.error("No matching channels in inventory and templates")
         return
@@ -104,7 +105,7 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
     backfill_to = event_time(triggering_event) - 180
     backfill_client = config.rt_match_filter.get_waveform_client()
 
-    if backfill_client and rt_client.wavebank:
+    if backfill_client and real_time_tribe.wavebank:
         # Download the required data and write it to disk.
         endtime = UTCDateTime.now()
         Logger.info(
@@ -132,7 +133,7 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
             Logger.warning("No backfill available, skipping")
         else:
             st = st.split()  # Cannot write masked data
-            rt_client.wavebank.put_waveforms(st)
+            real_time_tribe.wavebank.put_waveforms(st)
         backfill_stations = {tr.stats.station for tr in st}
         backfill_templates = [
             t for t in real_time_tribe.templates

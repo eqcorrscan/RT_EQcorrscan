@@ -61,7 +61,7 @@ class RealTimeClient(OBSRTCli):
         super().__init__(
             server_url=server_url, starttime=starttime, client=client,
             query_interval=query_interval, speed_up=speed_up, buffer=buffer,
-            buffer_capacity=buffer_capacity, wavebank=None)
+            buffer_capacity=buffer_capacity)
 
 
 if __name__ == "__main__":

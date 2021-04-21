@@ -71,6 +71,7 @@ class RTMatchFilterConfig(_ConfigAttribDict):
         "save_waveforms": True,
         "plot_detections": False,
         "max_correlation_cores": None,
+        "local_wave_bank": None,
     }
     readonly = []
 
@@ -126,7 +127,6 @@ class StreamingConfig(_ConfigAttribDict):
         "rt_client_url": "link.geonet.org.nz",
         "rt_client_type": "seedlink",
         "buffer_capacity": 300.,
-        "local_wave_bank": None,
     }
     readonly = []
     rt_client_base = "rt_eqcorrscan.streaming.clients"
@@ -134,12 +134,6 @@ class StreamingConfig(_ConfigAttribDict):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-    @property
-    def _local_wave_bank(self):
-        if isinstance(self.local_wave_bank, str):
-            return WaveBank(self.local_wave_bank)
-        return None
 
     @property
     def rt_client_module(self):
@@ -167,7 +161,6 @@ class StreamingConfig(_ConfigAttribDict):
             rt_client = _client_module.RealTimeClient(
                 server_url=self.rt_client_url,
                 buffer_capacity=self.buffer_capacity,
-                wavebank=self._local_wave_bank,
                 **kwargs)
         except Exception as e:
             Logger.error(e)
