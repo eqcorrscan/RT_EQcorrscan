@@ -1208,7 +1208,10 @@ def _write_detection(
         os.makedirs(_path)
     _filename = os.path.join(
         _path, detection.detect_time.strftime("%Y%m%dT%H%M%S"))
-    detection.event.write(f"{_filename}.xml", format="QUAKEML")
+    try:
+        detection.event.write(f"{_filename}.xml", format="QUAKEML")
+    except Exception as e:
+        Logger.error(f"Could not write event file due to {e}")
     detection.event.picks.sort(key=lambda p: p.time)
     st = stream.slice(
         detection.event.picks[0].time - 10,
@@ -1217,7 +1220,10 @@ def _write_detection(
         # Make plot
         fig = plot_event(fig=fig, event=detection.event, st=st,
                          length=90, show=False)
-        fig.savefig(f"{_filename}.png")
+        try:
+            fig.savefig(f"{_filename}.png")
+        except Exception as e:
+            Logger.error(f"Could not write plot due to {e}")
         fig.clf()
     if save_waveform:
         st = st.split()
@@ -1226,7 +1232,10 @@ def _write_detection(
               tr.data.dtype.type != numpy.int32:
                 # Ensure data are int32, see https://github.com/obspy/obspy/issues/2683
                 tr.data = tr.data.astype(numpy.int32)
-        st.write(f"{_filename}.ms", format="MSEED")
+        try:
+            st.write(f"{_filename}.ms", format="MSEED")
+        except Exception as e:
+            Logger.error(f"Could not write stream due to {e}")
     return fig
 
 
