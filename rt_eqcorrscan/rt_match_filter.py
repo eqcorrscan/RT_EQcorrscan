@@ -23,6 +23,7 @@ from eqcorrscan.utils.pre_processing import _prep_data_for_correlation
 
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
 from rt_eqcorrscan.event_trigger.triggers import average_rate
+from rt_eqcorrscan.config.mailer import Mailer
 
 Logger = logging.getLogger(__name__)
 
@@ -94,6 +95,7 @@ class RealTimeTribe(Tribe):
         plot: bool = True,
         plot_options: dict = None,
         wavebank: Union[str, WaveBank] = WaveBank("Streaming_WaveBank"),
+        mailer: Mailer = Mailer(),
     ) -> None:
         super().__init__(templates=tribe.templates)
         self.rt_client = rt_client
@@ -105,6 +107,7 @@ class RealTimeTribe(Tribe):
         self.party = Party()
         self.detect_interval = detect_interval
         self.plot = plot
+        self.mailer = mailer
         self.plot_options = {}
         if plot_options is not None:
             self.plot_length = plot_options.get("plot_length", 300)
@@ -752,8 +755,18 @@ class RealTimeTribe(Tribe):
                     # sum1 = summary.summarize(muppy.get_objects())
                     # summary.print_(sum1)
                 except Exception as e:
+                    # Error locally and mail this in!
                     Logger.critical(f"Uncaught error: {e}")
                     Logger.error(traceback.format_exc())
+
+                    message = f"""\
+                    Uncaught error: {e}
+                    
+                    Traceback:
+                    {traceback.format_exc()}
+                    """
+                    self.mailer.sendmail(content=message, type="ERROR")
+
                     if not self._runtime_check(
                             run_start=run_start, max_run_length=max_run_length):
                         break

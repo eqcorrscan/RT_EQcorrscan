@@ -255,6 +255,29 @@ class TemplateConfig(_ConfigAttribDict):
         super().__init__(*args, **kwargs)
 
 
+class EmailConfig(_ConfigAttribDict):
+    defaults = {
+        "address": None,
+        "server": "smtp.gmail.com",
+        "username": None,
+        "sendto": None,
+    }
+    readonly = []
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    @property
+    def mail_service(self):
+        from mailer import Mailer
+
+        return Mailer(
+            address=self.address,
+            server=self.server,
+            username=self.username,
+            sendto=self.sendto)
+
+
 KEY_MAPPER = {
     "rt_match_filter": RTMatchFilterConfig,
     "reactor": ReactorConfig,
@@ -262,6 +285,7 @@ KEY_MAPPER = {
     "database_manager": DatabaseManagerConfig,
     "template": TemplateConfig,
     "streaming": StreamingConfig,
+    "email": EmailConfig,
 }
 
 
@@ -300,6 +324,7 @@ class Config(object):
         self.database_manager = DatabaseManagerConfig()
         self.template = TemplateConfig()
         self.streaming = StreamingConfig()
+        self.email = EmailConfig()
         self.log_level = log_level
         self.log_formatter = log_formatter
 
@@ -315,10 +340,10 @@ class Config(object):
 
     def __repr__(self):
         return ("Config(\n\trt_match_filter={0},\n\treactor={1},\n\tplot={2},"
-                "\n\tdatabase_manager={3},\n\ttemplate={4}".format(
+                "\n\tdatabase_manager={3},\n\ttemplate={4},\n\temail={5}".format(
                     self.rt_match_filter.__repr__(), self.reactor.__repr__(),
                     self.plot.__repr__(), self.database_manager.__repr__(),
-                    self.template.__repr__()))
+                    self.template.__repr__(), self.email.__repr__()))
 
     def __eq__(self, other):
         if not isinstance(other, Config):
