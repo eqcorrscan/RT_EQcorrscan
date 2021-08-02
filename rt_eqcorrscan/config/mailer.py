@@ -73,9 +73,12 @@ class Mailer:
         content = f"Subject: RTEQcorrscan {type}\n\n" + content
         context = ssl.create_default_context()
         try:
-            with smtplib.SMTP_SSL(self.server, port=465, context=context, timeout=5) as server:
-                server.login(self.address, self.password)
-                server.sendmail(self.address, self.sendto, content)
+            server = smtplib.SMTP(self.server, port=587)
+            server.starttls(context=context)
+            server.login(self.address, self.password)
+            server.sendmail(self.address, self.sendto, content)
         except Exception as e:
             Logger.error(f"Could not send due to {e}")
+        finally:
+            server.quit()
         return
