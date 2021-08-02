@@ -22,13 +22,14 @@ class Mailer:
         username: str = None,
         sendto: str = None,
         server: str = "smtp.gmail.com",
+        password: str = None,
     ):
         self.server = server
         self.address = address
         self.username = username
         self.sendto = sendto
         self._can_send = False
-        self.__password = None  # For unsafe, in-memory
+        self.__password = password  # For unsafe, in-memory
         if address and username and sendto and server:
             # Allow a dummy client
             self._can_send = True
@@ -38,6 +39,8 @@ class Mailer:
 
     @property
     def password(self):
+        if self.__password:
+            return self.__password
         if not self._can_send:
             return None
         try:

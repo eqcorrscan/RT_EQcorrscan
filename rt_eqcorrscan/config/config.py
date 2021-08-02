@@ -261,6 +261,7 @@ class EmailConfig(_ConfigAttribDict):
         "server": "smtp.gmail.com",
         "username": None,
         "sendto": None,
+        "password": None,
     }
     readonly = []
 
@@ -275,7 +276,8 @@ class EmailConfig(_ConfigAttribDict):
             address=self.address,
             server=self.server,
             username=self.username,
-            sendto=self.sendto)
+            sendto=self.sendto,
+            password=self.password)
 
 
 KEY_MAPPER = {
