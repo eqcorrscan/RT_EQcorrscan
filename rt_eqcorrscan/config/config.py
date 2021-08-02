@@ -269,7 +269,7 @@ class EmailConfig(_ConfigAttribDict):
 
     @property
     def mail_service(self):
-        from mailer import Mailer
+        from rt_eqcorrscan.config.mailer import Mailer
 
         return Mailer(
             address=self.address,

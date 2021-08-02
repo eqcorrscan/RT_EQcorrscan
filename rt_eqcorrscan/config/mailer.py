@@ -9,6 +9,10 @@ import keyring
 import getpass
 import smtplib
 import ssl
+import logging
+
+
+Logger = logging.getLogger(__name__)
 
 
 class Mailer:
@@ -23,6 +27,8 @@ class Mailer:
         self.address = address
         self.username = username
         self.sendto = sendto
+        self._can_send = False
+        self.__password = None  # For unsafe, in-memory
         if address and username and sendto and server:
             # Allow a dummy client
             self._can_send = True
@@ -34,8 +40,12 @@ class Mailer:
     def password(self):
         if not self._can_send:
             return None
-        _password = keyring.get_password(
-            service_name=self.address, username=self.username)
+        try:
+            _password = keyring.get_password(
+                service_name=self.address, username=self.username)
+        except Exception as e:
+            print(f"Could not access keychain due to {e}, reverting to unsafe storage.")
+            return self._unsafe_password            
         if _password is None:
             print("No stored password, enter password below:")
             _password = getpass.getpass()
@@ -45,6 +55,15 @@ class Mailer:
                 password=_password)
         return _password
 
+    @property
+    def _unsafe_password(self):
+        """ In memory password retention. """
+
+        if self.__password:
+            return self.__password
+        self.__password = getpass.getpass()
+        return self.__password
+
     def sendmail(self, content: str, type: str = "INFO"):
         """ Send via SSL """
         if not self._can_send:
@@ -53,7 +72,10 @@ class Mailer:
         # Add in a subject line
         content = f"Subject: RTEQcorrscan {type}\n\n" + content
         context = ssl.create_default_context()
-        with smtplib.SMTP_SSL(self.server, port=465, context=context) as server:
-            server.login(self.address, self.password)
-            server.sendmail(self.address, self.sendto, content)
+        try:
+            with smtplib.SMTP_SSL(self.server, port=465, context=context, timeout=5) as server:
+                server.login(self.address, self.password)
+                server.sendmail(self.address, self.sendto, content)
+        except Exception as e:
+            Logger.error(f"Could not send due to {e}")
         return
