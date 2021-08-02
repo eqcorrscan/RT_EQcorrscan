@@ -428,12 +428,16 @@ class RealTimeTribe(Tribe):
 
     def _runtime_check(self, run_start, max_run_length):
         run_time = UTCDateTime.now() - run_start
-        Logger.info(
-            f"Run time: {run_time:.2f}s, max_run_length: {max_run_length:.2f}s")
-        if max_run_length and run_time > max_run_length:
-            Logger.critical("Hit maximum run time, stopping.")
-            self.stop()
-            return False
+        if max_run_length is None:
+            Logger.info(
+                f"Run time: {run_time:.2f}s, no maximum run length")
+        else:
+            Logger.info(
+                f"Run time: {run_time:.2f}s, max_run_length: {max_run_length:.2f}s")
+            if run_time > max_run_length:
+                Logger.critical("Hit maximum run time, stopping.")
+                self.stop()
+                return False
         return True
 
     def run(
