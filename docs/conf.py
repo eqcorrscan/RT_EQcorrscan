@@ -181,6 +181,4 @@ trim_doctest_flags = True
 
 
 def setup(app):
-    app.add_stylesheet("my-styles.css")  # also can be a full URL
-    # app.add_stylesheet("ANOTHER.css")
-    # app.add_stylesheet("AND_ANOTHER.css")
+    app.add_css_file("my-styles.css")  # also can be a full URL
