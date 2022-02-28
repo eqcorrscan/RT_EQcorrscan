@@ -85,7 +85,7 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
         plot_options=config.plot,
         name=triggering_event.resource_id.id.split('/')[-1],
         wavebank=config.rt_match_filter.local_wave_bank,
-        mailer=config.email)
+        notifer=config.notifier)
     if real_time_tribe.expected_seed_ids is None:
         Logger.error("No matching channels in inventory and templates")
         return

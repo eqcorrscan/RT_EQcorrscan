@@ -13,6 +13,7 @@ try:
 except ImportError:  # pragma: no cover
     from yaml import Loader, Dumper
 from logging.handlers import RotatingFileHandler
+from rt_eqcorrscan.config.mailer import Notifier
 
 from obspy.core.util import AttribDict
 
@@ -255,13 +256,11 @@ class TemplateConfig(_ConfigAttribDict):
         super().__init__(*args, **kwargs)
 
 
-class EmailConfig(_ConfigAttribDict):
+class NotifierConfig(_ConfigAttribDict):
     defaults = {
-        "address": None,
-        "server": "smtp.gmail.com",
-        "username": None,
-        "sendto": None,
-        "password": None,
+        "service": "pushover",
+        "user": "USER",
+        "token": "TOKEN",
     }
     readonly = []
 
@@ -269,15 +268,10 @@ class EmailConfig(_ConfigAttribDict):
         super().__init__(*args, **kwargs)
 
     @property
-    def mail_service(self):
-        from rt_eqcorrscan.config.mailer import Mailer
-
-        return Mailer(
-            address=self.address,
-            server=self.server,
-            username=self.username,
-            sendto=self.sendto,
-            password=self.password)
+    def notifier(self):
+        return Notifier(
+            service=self.service,
+            default_args={key: value for key, value in self.__dict__.items() if key != "service"})
 
 
 KEY_MAPPER = {
@@ -287,7 +281,7 @@ KEY_MAPPER = {
     "database_manager": DatabaseManagerConfig,
     "template": TemplateConfig,
     "streaming": StreamingConfig,
-    "email": EmailConfig,
+    "notifier": NotifierConfig,
 }
 
 
@@ -313,6 +307,8 @@ class Config(object):
         Config values for template creation.
     streaming
         Config values for real-time streaming
+    notifier
+        Config values to notification services
     """
     def __init__(
         self,
@@ -326,7 +322,7 @@ class Config(object):
         self.database_manager = DatabaseManagerConfig()
         self.template = TemplateConfig()
         self.streaming = StreamingConfig()
-        self.email = EmailConfig()
+        self.notifier = NotifierConfig()
         self.log_level = log_level
         self.log_formatter = log_formatter
 
@@ -342,10 +338,10 @@ class Config(object):
 
     def __repr__(self):
         return ("Config(\n\trt_match_filter={0},\n\treactor={1},\n\tplot={2},"
-                "\n\tdatabase_manager={3},\n\ttemplate={4},\n\temail={5}".format(
+                "\n\tdatabase_manager={3},\n\ttemplate={4},\n\tnotifier={5}".format(
                     self.rt_match_filter.__repr__(), self.reactor.__repr__(),
                     self.plot.__repr__(), self.database_manager.__repr__(),
-                    self.template.__repr__(), self.email.__repr__()))
+                    self.template.__repr__(), self.notifier.__repr__()))
 
     def __eq__(self, other):
         if not isinstance(other, Config):
