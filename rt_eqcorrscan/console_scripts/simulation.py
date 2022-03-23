@@ -121,25 +121,31 @@ def synthesise_real_time(
 
     Logger.info("Downloading data")
     wavebank = WaveBank("simulation_wavebank")
+    download_chunk_size = 86400
     for network in inventory:
         for station in network:
             for channel in station:
-                try:
-                    st = client.get_waveforms(
-                        network=network.code, 
-                        station=station.code, 
-                        channel=channel.code,
-                        location=channel.location_code,
-                        starttime=trigger_origin.time - 60.,
-                        endtime=trigger_origin.time + detection_runtime)
-                except Exception as e:
-                    Logger.error(
-                        "Could not download data for "
-                        f"{network.code}.{station.code}."
-                        f"{channel.location_code}.{channel.code}")
-                    Logger.error(e)
-                    continue
-                wavebank.put_waveforms(st)
+                _starttime = trigger_origin.time
+                _endtime = _starttime + detection_runtime
+                while _starttime <= _endtime:
+                    try:
+                        st = client.get_waveforms(
+                            network=network.code,
+                            station=station.code,
+                            channel=channel.code,
+                            location=channel.location_code,
+                            starttime=trigger_origin.time - 60.,
+                            endtime=trigger_origin.time + download_chunk_size)
+                    except Exception as e:
+                        Logger.error(
+                            "Could not download data for "
+                            f"{network.code}.{station.code}."
+                            f"{channel.location_code}.{channel.code}")
+                        Logger.error(e)
+                        _starttime += download_chunk_size
+                        continue
+                    _starttime += download_chunk_size
+                    wavebank.put_waveforms(st)
 
     # Set up config to use the wavebank rather than FDSN.
     config.streaming.update(
