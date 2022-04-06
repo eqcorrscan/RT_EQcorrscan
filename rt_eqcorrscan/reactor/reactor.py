@@ -87,6 +87,10 @@ class Reactor(object):
     n_stations = 10
     sleep_step = 15
 
+    # Fudge factors for past sequence simulation
+    _speed_up = 1
+    _test_start_step = 0.0
+
     # Maximum processors dedicated to one detection routine.
     _max_detect_cores = 12
 
@@ -321,6 +325,7 @@ class Reactor(object):
         Logger.debug(f"event-ids in region: {event_ids}")
         # Write file of event id's
         if len(event_ids) == 0:
+            Logger.warning(f"Found no events in region: {region} - no detection to run.")
             return
         tribe = self.template_database.get_templates(eventid=event_ids)
         Logger.info(f"Found {len(tribe)} templates")
@@ -336,7 +341,9 @@ class Reactor(object):
         script_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "spin_up.py")
         _call = ["python", script_path, "-w", working_dir,
-                 "-n", str(min(self.available_cores, self._max_detect_cores))]
+                 "-n", str(min(self.available_cores, self._max_detect_cores)),
+                 "-s", self._speed_up,
+                 "-o", self._test_start_step]
         Logger.info("Running `{call}`".format(call=" ".join(_call)))
         proc = subprocess.Popen(_call)
         self.detecting_processes.update({triggering_event_id: proc})

@@ -32,7 +32,13 @@ def _read_event_list(fname: str) -> List[str]:
     return event_ids
 
 
-def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
+def run(
+    working_dir: str,
+    cores: int = 1,
+    log_to_screen: bool = False,
+    speed_up: int = 1,
+    synthetic_time_offset: float = 0,
+):
     os.chdir(working_dir)
     Logger.debug("Reading config")
     config = read_config('rt_eqcorrscan_config.yml')
@@ -86,6 +92,7 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
         name=triggering_event.resource_id.id.split('/')[-1],
         wavebank=config.rt_match_filter.local_wave_bank,
         notifer=config.notifier)
+    real_time_tribe._speed_up = speed_up
     if real_time_tribe.expected_seed_ids is None:
         Logger.error("No matching channels in inventory and templates")
         return
@@ -108,7 +115,7 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
 
     if backfill_client and real_time_tribe.wavebank:
         # Download the required data and write it to disk.
-        endtime = UTCDateTime.now()
+        endtime = UTCDateTime.now() - synthetic_time_offset  # Adjust for simulations
         Logger.info(
             f"Backfilling between {backfill_to} and {endtime}")
         st = Stream()
@@ -281,8 +288,16 @@ if __name__ == "__main__":
     parser.add_argument(
         "-l", "--log-to-screen", action="store_true",
         help="Whether to log to screen or not, defaults to False")
+    parser.add_argument(
+        "-s", "--speed-up", type=int,
+        help="Speed-up multiplier for synthetic runs")
+    parser.add_argument(
+        "-o", "--offset", type=float, default=0.0,
+        help="Synthetic time offset from now in seconds - used for "
+             "simulation")
 
     args = parser.parse_args()
 
     run(working_dir=args.working_dir, cores=args.n_processors,
-        log_to_screen=args.log_to_screen)
+        log_to_screen=args.log_to_screen,
+        speed_up=args.speed_up, synthetic_time_offset=args.offset)
