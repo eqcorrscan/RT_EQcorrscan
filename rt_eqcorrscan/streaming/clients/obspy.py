@@ -134,7 +134,7 @@ class RealTimeClient(_StreamingClient):
                 kill = self._killer_queue.get(block=False)
             except Empty:
                 kill = False
-            Logger.info(f"Kill status: {kill}")
+            Logger.debug(f"Kill status: {kill}")
             if kill:
                 Logger.warning("Termination called, stopping collect loop")
                 self.on_terminate()

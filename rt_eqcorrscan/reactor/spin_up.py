@@ -36,7 +36,7 @@ def run(
     working_dir: str,
     cores: int = 1,
     log_to_screen: bool = False,
-    speed_up: int = 1,
+    speed_up: float = 1.0,
     synthetic_time_offset: float = 0,
 ):
     os.chdir(working_dir)
@@ -172,7 +172,8 @@ def run(
         save_waveforms=config.rt_match_filter.save_waveforms,
         max_run_length=config.rt_match_filter.max_run_length,
         minimum_rate=config.rt_match_filter.minimum_rate,
-        backfill_to=backfill_to)
+        backfill_to=backfill_to,
+        backfill_client=backfill_client)
 
 
 def get_inventory(
@@ -289,7 +290,7 @@ if __name__ == "__main__":
         "-l", "--log-to-screen", action="store_true",
         help="Whether to log to screen or not, defaults to False")
     parser.add_argument(
-        "-s", "--speed-up", type=int,
+        "-s", "--speed-up", type=float,
         help="Speed-up multiplier for synthetic runs")
     parser.add_argument(
         "-o", "--offset", type=float, default=0.0,

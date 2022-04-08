@@ -342,8 +342,8 @@ class Reactor(object):
             os.path.dirname(os.path.abspath(__file__)), "spin_up.py")
         _call = ["python", script_path, "-w", working_dir,
                  "-n", str(min(self.available_cores, self._max_detect_cores)),
-                 "-s", self._speed_up,
-                 "-o", self._test_start_step]
+                 "-s", str(self._speed_up),
+                 "-o", str(self._test_start_step)]
         Logger.info("Running `{call}`".format(call=" ".join(_call)))
         proc = subprocess.Popen(_call)
         self.detecting_processes.update({triggering_event_id: proc})

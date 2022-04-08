@@ -189,6 +189,9 @@ def main():
         "--db-duration", type=int, default=365,
         help="Number of days to generate the database for prior to the chosen event")
     parser.add_argument(
+        "--runtime", type=float, default=3600,
+        help="Duration in seconds to run the detector for.")
+    parser.add_argument(
         "--radius", type=float, default=0.5,
         help="Radius in degrees to build database for")
     parser.add_argument(
@@ -219,7 +222,7 @@ def main():
     synthesise_real_time(
         triggering_event=trigger_event, database_duration=args.db_duration,
         config=config, make_templates=args.templates_made,
-        debug=args.debug, speed_up=args.speed_up)
+        debug=args.debug, speed_up=args.speed_up, detection_runtime=args.runtime)
 
 
 if __name__ == "__main__":
