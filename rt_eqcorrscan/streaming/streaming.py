@@ -346,7 +346,7 @@ class _StreamingClient(ABC):
             New data.
         """
         self.last_data = UTCDateTime.now()
-        Logger.info(f"Received trace: {trace}")
+        Logger.debug(f"Received trace: {trace}")
         Logger.debug("Packet of {0} samples for {1}".format(
             trace.stats.npts, trace.id))
         # Put data into queue - get the run process to handle it!
