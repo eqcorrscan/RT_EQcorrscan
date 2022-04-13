@@ -157,6 +157,7 @@ class RealTimeClient(_StreamingClient):
                     continue
             for tr in st:
                 self.on_data(tr)
+                time.sleep(0.001)
             # Put the data in the buffer
             self._add_data_from_queue()
             _query_duration = UTCDateTime.now() - _query_start
