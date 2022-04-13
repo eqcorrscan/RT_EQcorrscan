@@ -134,7 +134,7 @@ def synthesise_real_time(
                             station=station.code,
                             channel=channel.code,
                             location=channel.location_code,
-                            starttime=trigger_origin.time - 60.,
+                            starttime=trigger_origin.time - config.template.process_len,
                             endtime=trigger_origin.time + download_chunk_size)
                     except Exception as e:
                         Logger.error(
@@ -170,7 +170,8 @@ def synthesise_real_time(
     reactor._speed_up = speed_up
     reactor._test_start_step = listener._test_start_step
     Logger.info("Starting reactor")
-    reactor.run(max_run_length=config.reactor.max_run_length)
+    # reactor.run(max_run_length=config.reactor.max_run_length)
+    reactor.run(max_run_length=detection_runtime)
 
 
 def main():
