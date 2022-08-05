@@ -693,6 +693,9 @@ class RealTimeTribe(Tribe):
                         tr for tr in st
                         if _numpy_len(tr.data) >= (
                                 .8 * self.minimum_data_for_detection)]
+                    if len(st) == 0:
+                        Logger.error("Insufficient data after trimming, accumulating")
+                        continue
                     Logger.info("Starting detection run")
                     Logger.info("Using data: \n{0}".format(
                         st.__str__(extended=True)))
