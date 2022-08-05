@@ -97,11 +97,11 @@ class EQcorrscanPlot:
                 ("ID", "@id")])
         self.tools = "pan,wheel_zoom,reset"
         self.plot_options = {
-            "plot_width": int(2 * (plot_width / 3)),
-            "plot_height": int((plot_height - 20) / len(channels)),
+            "width": int(2 * (plot_width / 3)),
+            "height": int((plot_height - 20) / len(channels)),
             "tools": [self.hover], "x_axis_type": "datetime"}
         self.map_options = {
-            "plot_width": int(plot_width / 3), "plot_height": plot_height,
+            "width": int(plot_width / 3), "height": plot_height,
             "tools": [self.map_hover, self.tools]}
         self.updateValue = True
         Logger.info("Initializing plotter")
@@ -311,9 +311,9 @@ def define_plot(
     p1 = figure(
         y_axis_location="right", title=title,
         x_range=[now - dt.timedelta(seconds=plot_length), now],
-        plot_height=int(plot_options["plot_height"] * 1.2),
+        height=int(plot_options["height"] * 1.2),
         **{key: value for key, value in plot_options.items()
-           if key != "plot_height"})
+           if key != "height"})
     p1.yaxis.axis_label = None
     p1.xaxis.axis_label = None
     p1.min_border_bottom = 0
