@@ -363,6 +363,8 @@ class Reactor(object):
 
     def _handle_interupt(self, signum, frame) -> None:
         Logger.critical(f"Received signal: {signum}")
+        self.notifier.notify(
+            content=f"CRITICAL: Stopping reactor after interupt: {signum}")
         self.stop()
 
     def stop(self, raise_exit: bool=True) -> None:
