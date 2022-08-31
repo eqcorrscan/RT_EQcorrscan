@@ -359,6 +359,8 @@ class RealTimeTribe(Tribe):
                     plot_detection=plot_detections, stream=st,
                     fig=self._fig)
         Logger.info("Expiring old detections")
+        # Empty self.detections
+        self.detections.clear()
         for family in self.party:
             Logger.debug(f"Checking for {family.template.name}")
             family.detections = [
