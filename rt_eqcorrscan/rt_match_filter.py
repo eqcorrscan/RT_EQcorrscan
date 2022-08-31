@@ -326,23 +326,31 @@ class RealTimeTribe(Tribe):
             The stream the detection was made in - required for save_waveform
             and plot_detection.
         """
+        _detected_templates = [f.template.name for f in self.party]
         for family in new_party:
             if family is None:
                 continue
             for d in family:
                 d._calculate_event(template=family.template)
-            self.party += family
+                Logger.info(f"New detection at {d.detect_time}")
+            if family.template.name not in _detected_templates:
+                self.party.families.append(family)
+            else:
+                self.party.select(family.template.name).detections.extend(
+                    family.detections)
         Logger.info("Removing duplicate detections")
+        Logger.info(f"Party contained {len(self.party)} before decluster")
         if len(self.party) > 0:
             self.party.decluster(
                 trig_int=trig_int, timing="origin", metric="cor_sum",
                 hypocentral_separation=hypocentral_separation)
         Logger.info("Completed decluster")
+        Logger.info(f"Party contains {len(self.party)} after decluster")
         Logger.info("Writing detections to disk")
         for family in self.party:
             for detection in family:
-                if detection in self.detections:
-                    continue
+                # if detection in self.detections:
+                #     continue
                 Logger.info(f"Writing detection: {detection.detect_time}")
                 self._fig = _write_detection(
                     detection=detection,
@@ -1228,6 +1236,9 @@ def _write_detection(
         os.makedirs(_path)
     _filename = os.path.join(
         _path, detection.detect_time.strftime("%Y%m%dT%H%M%S"))
+    if os.path.isfile(_filename):
+        Logger.info(f"{_filename} exists, skipping")
+        return fig
     try:
         detection.event.write(f"{_filename}.xml", format="QUAKEML")
     except Exception as e:
