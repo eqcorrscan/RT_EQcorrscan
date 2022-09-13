@@ -18,10 +18,10 @@ from pympler import summary, muppy
 
 from typing import Union, List, Iterable
 
-from obspy import Stream, UTCDateTime, Inventory, Trace, read
+from obspy import Stream, UTCDateTime, Inventory, Trace
 from obsplus import WaveBank
 from matplotlib.figure import Figure
-from multiprocessing import Process, Lock
+from multiprocessing import Lock
 from eqcorrscan import Tribe, Template, Party, Detection
 from eqcorrscan.utils.pre_processing import _prep_data_for_correlation
 
