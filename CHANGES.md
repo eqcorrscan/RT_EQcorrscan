@@ -1,3 +1,8 @@
+# simulation-testing
+- Fix threadlock when backfillers attempt to debug in multithreading (requires update to EQcorrscan)
+- Share backfiller stream as file rather than in-memory to reduce memory use in backfilling
+- Backfillers operate in subprocesses rather than multiprocessing Processes
+
 # email-support
 - Attempted to add email support, but gmail authentification kept breaking
 - Switched to using notifiers

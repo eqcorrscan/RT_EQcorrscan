@@ -152,11 +152,7 @@ def run(
             templates=backfill_templates,
             threshold=config.rt_match_filter.threshold,
             threshold_type=config.rt_match_filter.threshold_type,
-            trig_int=config.rt_match_filter.trig_int,
-            hypocentral_separation=config.rt_match_filter.hypocentral_separation,
-            keep_detections=86400,
-            detect_directory="{name}/detections",
-            plot_detections=config.rt_match_filter.plot_detections)
+            trig_int=config.rt_match_filter.trig_int)
 
     Logger.info("Starting real-time run")
     
