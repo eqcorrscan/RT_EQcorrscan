@@ -169,6 +169,11 @@ class RegionTests(unittest.TestCase):
             region["maxradius"], kilometer2degrees(50) / 2)
 
 
+class BackfillTest(unittest.TestCase):
+    def test_basic(self):
+        raise NotImplementedError
+
+
 if __name__ == "__main__":
     import logging
     logging.basicConfig(level="DEBUG")
