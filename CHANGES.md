@@ -1,5 +1,6 @@
 # simulation-testing
-- Fix threadlock when backfillers attempt to debug in multithreading (requires update to EQcorrscan)
+- Fix threadlock when backfillers attempt to decluster in multithreaded mode
+  (requires update to EQcorrscan)
 - Share backfiller stream as file rather than in-memory to reduce memory use in backfilling
 - Backfillers operate in subprocesses rather than multiprocessing Processes
 

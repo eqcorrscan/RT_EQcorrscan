@@ -121,21 +121,24 @@ def synthesise_real_time(
 
     Logger.info("Downloading data")
     wavebank = WaveBank("simulation_wavebank")
-    download_chunk_size = 86400
+    download_chunk_size = min(86400, detection_runtime)
     for network in inventory:
         for station in network:
             for channel in station:
-                _starttime = trigger_origin.time
+                _starttime = trigger_origin.time - 60
                 _endtime = _starttime + detection_runtime
                 while _starttime <= _endtime:
+                    Logger.info(
+                        f"Downloading for {network.code}.{station.code}.{channel.location_code}.{channel.code} "
+                        f"between {_starttime} and {_starttime + download_chunk_size}")
                     try:
                         st = client.get_waveforms(
                             network=network.code,
                             station=station.code,
                             channel=channel.code,
                             location=channel.location_code,
-                            starttime=trigger_origin.time - config.template.process_len,
-                            endtime=trigger_origin.time + download_chunk_size)
+                            starttime=_starttime,
+                            endtime=_starttime + download_chunk_size)
                     except Exception as e:
                         Logger.error(
                             "Could not download data for "
