@@ -1,6 +1,7 @@
 """
 Classes for real-time matched-filter detection of earthquakes.
 """
+import shutil
 import time
 import traceback
 import os
@@ -9,15 +10,18 @@ import copy
 import numpy
 import gc
 import glob
+import subprocess
 
-# from pympler import summary, muppy
+# Memory tracking for debugging
+import psutil
+from pympler import summary, muppy
 
 from typing import Union, List, Iterable
 
 from obspy import Stream, UTCDateTime, Inventory, Trace
 from obsplus import WaveBank
 from matplotlib.figure import Figure
-from multiprocessing import Process, Lock
+from multiprocessing import Lock
 from eqcorrscan import Tribe, Template, Party, Detection
 from eqcorrscan.utils.pre_processing import _prep_data_for_correlation
 
@@ -70,10 +74,12 @@ class RealTimeTribe(Tribe):
     lock = Lock()  # Lock for access to internals
     _running = False
     _detecting_thread = None
-    _backfillers = []  # Backfill processes
+    _backfillers = dict()  # Backfill subprocesses
     _backfill_tribe = Tribe()  # Tribe of as-yet unused templates for backfilling
     _last_backfill_start = UTCDateTime.now()  # Time of last backfill run - update on run
     _number_of_backfillers = 0  # Book-keeping of backfiller processes.
+    _clean_backfillers = False  # If false will leave temporary backfiller dirs
+
     busy = False
 
     _speed_up = 1.0  # For simulated runs - do not change for real-time!
@@ -217,15 +223,37 @@ class RealTimeTribe(Tribe):
             if d.detect_time <= endtime:
                 self.detections.remove(d)
 
-    def _remove_unused_backfillers(self):
+    def _remove_unused_backfillers(
+        self,
+        trig_int: float,
+        hypocentral_separation: float,
+        earliest_detection_time: UTCDateTime,
+        detect_directory: str,
+        save_waveforms: bool,
+        plot_detections: bool,
+        **kwargs
+    ):
         """ Expire unused back fill processes to release resources. """
-        active_backfillers = []
-        for backfill_process in self._backfillers:
-            if not backfill_process.is_alive():
-                backfill_process.join()
-                backfill_process.close()
+        active_backfillers = dict()
+        for backfiller_name, backfill_process in self._backfillers.items():
+            if backfill_process.poll() is not None:
+                Logger.info(f"Handling detections from {backfiller_name}")
+                self._backfiller_return(
+                    backfiller_name=backfiller_name,
+                    trig_int=trig_int,
+                    hypocentral_separation=hypocentral_separation,
+                    earliest_detection_time=earliest_detection_time,
+                    detect_directory=detect_directory,
+                    save_waveforms=save_waveforms,
+                    plot_detections=plot_detections)
+                Logger.info(f"Cleaning backfiller {backfiller_name}")
+                if os.path.isdir(backfiller_name):
+                    if self._clean_backfillers:
+                        shutil.rmtree(backfiller_name)
+                else:
+                    Logger.warning(f"Did not find backfiller temp dir {backfiller_name}")
             else:
-                active_backfillers.append(backfill_process)
+                active_backfillers.update({backfiller_name: backfill_process})
         Logger.info(f"There are {len(active_backfillers)} backfillers currently active")
         self._backfillers = active_backfillers
 
@@ -290,16 +318,59 @@ class RealTimeTribe(Tribe):
             method="get_waveforms_bulk", timeout=120., bulk=bulk)
         return st
 
+    def _backfiller_return(
+        self,
+        backfiller_name: str,
+        trig_int: float,
+        hypocentral_separation: float,
+        earliest_detection_time: UTCDateTime,
+        detect_directory: str,
+        save_waveforms: bool,
+        plot_detections: bool,
+    ):
+        """
+        Handle finalisation of backfillers.
+
+        Parameters
+        ----------
+        backfiller_name
+        """
+        if os.path.isfile(f"{backfiller_name}/party.tgz"):
+            party = Party().read(f"{backfiller_name}/party.tgz")
+        else:
+            Logger.info("No party written by backfiller - no detections")
+            return
+        Logger.info(f"Read backfiller party of {len(party)} detections")
+        if len(party) == 0:
+            return
+        Logger.info(f"Backfill handling: Trying to get lock - Lock status: {self.lock}")
+        with self.lock:
+            Logger.info(f"Backfill handling: Lock acquired - Lock status: {self.lock}")
+            self._handle_detections(
+                party, trig_int=trig_int,
+                hypocentral_separation=hypocentral_separation,
+                earliest_detection_time=earliest_detection_time,
+                detect_directory=detect_directory,
+                save_waveforms=save_waveforms,
+                plot_detections=plot_detections, st=None)
+            self._remove_old_detections(earliest_detection_time)
+            Logger.info("Party now contains {0} detections".format(
+                len(self.detections)))
+        Logger.info(f"Backfill handling: Lock released - Lock status {self.lock}")
+        return
+
     def _handle_detections(
         self,
         new_party: Party,
         trig_int: float,
         hypocentral_separation: float,
-        endtime: UTCDateTime,
+        earliest_detection_time: UTCDateTime,
         detect_directory: str,
         save_waveforms: bool,
         plot_detections: bool,
-        st: Stream,
+        st: Stream = None,
+        num_threads_decluster: int = None,
+        **kwargs
     ) -> None:
         """
         Handle new detections - do all the additional post-detection processing
@@ -313,8 +384,8 @@ class RealTimeTribe(Tribe):
         hypocentral_separation
             Maximum inter-event distance in km to consider detections as being
             duplicates.
-        endtime
-            Last detection-time to be kept.
+        earliest_detection_time
+            Earliest (oldest) detection-time to be kept.
         detect_directory
             The head directory to write to - will create
             "{detect_directory}/{year}/{julian day}" directories
@@ -325,6 +396,8 @@ class RealTimeTribe(Tribe):
         st
             The stream the detection was made in - required for save_waveform
             and plot_detection.
+        num_threads_decluster
+            Number of threads to use for declustering if available.
         """
         _detected_templates = [f.template.name for f in self.party]
         for family in new_party:
@@ -332,7 +405,7 @@ class RealTimeTribe(Tribe):
                 continue
             for d in family:
                 d._calculate_event(template=family.template)
-                Logger.info(f"New detection at {d.detect_time}")
+                Logger.debug(f"New detection at {d.detect_time}")
             if family.template.name not in _detected_templates:
                 self.party.families.append(family)
             else:
@@ -343,15 +416,35 @@ class RealTimeTribe(Tribe):
         if len(self.party) > 0:
             self.party.decluster(
                 trig_int=trig_int, timing="origin", metric="cor_sum",
-                hypocentral_separation=hypocentral_separation)
+                hypocentral_separation=hypocentral_separation,
+                num_threads=num_threads_decluster)
         Logger.info("Completed decluster")
         Logger.info(f"Party contains {len(self.party)} after decluster")
         Logger.info("Writing detections to disk")
+
+        # Cope with not being given a stream
+        read_st = False
+        if st is None:
+            read_st = True
+
         for family in self.party:
             for detection in family:
-                # if detection in self.detections:
-                #     continue
-                Logger.info(f"Writing detection: {detection.detect_time}")
+                if detection in self.detections:
+                    continue
+                Logger.debug(f"Writing detection: {detection.detect_time}")
+                if read_st:
+                    max_shift = (
+                        max(tr.stats.endtime for tr in family.template.st) -
+                        min(tr.stats.starttime for tr in family.template.st))
+                    bulk = [
+                        (tr.stats.network,
+                         tr.stats.station,
+                         tr.stats.location,
+                         tr.stats.channel,
+                         (detection.detect_time - 5),
+                         (detection.detect_time + max_shift + 5))
+                        for tr in family.template.st]
+                    st = self.wavebank.get_waveforms_bulk(bulk)
                 self._fig = _write_detection(
                     detection=detection,
                     detect_directory=detect_directory,
@@ -364,7 +457,7 @@ class RealTimeTribe(Tribe):
         for family in self.party:
             Logger.debug(f"Checking for {family.template.name}")
             family.detections = [
-                d for d in family.detections if d.detect_time >= endtime]
+                d for d in family.detections if d.detect_time >= earliest_detection_time]
             Logger.debug(f"Appending {len(family)} detections")
             for detection in family:
                 # Need to append rather than create a new object
@@ -398,13 +491,13 @@ class RealTimeTribe(Tribe):
         wait_length = 0.
         while True:
             tic = time.time()
-            # Check on backfillers
-            self._remove_unused_backfillers()
+            if detection_kwargs:
+                # Check on backfillers
+                self._remove_unused_backfillers(**detection_kwargs)
             if UTCDateTime.now() - self._last_backfill_start >= (self.backfill_interval / self._speed_up) and \
                     len(self._backfill_tribe) and detection_kwargs:
                 Logger.info(f"Starting backfilling with {len(self._backfill_tribe)} templates")
-                self.backfill(
-                    templates=self._backfill_tribe.copy(), **detection_kwargs)
+                self.backfill(templates=self._backfill_tribe.copy(), **detection_kwargs)
                 # Empty the tribe
                 self._backfill_tribe.templates = []
                 self._last_backfill_start = UTCDateTime.now()
@@ -636,7 +729,7 @@ class RealTimeTribe(Tribe):
             keep_detections=keep_detections, detect_directory=detect_directory,
             plot_detections=plot_detections, save_waveforms=save_waveforms,
             maximum_backfill=first_data, endtime=None,
-            min_stations=min_stations)
+            min_stations=min_stations, earliest_detection_time=None)
 
         try:
             while self.busy:
@@ -737,20 +830,20 @@ class RealTimeTribe(Tribe):
                             "better".format(self.detect_interval))
                         time.sleep(self.detect_interval)
                         continue
-                    Logger.info(f"Trying to get lock - lock status: {self.lock}")
+                    Logger.info(f"Trying to get lock - Lock status: {self.lock}")
+                    detection_kwargs.update(
+                        dict(earliest_detection_time=stream_end - keep_detections))
                     with self.lock:
+                        Logger.info(f"Lock acquired - Lock status: {self.lock}")
                         if len(new_party) > 0:
                             self._handle_detections(
-                                new_party, trig_int=trig_int,
-                                hypocentral_separation=hypocentral_separation,
-                                endtime=stream_end - keep_detections,
-                                detect_directory=detect_directory,
-                                save_waveforms=save_waveforms,
-                                plot_detections=plot_detections, st=st)
+                                new_party, st=st,
+                                **detection_kwargs)
                         self._remove_old_detections(
                             stream_end - keep_detections)
                         Logger.info("Party now contains {0} detections".format(
                             len(self.detections)))
+                    Logger.info(f"Lock released - Lock status {self.lock}")
                     self._running = False  # Release lock
                     run_time = UTCDateTime.now() - start_time
                     Logger.info("Detection took {0:.2f}s".format(run_time))
@@ -785,8 +878,12 @@ class RealTimeTribe(Tribe):
                             break
                     gc.collect()
                     # Memory output
-                    # sum1 = summary.summarize(muppy.get_objects())
-                    # summary.print_(sum1)
+                    sum1 = summary.summarize(muppy.get_objects())
+                    for line in summary.format_(sum1):
+                        Logger.info(line)
+                    # Total memory used for process according to psutil
+                    total_memory_mb = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+                    Logger.info(f"Total memory used by {os.getpid()}: {total_memory_mb:.4f} MB")
                 except Exception as e:
                     # Error locally and mail this in!
                     Logger.critical(f"Uncaught error: {e}")
@@ -889,12 +986,6 @@ class RealTimeTribe(Tribe):
         self.templates.extend(new_tribe.templates)
         # Add templates to backfill set.
         self._backfill_tribe.templates.extend(new_tribe.templates)
-        # self.backfill(
-        #     templates=new_tribe, threshold=threshold,
-        #     threshold_type=threshold_type, trig_int=trig_int,
-        #     keep_detections=keep_detections, detect_directory=detect_directory,
-        #     plot_detections=plot_detections, save_waveforms=save_waveforms,
-        #     maximum_backfill=maximum_backfill, endtime=endtime, **kwargs)
         return set(t.name for t in self.templates)
 
     def backfill(
@@ -903,11 +994,6 @@ class RealTimeTribe(Tribe):
         threshold: float,
         threshold_type: str,
         trig_int: float,
-        hypocentral_separation: float = None,
-        keep_detections: float = 86400,
-        detect_directory: str = "{name}/detections",
-        plot_detections: bool = True,
-        save_waveforms: bool = True,
         maximum_backfill: Union[float, UTCDateTime] = None,
         endtime: UTCDateTime = None,
         **kwargs
@@ -929,21 +1015,6 @@ class RealTimeTribe(Tribe):
             `eqcorrscan.core.match_filter.Tribe.detect` for options.
         trig_int
             Minimum inter-detection time in seconds.
-        hypocentral_separation
-            Maximum inter-event distance in km to consider detections as being
-            duplicates.
-        keep_detections
-            Duration to store detection in memory for in seconds.
-        detect_directory
-            Relative path to directory for detections. This directory will be
-            created if it doesn't exist - tribe name will be appended to this
-            string to give the directory name.
-        plot_detections
-            Whether to plot detections or not - plots will be saved to the
-            `detect_directory` as png images.
-        save_waveforms
-            Whether to save waveforms of detections or not - waveforms
-            will be saved in the `detect_directory` as miniseed files.
         maximum_backfill
             Time in seconds to backfill to - if this is larger than the
             difference between the time now and the time that the tribe
@@ -968,6 +1039,7 @@ class RealTimeTribe(Tribe):
             starttime = UTCDateTime(0)
         Logger.info(f"Backfilling between {starttime} and {endtime}")
         if starttime >= endtime or not self.has_wavebank:
+            Logger.info("No data meets backfill needs. Returning")
             return
         if self.expected_seed_ids and len(self.expected_seed_ids) > 0:
             bulk = []
@@ -981,96 +1053,50 @@ class RealTimeTribe(Tribe):
         if len(bulk) == 0:
             Logger.warning("No bulk")
             return
-        Logger.info(f"Getting stations for backfill: {bulk}")
+        Logger.debug(f"Getting stations for backfill: {bulk}")
         st = self.get_wavebank_stream(bulk)
+        Logger.info(f"Acquired stream of {len(st)} traces for backfill")
         
         self._number_of_backfillers += 1
 
-        backfill_process = Process(
-            target=self._backfill,
-            args=(templates, st, threshold, threshold_type, trig_int,
-                  hypocentral_separation, keep_detections, detect_directory,
-                  plot_detections, save_waveforms),
-            kwargs=kwargs, name=f"Backfiller_{self._number_of_backfillers}")
-        backfill_process.start()
-        self._backfillers.append(backfill_process)
-        Logger.info("Backfill process started, returning")
-        return
+        backfiller_name = f"Backfiller_{self._number_of_backfillers}"
 
-    def _backfill(
-        self,
-        templates: Union[List[Template], Tribe],
-        st: Stream,
-        threshold: float,
-        threshold_type: str,
-        trig_int: float,
-        hypocentral_separation: float = None,
-        keep_detections: float = 86400,
-        detect_directory: str = "{name}/detections",
-        plot_detections: bool = True,
-        save_waveforms: bool = True,
-        **kwargs
-    ) -> None:
-        """ Background backfill method """
+        # Make working directory and write files.
+        if not os.path.isdir(backfiller_name):
+            os.makedirs(backfiller_name)
+        st.write(f"{backfiller_name}/stream.ms", format="MSEED")
         if isinstance(templates, Tribe):
-            new_tribe = templates
+            tribe = templates
         else:
-            new_tribe = Tribe(templates)
-        # Squash duplicate channels to avoid excessive channels
-        new_tribe.templates = [squash_duplicates(t) for t in new_tribe.templates]
-        # Reshape
-        new_tribe.templates = reshape_templates(
-            templates=new_tribe.templates, used_seed_ids=self.expected_seed_ids)
-        Logger.info(f"Backfilling with {len(new_tribe)} templates")
-        Logger.debug("Additional templates to be run: \n{0} "
-                     "templates".format(len(new_tribe)))
+            tribe = Tribe(templates)
+        tribe.write(f"{backfiller_name}/tribe.tgz")
 
-        Logger.info("Starting backfill detection run with:")
-        Logger.info(st.__str__(extended=True))
-        # Break into chunks so that detections can be handled as they happen
-        starttime, endtime = (
-            min(tr.stats.starttime for tr in st),
-            max(tr.stats.endtime for tr in st))
-        # Send off twice the minimum data to allow for overlaps.
-        _starttime, _endtime = (
-            starttime, starttime + 2 * self.minimum_data_for_detection)
-        while _endtime < endtime + self.minimum_data_for_detection:
-            st_chunk = st.slice(_starttime, _endtime)
-            try:
-                new_party = new_tribe.detect(
-                    stream=st_chunk, plot=False, threshold=threshold,
-                    threshold_type=threshold_type, trig_int=trig_int,
-                    xcorr_func="numpy",
-                    concurrency=None,  # Run in serial for backfillers to avoid thread managing issues
-                    # concurrency="concurrent",
-                    peak_cores=1,  # Do not use paralellism for peak finding
-                    cores=self.max_correlation_cores,
-                    parallel_process=self._parallel_processing,
-                    process_cores=self.process_cores, copy_data=False,
-                    **kwargs)
-                Logger.info(f"Backfiller made {len(new_party)} detections between {_starttime} and {_endtime}")
-            except Exception as e:
-                Logger.error(e)
-                _starttime += self.minimum_data_for_detection
-                _endtime += self.minimum_data_for_detection
-                continue
-            detect_directory = detect_directory.format(name=self.name)
-            Logger.info(
-                f"Backfill detection between {_starttime} and {_endtime} "
-                f"completed - handling detections")
-            if len(new_party) > 0:
-                Logger.info(f"Lock status: {self.lock}")
-                with self.lock:  # The only time the state is altered
-                    Logger.info(f"Lock status: {self.lock}")
-                    self._handle_detections(
-                        new_party=new_party, detect_directory=detect_directory,
-                        endtime=endtime - keep_detections,
-                        plot_detections=plot_detections,
-                        save_waveforms=save_waveforms, st=st, trig_int=trig_int,
-                        hypocentral_separation=hypocentral_separation)
-            _starttime += self.minimum_data_for_detection
-            _endtime += self.minimum_data_for_detection
-        Logger.info("Backfiller completed")
+        del st
+        # Force garbage collection before creating new process
+        gc.collect()
+
+        working_dir = os.path.abspath(backfiller_name)
+
+        # Start backfiller subprocess
+        script_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "reactor", "backfill.py")
+        _call = [
+            "python", script_path,
+            "-w", working_dir,
+            "-m", str(self.minimum_data_for_detection),
+            "-t", str(threshold),
+            "-T", threshold_type,
+            "-i", str(trig_int),
+            "-c", str(self.max_correlation_cores),
+            "-P",  # Enable parallel processing
+            "-s"  # Add on the list of expected seed ids
+        ]
+        _call.extend(self.expected_seed_ids)
+
+        Logger.info("Running `{call}`".format(call=" ".join(_call)))
+        proc = subprocess.Popen(_call)
+        self._backfillers.update({backfiller_name: proc})
+        Logger.info("Backfill process started, returning")
         return
 
     def stop(self, write_stopfile: bool = False) -> None:
@@ -1090,6 +1116,13 @@ class RealTimeTribe(Tribe):
         self._running = False
         if self._detecting_thread is not None:
             self._detecting_thread.join()
+        # Kill all the backfillers
+        for backfiller in self._backfillers.values():
+            backfiller.kill()
+        if self._clean_backfillers:
+            for backfiller_name in self._backfillers.keys():
+                if os.path.isdir(backfiller_name):
+                    shutil.rmtree(backfiller_name)
         if write_stopfile:
             with open(".stopfile", "a") as f:
                 f.write(f"{self.name}\n")

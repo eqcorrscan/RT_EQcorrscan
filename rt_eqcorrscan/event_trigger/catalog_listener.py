@@ -315,7 +315,7 @@ class CatalogListener(_Listener):
                     for ev_info in event_info:
                         self.append(ev_info)
                     # self.extend(event_info)
-                    Logger.info("Old events current state: {0}".format(
+                    Logger.debug("Old events current state: {0}".format(
                         self.old_events))
             self.previous_time = now
             # Sleep in steps to make death responsive
