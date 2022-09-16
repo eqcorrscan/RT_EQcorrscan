@@ -369,7 +369,6 @@ class RealTimeTribe(Tribe):
         save_waveforms: bool,
         plot_detections: bool,
         st: Stream = None,
-        num_threads_decluster: int = None,
         **kwargs
     ) -> None:
         """
@@ -396,8 +395,6 @@ class RealTimeTribe(Tribe):
         st
             The stream the detection was made in - required for save_waveform
             and plot_detection.
-        num_threads_decluster
-            Number of threads to use for declustering if available.
         """
         _detected_templates = [f.template.name for f in self.party]
         for family in new_party:
@@ -416,8 +413,7 @@ class RealTimeTribe(Tribe):
         if len(self.party) > 0:
             self.party.decluster(
                 trig_int=trig_int, timing="origin", metric="cor_sum",
-                hypocentral_separation=hypocentral_separation,
-                num_threads=num_threads_decluster)
+                hypocentral_separation=hypocentral_separation)
         Logger.info("Completed decluster")
         Logger.info(f"Party contains {len(self.party)} after decluster")
         Logger.info("Writing detections to disk")
