@@ -635,7 +635,7 @@ class RealTimeTribe(Tribe):
                 templates=self.templates, used_seed_ids=self.expected_seed_ids)
         else:
             Logger.error("No templates, will not run")
-            return
+            return Party()
         # Remove templates that do not have enough stations in common with the
         # inventory.
         min_stations = min_stations or 0
@@ -866,14 +866,18 @@ class RealTimeTribe(Tribe):
                             starttime=max(
                                 stream_end - keep_detections, first_data),
                             endtime=stream_end)
+                        Logger.info(f"Average rate:\t{_rate}, "
+                                    f"minimum rate:\t{minimum_rate}")
                         if _rate < minimum_rate:
                             Logger.critical(
                                 "Rate ({0:.2f}) has dropped below minimum rate, "
                                 "stopping.".format(_rate))
                             self.stop()
                             break
+                    Logger.info("Enforcing garbage collection")
                     gc.collect()
                     # Memory output
+                    Logger.info("Working out memory use")
                     sum1 = summary.summarize(muppy.get_objects())
                     for line in summary.format_(sum1):
                         Logger.info(line)

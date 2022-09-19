@@ -82,7 +82,7 @@ class _StreamingClient(ABC):
         # Incoming data - no limit on size, just empty it!
         self._incoming_queue = Queue()
 
-        # Quereyable attributes to get a view of the size of the buffer
+        # Queryable attributes to get a view of the size of the buffer
         self._last_data_queue = Queue(maxsize=1)
         self._buffer_full_queue = Queue(maxsize=1)
 
@@ -160,7 +160,7 @@ class _StreamingClient(ABC):
             try:
                 self._buffer_full_queue.put(full, timeout=10)
             except Full:
-                Logger.error("Could not update buffer full - queue is full")
+                Logger.debug("Could not update buffer full - queue is full")
 
     @property
     def last_data(self) -> UTCDateTime:
@@ -186,7 +186,8 @@ class _StreamingClient(ABC):
             try:
                 self._last_data_queue.put(timestamp, timeout=10)
             except Full:
-                Logger.error("Could not update the state of last data - queue is full")
+                Logger.debug("Could not update the state of last data - "
+                             "queue is full")
 
     @property
     def stream(self) -> Stream:
@@ -221,7 +222,7 @@ class _StreamingClient(ABC):
                 self._stream_queue.put(st, timeout=10)
                 Logger.debug("Put stream into queue")
             except Full:
-                Logger.error(
+                Logger.warning(
                     "Could not update the state of stream - queue is full")
 
     @property
