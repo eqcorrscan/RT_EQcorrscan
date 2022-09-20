@@ -8,6 +8,7 @@ This script has 3 main steps:
     3. Start the RealTimeTribe
 """
 import logging
+import os
 
 from obspy import UTCDateTime
 from obspy.core.event import Event
@@ -210,6 +211,10 @@ def main():
     parser.add_argument(
         "--speed-up", type=float, default=1,
         help="Multiplier to speed-up RT match-filter by.")
+    parser.add_argument(
+        "--working-dir", type=str, default=".",
+        help="Directory to work in - will move to this directory and put all output here."
+    )
     
     args = parser.parse_args()
 
@@ -223,10 +228,17 @@ def main():
     quake_id = KNOWN_QUAKES.get(args.quake, args.quake)
     trigger_event = client.get_events(eventid=quake_id)[0]
 
+    # Move to working directory
+    if not os.path.isdir(args.working_dir):
+        Logger.info(f"Making directory {args.working_dir}")
+        os.makedirs(args.working_dir)
+    os.chdir(args.working_dir)
+
     synthesise_real_time(
         triggering_event=trigger_event, database_duration=args.db_duration,
         config=config, make_templates=args.templates_made,
-        debug=args.debug, speed_up=args.speed_up, detection_runtime=args.runtime)
+        debug=args.debug, speed_up=args.speed_up,
+        detection_runtime=args.runtime)
 
 
 if __name__ == "__main__":

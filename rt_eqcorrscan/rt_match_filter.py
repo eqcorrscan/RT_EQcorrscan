@@ -369,7 +369,6 @@ class RealTimeTribe(Tribe):
         save_waveforms: bool,
         plot_detections: bool,
         st: Stream = None,
-        num_threads_decluster: int = None,
         **kwargs
     ) -> None:
         """
@@ -396,8 +395,6 @@ class RealTimeTribe(Tribe):
         st
             The stream the detection was made in - required for save_waveform
             and plot_detection.
-        num_threads_decluster
-            Number of threads to use for declustering if available.
         """
         _detected_templates = [f.template.name for f in self.party]
         for family in new_party:
@@ -416,8 +413,7 @@ class RealTimeTribe(Tribe):
         if len(self.party) > 0:
             self.party.decluster(
                 trig_int=trig_int, timing="origin", metric="cor_sum",
-                hypocentral_separation=hypocentral_separation,
-                num_threads=num_threads_decluster)
+                hypocentral_separation=hypocentral_separation)
         Logger.info("Completed decluster")
         Logger.info(f"Party contains {len(self.party)} after decluster")
         Logger.info("Writing detections to disk")
@@ -639,7 +635,7 @@ class RealTimeTribe(Tribe):
                 templates=self.templates, used_seed_ids=self.expected_seed_ids)
         else:
             Logger.error("No templates, will not run")
-            return
+            return Party()
         # Remove templates that do not have enough stations in common with the
         # inventory.
         min_stations = min_stations or 0
@@ -870,14 +866,18 @@ class RealTimeTribe(Tribe):
                             starttime=max(
                                 stream_end - keep_detections, first_data),
                             endtime=stream_end)
+                        Logger.info(f"Average rate:\t{_rate}, "
+                                    f"minimum rate:\t{minimum_rate}")
                         if _rate < minimum_rate:
                             Logger.critical(
                                 "Rate ({0:.2f}) has dropped below minimum rate, "
                                 "stopping.".format(_rate))
                             self.stop()
                             break
+                    Logger.info("Enforcing garbage collection")
                     gc.collect()
                     # Memory output
+                    Logger.info("Working out memory use")
                     sum1 = summary.summarize(muppy.get_objects())
                     for line in summary.format_(sum1):
                         Logger.info(line)
