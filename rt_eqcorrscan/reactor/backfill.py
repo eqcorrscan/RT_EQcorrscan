@@ -117,9 +117,9 @@ def backfill(
         del st_chunk
         gc.collect()
         # Memory output for debugging memory leaks
-        sum1 = summary.summarize(muppy.get_objects())
-        for line in summary.format_(sum1):
-            Logger.info(line)
+        # sum1 = summary.summarize(muppy.get_objects())
+        # for line in summary.format_(sum1):
+        #     Logger.info(line)
         total_memory_mb = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
         Logger.info(f"Total memory used by {os.getpid()}: {total_memory_mb:.2f} MB")
     new_party.write(f"{working_dir}/party.tgz")

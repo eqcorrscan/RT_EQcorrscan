@@ -747,9 +747,13 @@ class RealTimeTribe(Tribe):
                     if len(st) == 0:
                         Logger.warning("No data")
                         continue
+                    elif last_data_received is None:
+                        Logger.warning("Streamer incorrectly reported None for last data received, "
+                                       "setting to stream end")
+                        last_data_received = max(tr.stats.endtime for tr in st)
                     Logger.info(
                         f"Streaming Client last received data at "
-                        f"{self.rt_client.last_data}")
+                        f"{last_data_received}")
                     stream_end = max(tr.stats.endtime for tr in st)
                     min_stream_end = min(tr.stats.endtime for tr in st)
                     Logger.info(
@@ -759,7 +763,8 @@ class RealTimeTribe(Tribe):
                         Logger.warning(
                             "The streaming client has not given any new data for "
                             f"{restart_interval} seconds. Restarting Streaming client")
-                        Logger.info(f"start_time: {start_time}, last_data_received: {last_data_received}, stream_end: {stream_end}")
+                        Logger.info(f"start_time: {start_time}, last_data_received: "
+                                    f"{last_data_received}, stream_end: {stream_end}")
                         Logger.info("Stopping streamer")
                         self.rt_client.background_stop()
                         self.rt_client.stop()
@@ -878,9 +883,9 @@ class RealTimeTribe(Tribe):
                     gc.collect()
                     # Memory output
                     Logger.info("Working out memory use")
-                    sum1 = summary.summarize(muppy.get_objects())
-                    for line in summary.format_(sum1):
-                        Logger.info(line)
+                    # sum1 = summary.summarize(muppy.get_objects())
+                    # for line in summary.format_(sum1):
+                    #     Logger.info(line)
                     # Total memory used for process according to psutil
                     total_memory_mb = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
                     Logger.info(f"Total memory used by {os.getpid()}: {total_memory_mb:.4f} MB")

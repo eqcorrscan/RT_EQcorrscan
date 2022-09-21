@@ -167,9 +167,12 @@ class RealTimeClient(_StreamingClient):
             sleep_step = (
                 self.query_interval - _query_duration) / self.speed_up
             if sleep_step > 0:
-                Logger.debug("Waiting {0:.2f}s before next query".format(
+                Logger.info("Waiting {0:.2f}s before next query".format(
                     sleep_step))
                 time.sleep(sleep_step)
+            else:
+                Logger.warning(f"Query ({_query_duration} took longer than query "
+                               f"interval {self.query_interval}")
             now += max(self.query_interval, _query_duration)
             if query_passed:
                 last_query_start = min(_bulk["endtime"] for _bulk in self.bulk)
