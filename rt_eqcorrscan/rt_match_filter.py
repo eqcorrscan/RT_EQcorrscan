@@ -879,16 +879,16 @@ class RealTimeTribe(Tribe):
                                 "stopping.".format(_rate))
                             self.stop()
                             break
-                    Logger.info("Enforcing garbage collection")
-                    gc.collect()
+                    # Logger.info("Enforcing garbage collection")
+                    # gc.collect()
                     # Memory output
                     Logger.info("Working out memory use")
                     # sum1 = summary.summarize(muppy.get_objects())
                     # for line in summary.format_(sum1):
                     #     Logger.info(line)
                     # Total memory used for process according to psutil
-                    total_memory_mb = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
-                    Logger.info(f"Total memory used by {os.getpid()}: {total_memory_mb:.4f} MB")
+                    # total_memory_mb = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+                    # Logger.info(f"Total memory used by {os.getpid()}: {total_memory_mb:.4f} MB")
                 except Exception as e:
                     # Error locally and mail this in!
                     Logger.critical(f"Uncaught error: {e}")
