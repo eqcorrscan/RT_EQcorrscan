@@ -8,6 +8,7 @@ License
     GPL v3.0
 """
 import logging
+import os
 import time
 import copy
 from numpy import random
@@ -97,7 +98,7 @@ class RealTimeClient(_StreamingClient):
     """
     client_base = "obspy.clients"
     can_add_streams = True
-    max_threads = None
+    max_threads = os.cpu_count() + 4
 
     def __init__(
         self,
