@@ -7,23 +7,68 @@ Author
 License
     GPL v3.0
 """
-import concurrent.futures
 import logging
 import time
 import copy
 from numpy import random
 import importlib
 
+from typing import Iterable
 from obspy import Stream, UTCDateTime
 from queue import Empty
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-from obsplus import WaveBank
 
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
 
 
 Logger = logging.getLogger(__name__)
+
+
+# TODO: This should maintain a buffer in-memory and have a method to repopulate the buffer, called from within the run loop. That should get data from within a Process. Needs a lock on the stream.
+class StreamClient:
+    """
+    In-memory handling of stream as fake Client. Cache future data in memory and
+    provide via client-like get_waveforms requests.
+
+    Parameters
+    ----------
+
+    """
+    __st = Stream()
+
+    def __init__(
+        self,
+        client,
+        starttime: UTCDateTime,
+        endtime: UTCDateTime,
+        buffer_length: float = 3600,
+        min_buffer_length: float = 120,
+    ):
+        self.client = client
+        self.starttime = starttime
+        self.endtime = endtime
+        self.buffer_length = buffer_length
+        self.min_buffer_length = min_buffer_length
+
+    def stream(self):
+        pass
+
+    def get_waveforms(
+            self,
+            network: str,
+            station: str,
+            location: str,
+            channel: str,
+            starttime: UTCDateTime,
+            endtime: UTCDateTime
+    ):
+        pass
+
+    def get_wavforms_bulk(self, bulk: Iterable):
+        st = Stream()
+        for _bulk in bulk:
+            st += self.get_waveforms(*_bulk)
+        return st
 
 
 class RealTimeClient(_StreamingClient):
@@ -125,31 +170,32 @@ class RealTimeClient(_StreamingClient):
             Logger.debug("Added {0} to streaming selection".format(_bulk))
             self.bulk.append(_bulk)
 
-    def _collect_bulk(self, last_query_start, now):
+    def _collect_bulk(self, last_query_start, now, executor):
         query_passed, st = True, Stream()
         for _bulk in self.bulk:
             jitter = random.randint(int(self.query_interval))
             _bulk.update({
                 "starttime": last_query_start,
                 "endtime": now - jitter})
-        with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
-            futures = {executor.submit(self.client.get_waveforms, **_bulk):
-                       _bulk for _bulk in self.bulk}
-            for future in as_completed(futures):
-                _bulk = futures[future]
-                try:
-                    _st = future.result()
-                except Exception as e:
-                    Logger.error("Failed (bulk={0})".format(_bulk))
-                    Logger.error(e)
-                    query_passed = False
-                    continue
-                st += _st
+        futures = {executor.submit(self.client.get_waveforms, **_bulk):
+                   _bulk for _bulk in self.bulk}
+        for future in as_completed(futures):
+            _bulk = futures[future]
+            try:
+                _st = future.result()
+            except Exception as e:
+                Logger.error("Failed (bulk={0})".format(_bulk))
+                Logger.error(e)
+                query_passed = False
+                continue
+            st += _st
         return st, query_passed
 
     def run(self) -> None:
         assert len(self.bulk) > 0, "Select a stream first"
         self.streaming = True
+        # start threadpool executor
+        executor = ThreadPoolExecutor(max_workers=min(len(self.bulk), self.max_threads))
         now = copy.deepcopy(self.starttime)
         self.last_data = UTCDateTime.now()
         last_query_start = now - self.query_interval
@@ -165,10 +211,8 @@ class RealTimeClient(_StreamingClient):
                 self.on_terminate()
                 break
             _query_start = UTCDateTime.now()
-            st = Stream()
-            # TODO: Thread this
             st, query_passed = self._collect_bulk(
-                last_query_start=last_query_start, now=now)
+                last_query_start=last_query_start, now=now, executor=executor)
             for tr in st:
                 self.on_data(tr)
                 time.sleep(0.0001)
@@ -191,6 +235,8 @@ class RealTimeClient(_StreamingClient):
             if query_passed:
                 last_query_start = min(_bulk["endtime"] for _bulk in self.bulk)
         self.streaming = False
+        # shut down threadpool, we done.
+        executor.shutdown(wait=False, cancel_futures=True)
         return
 
     def stop(self) -> None:
