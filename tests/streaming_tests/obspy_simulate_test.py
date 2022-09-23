@@ -30,6 +30,7 @@ class FDSNTest(unittest.TestCase):
     def test_background_streaming(self):
         rt_client = self.rt_client.copy()
         rt_client.select_stream(net="NZ", station="JCZ", selector="HHZ")
+        rt_client.select_stream(net="NZ", station="RPZ", selector="HHZ")
         rt_client.background_run()
         try:
             self.assertFalse(rt_client.buffer_full)

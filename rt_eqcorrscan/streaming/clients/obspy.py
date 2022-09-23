@@ -7,6 +7,7 @@ Author
 License
     GPL v3.0
 """
+import concurrent.futures
 import logging
 import time
 import copy
@@ -15,6 +16,7 @@ import importlib
 
 from obspy import Stream, UTCDateTime
 from queue import Empty
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from obsplus import WaveBank
 
@@ -50,6 +52,7 @@ class RealTimeClient(_StreamingClient):
     """
     client_base = "obspy.clients"
     can_add_streams = True
+    max_threads = None
 
     def __init__(
         self,
@@ -122,6 +125,28 @@ class RealTimeClient(_StreamingClient):
             Logger.debug("Added {0} to streaming selection".format(_bulk))
             self.bulk.append(_bulk)
 
+    def _collect_bulk(self, last_query_start, now):
+        query_passed, st = True, Stream()
+        for _bulk in self.bulk:
+            jitter = random.randint(int(self.query_interval))
+            _bulk.update({
+                "starttime": last_query_start,
+                "endtime": now - jitter})
+        with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
+            futures = {executor.submit(self.client.get_waveforms, **_bulk):
+                       _bulk for _bulk in self.bulk}
+            for future in as_completed(futures):
+                _bulk = futures[future]
+                try:
+                    _st = future.result()
+                except Exception as e:
+                    Logger.error("Failed (bulk={0})".format(_bulk))
+                    Logger.error(e)
+                    query_passed = False
+                    continue
+                st += _st
+        return st, query_passed
+
     def run(self) -> None:
         assert len(self.bulk) > 0, "Select a stream first"
         self.streaming = True
@@ -141,23 +166,12 @@ class RealTimeClient(_StreamingClient):
                 break
             _query_start = UTCDateTime.now()
             st = Stream()
-            query_passed = True
-            for _bulk in self.bulk:
-                jitter = random.randint(int(self.query_interval))
-                _bulk.update({
-                    "starttime": last_query_start,
-                    "endtime": now - jitter})
-                Logger.debug("Querying client for {0}".format(_bulk))
-                try:
-                    st += self.client.get_waveforms(**_bulk)
-                except Exception as e:
-                    Logger.error("Failed (bulk={0})".format(_bulk))
-                    Logger.error(e)
-                    query_passed = False
-                    continue
+            # TODO: Thread this
+            st, query_passed = self._collect_bulk(
+                last_query_start=last_query_start, now=now)
             for tr in st:
                 self.on_data(tr)
-                time.sleep(0.001)
+                time.sleep(0.0001)
             # Put the data in the buffer
             self._add_data_from_queue()
             _query_duration = UTCDateTime.now() - _query_start
