@@ -289,6 +289,7 @@ class RealTimeTribe(Tribe):
                 Logger.error("No wavebank attached to streamer")
             return None
         timer, wait_step = 0.0, 0.5
+        Logger.info("Getting wavebank lock")
         with self.wavebank_lock:
             try:
                 func = self.wavebank.__getattribute__(method)
@@ -298,11 +299,13 @@ class RealTimeTribe(Tribe):
             # Attempt to access the underlying wavebank
             out = None
             while timer < timeout:
+                Logger.info(f"Trying to call {method} on wavebank")
                 tic = time.time()
                 try:
                     out = func(*args, **kwargs)
                     break
                 except (IOError, OSError) as e:
+                    Logger.info(f"Call to {method} failed due to {e}")
                     time.sleep(wait_step)
                 toc = time.time()
                 timer += toc - tic
