@@ -219,20 +219,21 @@ class RealTimeClient(_StreamingClient):
                 time.sleep(0.0001)
             # Put the data in the buffer
             self._add_data_from_queue()
-            _query_duration = UTCDateTime.now() - _query_start
-            Logger.debug(
+            _query_duration = (UTCDateTime.now() - _query_start) * self.speed_up  # work in fake time
+            Logger.info(
                 "It took {0:.2f}s to query the database and sort data".format(
                     _query_duration))
-            sleep_step = (
-                self.query_interval / self.speed_up) - _query_duration
+            sleep_step = self.query_interval - _query_duration
             if sleep_step > 0:
                 Logger.info("Waiting {0:.2f}s before next query".format(
-                    sleep_step))
-                time.sleep(sleep_step)
+                    sleep_step))  # Report fake time
+                time.sleep(sleep_step / self.speed_up)  # Sleep in sped up time
+                Logger.info("Waking up")
             else:
                 Logger.warning(f"Query ({_query_duration} took longer than query "
                                f"interval {self.query_interval}")
             now += max(self.query_interval, _query_duration)
+            Logger.info(f"The time now is {now}")
             if query_passed:
                 last_query_start = min(_bulk["endtime"] for _bulk in self.bulk)
         self.streaming = False
