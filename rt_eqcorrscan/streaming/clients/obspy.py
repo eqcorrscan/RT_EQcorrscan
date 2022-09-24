@@ -224,7 +224,7 @@ class RealTimeClient(_StreamingClient):
                 "It took {0:.2f}s to query the database and sort data".format(
                     _query_duration))
             sleep_step = (
-                self.query_interval - _query_duration) / self.speed_up
+                self.query_interval / self.speed_up) - _query_duration
             if sleep_step > 0:
                 Logger.info("Waiting {0:.2f}s before next query".format(
                     sleep_step))

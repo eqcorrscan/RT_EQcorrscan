@@ -93,6 +93,9 @@ def run(
         wavebank=config.rt_match_filter.local_wave_bank,
         notifer=config.notifier)
     real_time_tribe._speed_up = speed_up
+    if speed_up > 1:
+        Logger.warning(f"Speed-up of {speed_up}: disallowing spoilers.")
+        real_time_tribe._spoilers = False
     if real_time_tribe.expected_seed_ids is None:
         Logger.error("No matching channels in inventory and templates")
         return
