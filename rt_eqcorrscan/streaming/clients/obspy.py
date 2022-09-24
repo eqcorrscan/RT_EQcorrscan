@@ -228,12 +228,12 @@ class RealTimeClient(_StreamingClient):
                 Logger.info("Waiting {0:.2f}s before next query".format(
                     sleep_step))  # Report fake time
                 time.sleep(sleep_step / self.speed_up)  # Sleep in sped up time
-                Logger.info("Waking up")
+                Logger.debug("Waking up")
             else:
                 Logger.warning(f"Query ({_query_duration} took longer than query "
                                f"interval {self.query_interval}")
             now += max(self.query_interval, _query_duration)
-            Logger.info(f"The time now is {now}")
+            Logger.debug(f"According to the streamer, the time now is {now}")
             if query_passed:
                 last_query_start = min(_bulk["endtime"] for _bulk in self.bulk)
         self.streaming = False
