@@ -855,7 +855,7 @@ class RealTimeTribe(Tribe):
                             len(self.detections)))
                     Logger.info(f"Lock released - Lock status {self.lock}")
                     self._running = False  # Release lock
-                    run_time = UTCDateTime.now() - start_time
+                    run_time = (UTCDateTime.now() - start_time) * self._speed_up  # Work in fake time
                     Logger.info("Detection took {0:.2f}s".format(run_time))
                     if self.detect_interval <= run_time:
                         Logger.warning(
@@ -869,7 +869,7 @@ class RealTimeTribe(Tribe):
                         self.detect_interval - run_time))
                     detection_iteration += 1
                     self._wait(
-                        wait=(self.detect_interval / self._speed_up) - run_time,
+                        wait=(self.detect_interval - run_time) / self._speed_up,  # Convert to real-time
                         detection_kwargs=detection_kwargs)
                     if not self._runtime_check(
                             run_start=run_start, max_run_length=max_run_length):
