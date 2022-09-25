@@ -8,7 +8,7 @@ import signal
 import subprocess
 
 from copy import deepcopy
-from typing import Callable, Union
+from typing import Callable, Union, List
 from multiprocessing import cpu_count
 
 from obspy import UTCDateTime, Catalog
@@ -226,7 +226,7 @@ class Reactor(object):
             if os.path.isfile(f"{working_dir}/.stopfile"):
                 self.stop_tribe(trigger_event_id)
 
-    def process_new_events(self, new_events: Catalog) -> None:
+    def process_new_events(self, new_events: Union[Catalog, List[Event]]) -> None:
         """
         Process any new events in the system.
 
@@ -239,6 +239,9 @@ class Reactor(object):
         new_events
             Catalog of new-events to be assessed.
         """
+        # Convert to catalog
+        if isinstance(new_events, list):
+            new_events = Catalog(new_events)
         for triggering_event_id, tribe_region in self._running_regions.items():
             try:
                 add_events = get_events(new_events, **tribe_region)
