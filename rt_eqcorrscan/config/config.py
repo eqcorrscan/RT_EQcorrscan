@@ -62,6 +62,7 @@ class RTMatchFilterConfig(_ConfigAttribDict):
         "min_stations": 5,
         "max_distance": 1000.,
         "detect_interval": 60.,
+        "backfill_interval": 600.,
         "max_run_length": None,
         "minimum_rate": None,
         "plot": True,
