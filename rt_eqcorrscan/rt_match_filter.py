@@ -327,6 +327,18 @@ class RealTimeTribe(Tribe):
             method="get_waveforms_bulk", timeout=120., bulk=bulk)
         return st
 
+    def get_wavebank_files(self, bulk: List[tuple]) -> List[str]:
+        """ processsafe way to get the file paths meeting bulk criteria """
+        paths = []
+        for _bulk in bulk:
+            index = self._access_wavebank(
+                method="read_index", timeout=120, network=_bulk[0],
+                station=_bulk[1], location=_bulk[2], channel=_bulk[3],
+                starttime=_bulk[4], endtime=_bulk[5])
+            files = (str(self.wavebank.bank_path) + index.path).unique()
+            paths.extend(list(files))
+        return paths
+
     def _backfiller_return(
         self,
         backfiller_name: str,
@@ -1080,8 +1092,9 @@ class RealTimeTribe(Tribe):
             Logger.warning("No bulk")
             return
         Logger.debug(f"Getting stations for backfill: {bulk}")
-        st = self.get_wavebank_stream(bulk)
-        Logger.info(f"Acquired stream of {len(st)} traces for backfill")
+        # st = self.get_wavebank_stream(bulk)
+        st_files = self.get_wavebank_files(bulk)
+        Logger.info(f"Concatenating {len(st_files)} stream files for backfill")
         
         self._number_of_backfillers += 1
 
@@ -1090,14 +1103,19 @@ class RealTimeTribe(Tribe):
         # Make working directory and write files.
         if not os.path.isdir(backfiller_name):
             os.makedirs(backfiller_name)
-        st.write(f"{backfiller_name}/stream.ms", format="MSEED")
+        # st.write(f"{backfiller_name}/stream.ms", format="MSEED")
+        with open(f"{backfiller_name}/stream.ms", "wb") as fout:
+            for st_file in st_files:
+                with open(st_file, "rb") as fin:
+                    fout.write(fin.read())
+
         if isinstance(templates, Tribe):
             tribe = templates
         else:
             tribe = Tribe(templates)
         tribe.write(f"{backfiller_name}/tribe.tgz")
 
-        del st
+        del st_files
         # Force garbage collection before creating new process
         gc.collect()
 
@@ -1115,7 +1133,9 @@ class RealTimeTribe(Tribe):
             "-i", str(trig_int),
             "-c", str(self.max_correlation_cores),
             "-P",  # Enable parallel processing
-            "-s"  # Add on the list of expected seed ids
+            "-s",  # Add on the list of expected seed ids
+            "--starttime", str(starttime),
+            "--endtime", str(endtime),
         ]
         _call.extend(self.expected_seed_ids)
 

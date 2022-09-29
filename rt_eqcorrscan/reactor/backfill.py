@@ -11,7 +11,7 @@ import gc
 import psutil
 from pympler import summary, muppy
 
-from obspy import read
+from obspy import read, UTCDateTime
 
 from eqcorrscan import Tribe, Party
 from rt_eqcorrscan import Config
@@ -33,6 +33,8 @@ def backfill(
     parallel_processing: bool = True,
     process_cores: int = None,
     log_to_screen: bool = False,
+    starttime: UTCDateTime = None,
+    endtime: UTCDateTime = None,
     **kwargs
 ) -> None:
     """ Background backfill method designed to work in a subprocess. """
@@ -72,9 +74,8 @@ def backfill(
     Logger.info("Starting backfill detection run with:")
     Logger.info(st_head.__str__(extended=True))
     # Break into chunks so that detections can be handled as they happen
-    starttime, endtime = (
-        min(tr.stats.starttime for tr in st_head),
-        max(tr.stats.endtime for tr in st_head))
+    starttime = starttime or min(tr.stats.starttime for tr in st_head)
+    endtime = endtime or max(tr.stats.endtime for tr in st_head)
     del st_head  # Not needed anymore
     if endtime - starttime < minimum_data_for_detection:
         Logger.warning(f"Insufficient data between {starttime} and {endtime}. "
@@ -130,6 +131,7 @@ def backfill(
 if __name__ == "__main__":
     import argparse
 
+    # TODO: Add starttime and endtime args - stream provided may be too long
     parser = argparse.ArgumentParser(
         description="Script to spin-up a backfiller instance")
 
@@ -167,6 +169,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "-l", "--log-to-screen", action="store_true",
         help="Whether to log to screen or not, defaults to False")
+    parser.add_argument(
+        "--starttime", type=UTCDateTime, required=False,
+        help="Starttime as UTCDateTime parsable string"
+    )
+    parser.add_argument(
+        "--endtime", type=UTCDateTime, required=False,
+        help="Endtime as UTCDateTime parsable string"
+    )
 
     args = parser.parse_args()
 
@@ -175,4 +185,6 @@ if __name__ == "__main__":
              threshold=args.threshold, threshold_type=args.threshold_type,
              trig_int=args.trig_int, peak_cores=args.peak_cores,
              cores=args.cores, parallel_processing=args.parallel_processing,
-             process_cores=args.process_cores, log_to_screen=args.log_to_screen)
+             process_cores=args.process_cores,
+             log_to_screen=args.log_to_screen, starttime=args.starttime,
+             endtime=args.endtime)
