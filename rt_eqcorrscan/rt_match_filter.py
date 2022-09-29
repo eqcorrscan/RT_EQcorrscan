@@ -345,7 +345,7 @@ class RealTimeTribe(Tribe):
         backfiller_name
         """
         if os.path.isfile(f"{backfiller_name}/party.tgz"):
-            party = Party().read(f"{backfiller_name}/party.tgz")
+            party = Party().read(f"{backfiller_name}/party.tgz") # TODO: This can be very slow! Minimize read
         else:
             Logger.info("No party written by backfiller - no detections")
             return
@@ -519,9 +519,13 @@ class RealTimeTribe(Tribe):
                 new_tribe = self._read_templates_from_disk()
                 if len(new_tribe) > 0:
                     self.templates.extend(new_tribe.templates)
-            time.sleep(self.sleep_step)
-            toc = time.time()
-            wait_length += (toc - tic)
+            # Only sleep if this ran faster than sleep step
+            iter_time = time.time() - tic
+            sleep_step = self.sleep_step - iter_time
+            if sleep_step > 0:
+                time.sleep(sleep_step)
+            toc_sleep = time.time()
+            wait_length += (toc_sleep - tic)
             if wait is None:
                 if len(self.rt_client.buffer_ids) >= len(self.expected_seed_ids):
                     break

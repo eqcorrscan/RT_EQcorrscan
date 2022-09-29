@@ -122,7 +122,9 @@ def backfill(
         #     Logger.info(line)
         total_memory_mb = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
         Logger.info(f"Total memory used by {os.getpid()}: {total_memory_mb:.2f} MB")
-    new_party.write(f"{working_dir}/party.tgz")
+    new_party.families = [f for f in new_party if len(f)]
+    if len(new_party):
+        new_party.write(f"{working_dir}/party.tgz")
     Logger.info("Backfiller completed")
     return
 
