@@ -345,7 +345,7 @@ class RealTimeTribe(Tribe):
         backfiller_name
         """
         if os.path.isfile(f"{backfiller_name}/party.tgz"):
-            party = Party().read(f"{backfiller_name}/party.tgz") # TODO: This can be very slow! Minimize read
+            party = Party().read(f"{backfiller_name}/party.tgz")
         else:
             Logger.info("No party written by backfiller - no detections")
             return
