@@ -157,7 +157,7 @@ def synthesise_real_time(
          "rt_client_type": "obsplus",
          "starttime": trigger_origin.time - 60,
          "speed_up": speed_up,
-         "query_interval": 1.0})
+         "query_interval": max(10, config.rt_match_filter.detect_interval / 10.0)})
 
     listener = CatalogListener(
         client=client, catalog_lookup_kwargs=region,
@@ -167,6 +167,7 @@ def synthesise_real_time(
     listener._test_start_step = UTCDateTime.now() - trigger_origin.time
     listener._test_start_step += 60  # Start up 1 minute before the event
 
+    # TODO: Make sure that the simulated run doesn't get spoilers! No templates from the future!
     reactor = Reactor(
         client=client,
         listener=listener, trigger_func=trigger_func,

@@ -83,6 +83,12 @@ class RealTimeTribe(Tribe):
     busy = False
 
     _speed_up = 1.0  # For simulated runs - do not change for real-time!
+    _stream_end = UTCDateTime(1970, 1, 1)  # End of real-time data - will be
+    # updated in first loop. Used for keeping track of when templates are relative
+    # to the data received.
+    _spoilers = True  # If the reactor gets ahead of the rt_match_filter (in
+    # simulations) then templates from the future might be read in. Set this to
+    # False to disallow templates from the future
     _max_wait_length = 60.
     _fig = None  # Cache figures to save memory
     _template_dir = "new_templates"  # Where new templates should be.
@@ -757,7 +763,7 @@ class RealTimeTribe(Tribe):
                     Logger.info(
                         f"Streaming Client last received data at "
                         f"{last_data_received}")
-                    stream_end = max(tr.stats.endtime for tr in st)
+                    self._stream_end = max(tr.stats.endtime for tr in st)
                     min_stream_end = min(tr.stats.endtime for tr in st)
                     Logger.info(
                         f"Real-time client provided data: \n{st.__str__(extended=True)}")
@@ -767,7 +773,7 @@ class RealTimeTribe(Tribe):
                             "The streaming client has not given any new data for "
                             f"{restart_interval} seconds. Restarting Streaming client")
                         Logger.info(f"start_time: {start_time}, last_data_received: "
-                                    f"{last_data_received}, stream_end: {stream_end}")
+                                    f"{last_data_received}, stream_end: {self._stream_end}")
                         Logger.info("Stopping streamer")
                         self.rt_client.background_stop()
                         self.rt_client.stop()
@@ -780,17 +786,17 @@ class RealTimeTribe(Tribe):
                     # Remove any data that shouldn't be there - sometimes GeoNet's
                     # Seedlink client gives old data.
                     Logger.info(
-                        f"Trimming between {stream_end - (buffer_capacity + 20.0)} "
-                        f"and {stream_end}")
+                        f"Trimming between {self._stream_end - (buffer_capacity + 20.0)} "
+                        f"and {self._stream_end}")
                     st.trim(
-                        starttime=stream_end - (buffer_capacity + 20.0),
-                        endtime=stream_end)
+                        starttime=self._stream_end - (buffer_capacity + 20.0),
+                        endtime=self._stream_end)
                     if detection_iteration > 0:
                         # For the first run we want to detect in everything we have.
                         # Otherwise trim so that all channels have at-least minimum data for detection
                         st.trim(
                             starttime=min_stream_end - self.minimum_data_for_detection,
-                            endtime=stream_end)
+                            endtime=self._stream_end)
                     Logger.info("Trimmed data")
                     if len(st) == 0:
                         Logger.warning("No data")
@@ -836,7 +842,7 @@ class RealTimeTribe(Tribe):
                         continue
                     Logger.info(f"Trying to get lock - Lock status: {self.lock}")
                     detection_kwargs.update(
-                        dict(earliest_detection_time=stream_end - keep_detections))
+                        dict(earliest_detection_time=self._stream_end - keep_detections))
                     with self.lock:
                         Logger.info(f"Lock acquired - Lock status: {self.lock}")
                         if len(new_party) > 0:
@@ -844,12 +850,12 @@ class RealTimeTribe(Tribe):
                                 new_party, st=st,
                                 **detection_kwargs)
                         self._remove_old_detections(
-                            stream_end - keep_detections)
+                            self._stream_end - keep_detections)
                         Logger.info("Party now contains {0} detections".format(
                             len(self.detections)))
                     Logger.info(f"Lock released - Lock status {self.lock}")
                     self._running = False  # Release lock
-                    run_time = UTCDateTime.now() - start_time
+                    run_time = (UTCDateTime.now() - start_time) * self._speed_up  # Work in fake time
                     Logger.info("Detection took {0:.2f}s".format(run_time))
                     if self.detect_interval <= run_time:
                         Logger.warning(
@@ -863,7 +869,7 @@ class RealTimeTribe(Tribe):
                         self.detect_interval - run_time))
                     detection_iteration += 1
                     self._wait(
-                        wait=(self.detect_interval - run_time) / self._speed_up,
+                        wait=(self.detect_interval - run_time) / self._speed_up,  # Convert to real-time
                         detection_kwargs=detection_kwargs)
                     if not self._runtime_check(
                             run_start=run_start, max_run_length=max_run_length):
@@ -872,8 +878,8 @@ class RealTimeTribe(Tribe):
                         _rate = average_rate(
                             self.detections,
                             starttime=max(
-                                stream_end - keep_detections, first_data),
-                            endtime=stream_end)
+                                self._stream_end - keep_detections, first_data),
+                            endtime=self._stream_end)
                         Logger.info(f"Average rate:\t{_rate}, "
                                     f"minimum rate:\t{minimum_rate}")
                         if _rate < minimum_rate:
@@ -925,9 +931,21 @@ class RealTimeTribe(Tribe):
                 continue
             Logger.debug(f"Reading from {template_file}")
             try:
-                new_tribe += Template().read(template_file)
+                template = Template().read(template_file)
             except Exception as e:
                 Logger.error(f"Could not read {template_file} due to {e}")
+                continue
+            template_endtime = max(tr.stats.endtime for tr in template.st)
+            if template_endtime > self._stream_end:
+                msg = (f"Template {template_file} ends at {template_endtime}, "
+                       f"after now: {self._stream_end}")
+                if self._spoilers:
+                    Logger.warning(msg)
+                else:
+                    Logger.error(msg)
+                    continue  # Skip and do not remove template, we will get it later
+            # If we got to here we can add the template to the tribe and remove the file.
+            new_tribe += template
             if os.path.isfile(template_file):
                 os.remove(template_file)  # Remove file once done with it.
         new_tribe.templates = [t for t in new_tribe
