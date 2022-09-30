@@ -9,13 +9,40 @@ import logging
 from obspy import UTCDateTime
 from obspy.clients.fdsn import Client
 
-from rt_eqcorrscan.streaming.clients.obspy import RealTimeClient
+from rt_eqcorrscan.streaming.clients.obspy import RealTimeClient, StreamClient
 
 SLEEP_STEP = 20
 
 logging.basicConfig(
     level="INFO",
     format="%(asctime)s\t%(name)s\t%(levelname)s\t%(message)s")
+
+
+class TestStreamBuffer(unittest.TestCase):
+    def test_maintain(self):
+        client = Client("GEONET")
+        buffer = StreamClient(client=client, buffer_length=120, min_buffer_fraction=0.25)
+        buffer.initiate_buffer(["NZ.WVZ.10.HHZ", "NZ.RPZ.10.HHZ"], UTCDateTime(2020, 1, 1))
+        initial_stream = buffer.stream
+        buffer.maintain_buffer()
+        st = buffer.get_waveforms_bulk(
+            [("NZ", "WVZ", "10", "HHZ",
+              UTCDateTime(2020, 1, 1), UTCDateTime(2020, 1, 1, 0, 0, 6)),
+             ("NZ", "RPZ", "10", "HHZ",
+              UTCDateTime(2020, 1, 1), UTCDateTime(2020, 1, 1, 0, 0, 6))])
+        trimmed_stream = buffer.stream
+        self.assertLess(trimmed_stream[0].stats.npts, initial_stream[0].stats.npts)
+        # remove more than 75% of buffer
+        st2 = buffer.get_waveforms_bulk(
+            [("NZ", "WVZ", "10", "HHZ",
+              UTCDateTime(2020, 1, 1), UTCDateTime(2020, 1, 1, 0, 1, 50)),
+             ("NZ", "RPZ", "10", "HHZ",
+              UTCDateTime(2020, 1, 1), UTCDateTime(2020, 1, 1, 0, 1, 50))])
+        time.sleep(15)
+        out_buffer = buffer.stream
+        for tr in out_buffer:
+            self.assertGreaterEqual(tr.stats.endtime - tr.stats.starttime, 120)
+        buffer.background_stop()
 
 
 class FDSNTest(unittest.TestCase):
