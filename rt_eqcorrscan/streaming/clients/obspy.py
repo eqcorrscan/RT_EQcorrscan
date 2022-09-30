@@ -14,7 +14,7 @@ import copy
 from numpy import random
 import importlib
 
-from copy import copy
+from copy import copy, deepcopy
 from typing import Iterable
 from obspy import Stream, UTCDateTime
 from queue import Empty, Full
@@ -60,7 +60,7 @@ class StreamClient:
         self._min_buffer_length = buffer_length * min_buffer_fraction
 
         # Data queue for communication
-        self._stream_queue = Queue(maxsize=1)
+        self._stream_queue = Queue()
 
         # Poison!
         self._killer_queue = Queue(maxsize=1)
@@ -70,45 +70,37 @@ class StreamClient:
 
     @property
     def stream(self) -> Stream:
-        try:
-            self.__st = self._stream_queue.get(block=False)
-            # Need to put it back for future Processes!
-            try:
-                self._stream_queue.put(self.__st, block=False)
-            except Full:
-                # Something else has added while we were not looking! Okay
-                pass
-        except Empty:
-            Logger.debug("No stream in queue")
-            pass
-        # If the queue is empty then return current state - this happens
-        # if the queue has not been updated since we last checked.
+        with self._stream_lock:
+            Logger.info("Stream getter called")
+            st, i = Stream(), 0
+            while True:
+                try:
+                    st += self._stream_queue.get(block=True, timeout=0.5)
+                    Logger.info(f"{i}\tGot stream from queue: {st}")
+                except Empty:
+                    if i == 0:
+                        Logger.warning("Stream queue is empty - have you initialized?")
+                    break
+                i += 1
+            self.__st = st.merge(method=1)
+            Logger.info(f"Putting stream back into queue: {self.__st}")
+            self._stream_queue.put(self.__st, block=True, timeout=0.5)
         return self.__st
 
     @stream.setter
     def stream(self, st: Stream):
-        try:
-            self._stream_queue.put(st, block=False)
-            Logger.debug("Put stream into queue")
-        except Full:
-            # Empty it!
-            try:
-                self._stream_queue.get(block=False)
-            except Empty:
-                # Just in case the state changed...
-                pass
-            try:
-                self._stream_queue.put(st, timeout=10)
-                Logger.debug("Put stream into queue")
-            except Full:
-                Logger.warning(
-                    "Could not update the state of stream - queue is full")
+        Logger.info("Stream setter called")
+        # Put stream in queue
+        Logger.info("Putting stream in queue")
+        with self._stream_lock:
+            self._stream_queue.put(st, block=True, timeout=0.5)
+        Logger.info("Synchronizing")
+        _ = self.stream  # Synchronize
 
     @property
     def stats(self) -> dict:
         """ Provide a copy of the stats """
-        with self._stream_lock:
-            st = self.stream
+        st = self.stream
         stats = {(tr.stats.network, tr.stats.station, tr.stats.location, tr.stats.channel):
                  (tr.stats.starttime, tr.stats.endtime) for tr in st}
         return stats
@@ -159,8 +151,7 @@ class StreamClient:
 
         if rm_selected:
             # Buffer is deliberately written to remove the earliest data.
-            with self._stream_lock:
-                full_st = self.stream
+            full_st = self.stream
             trimmed = full_st.select(
                 network=network, station=station, location=location, channel=channel
             ).trim(starttime=endtime).copy()
@@ -168,8 +159,7 @@ class StreamClient:
                 full_st.remove(tr)
             full_st += trimmed
             # Put back into queue
-            with self._stream_lock:
-                self.stream = full_st
+            self.stream = full_st
         return st
 
     def get_waveforms_bulk(
@@ -193,7 +183,20 @@ class StreamClient:
         """
         st = Stream()
         for _bulk in bulk:
-            st += self.get_waveforms(*_bulk, rm_selected=rm_selected)
+            st += self.get_waveforms(*_bulk, rm_selected=False)
+        # Remove all at once to avoid accessing the queue repeatedly
+        if rm_selected:
+            full_st = self.stream
+            trimmed_st = Stream()
+            for _bulk in bulk:
+                network, station, location, channel, starttime, endtime = _bulk
+                trimmed = full_st.select(
+                    network=network, station=station, location=location, channel=channel)
+                if len(trimmed) == 0:
+                    continue
+                trimmed_st += trimmed.trim(starttime=endtime)
+            # Put back into queue
+            self.stream = trimmed_st
         return st
 
     def initiate_buffer(self, seed_ids: Iterable[str], starttime: UTCDateTime):
@@ -212,8 +215,7 @@ class StreamClient:
                 for seed_id in seed_ids]
         for _bulk in bulk:
             st += self.client.get_waveforms(*_bulk)
-        with self._stream_lock:
-            self.stream = st
+        self.stream = st
         return
 
     def _clear_killer(self):
@@ -257,10 +259,7 @@ class StreamClient:
     def background_stop(self):
         """Stop the background process."""
         Logger.info("Adding Poison to Kill Queue")
-        # Run communications before termination
-        st = self.stream
 
-        Logger.debug(f"Stream on termination: {st}")
         self._killer_queue.put(True)
         self.stop()
         # Wait until streaming has stopped
@@ -297,35 +296,43 @@ class StreamClient:
         """
         Maintain buffer length
         """
+        kill = False
         while not self._stop_called:
-            # If this is running in a process then we need to check the queue
-            try:
-                kill = self._killer_queue.get(block=False)
-            except Empty:
-                kill = False
-            Logger.debug(f"Kill status: {kill}")
-            if kill:
-                Logger.warning("Termination called, stopping collect loop")
-                self.on_terminate()
-                break
             Logger.info(self.stats)
+            new_stream = Stream()
             for nslc, (starttime, endtime) in self.stats.items():
-                Logger.info(f"{nslc} lengh: {endtime - starttime}")
+                Logger.info(f"{nslc} length: {endtime - starttime}, min-length: {self._min_buffer_length}")
                 if endtime - starttime <= self._min_buffer_length:
                     endtime = starttime + self.buffer_length
                     net, sta, loc, chan = nslc
                     Logger.info(f"Updating buffer for {net}.{sta}.{loc}.{chan} "
                                 f"between {starttime} and {endtime}")
-                    st = self.client.get_waveforms(
+                    new_stream += self.client.get_waveforms(
                         network=net, station=sta, channel=chan, location=loc,
                         starttime=starttime, endtime=endtime)
-                    with self._stream_lock:
-                        st += self.stream
-                    st.merge()
-                    with self._stream_lock:
-                        self.stream = st
-            Logger.debug(f"Sleeping for {self._min_buffer_length / 2}")
-            time.sleep(self._min_buffer_length / 2)
+            if len(new_stream):
+                Logger.info(f"Acquired new data for buffer: {new_stream}")
+                new_stream += self.stream
+                new_stream.merge()
+                self.stream = new_stream
+            # Sleep in small steps
+            _sleep, sleep_duration, sleep_step = 0, self._min_buffer_length / 2, 0.5
+            Logger.debug(f"Sleeping for {sleep_duration}")
+            while _sleep <= sleep_duration:
+                # If this is running in a process then we need to check the queue
+                try:
+                    kill = self._killer_queue.get(block=False)
+                except Empty:
+                    kill = False
+                Logger.debug(f"Kill status: {kill}")
+                if kill:
+                    Logger.warning("Termination called, stopping collect loop")
+                    self.on_terminate()
+                    break
+                time.sleep(sleep_step)
+                _sleep += sleep_step
+            if kill:
+                break
         Logger.debug("Out of run loop, returning")
         self._maintain = False
         return
@@ -473,7 +480,7 @@ class RealTimeClient(_StreamingClient):
         self.streaming = True
         # start threadpool executor
         executor = ThreadPoolExecutor(max_workers=min(len(self.bulk), self.max_threads))
-        now = copy.deepcopy(self.starttime)
+        now = deepcopy(self.starttime)
         self.last_data = UTCDateTime.now()
         last_query_start = now - self.query_interval
         while not self._stop_called:
