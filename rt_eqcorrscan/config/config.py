@@ -69,6 +69,7 @@ class RTMatchFilterConfig(_ConfigAttribDict):
         "threshold": 0.3,
         "threshold_type": "av_chan_corr",
         "trig_int": 2.0,
+        "keep_detections": 86400,
         "hypocentral_separation": 30.0,
         "save_waveforms": True,
         "plot_detections": False,
