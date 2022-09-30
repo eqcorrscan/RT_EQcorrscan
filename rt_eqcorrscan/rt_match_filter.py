@@ -295,7 +295,7 @@ class RealTimeTribe(Tribe):
                 Logger.error("No wavebank attached to streamer")
             return None
         timer, wait_step = 0.0, 0.5
-        Logger.info("Getting wavebank lock")
+        Logger.debug("Getting wavebank lock")
         with self.wavebank_lock:
             try:
                 func = self.wavebank.__getattribute__(method)
@@ -305,13 +305,13 @@ class RealTimeTribe(Tribe):
             # Attempt to access the underlying wavebank
             out = None
             while timer < timeout:
-                Logger.info(f"Trying to call {method} on wavebank")
+                Logger.debug(f"Trying to call {method} on wavebank")
                 tic = time.time()
                 try:
                     out = func(*args, **kwargs)
                     break
                 except (IOError, OSError) as e:
-                    Logger.info(f"Call to {method} failed due to {e}")
+                    Logger.warning(f"Call to {method} failed due to {e}")
                     time.sleep(wait_step)
                 toc = time.time()
                 timer += toc - tic
@@ -534,6 +534,7 @@ class RealTimeTribe(Tribe):
             # Only sleep if this ran faster than sleep step
             iter_time = time.time() - tic
             sleep_step = self.sleep_step - iter_time
+            Logger.info(f"Iteration of wait took {iter_time}s. Sleeping for {sleep_step}s")
             if sleep_step > 0:
                 time.sleep(sleep_step)
             toc_sleep = time.time()
@@ -781,6 +782,8 @@ class RealTimeTribe(Tribe):
                         f"{last_data_received}")
                     self._stream_end = max(tr.stats.endtime for tr in st)
                     min_stream_end = min(tr.stats.endtime for tr in st)
+                    # Update detection kwargs endtime to end of current data - no need to backfill beyond that
+                    detection_kwargs["endtime"] = self._stream_end
                     Logger.info(
                         f"Real-time client provided data: \n{st.__str__(extended=True)}")
                     # Cope with data that doesn't come
