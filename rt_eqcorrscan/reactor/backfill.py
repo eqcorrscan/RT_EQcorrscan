@@ -91,7 +91,7 @@ def backfill(
         Logger.warning("Insufficient data for backfill, not running")
         Logger.warning(f"{_endtime} >= {endtime + minimum_data_for_detection}")
     while _endtime < (endtime + minimum_data_for_detection):
-        st_chunk = read(st_filename, starttime=_starttime, endtime=_endtime)
+        st_chunk = read(st_filename, starttime=_starttime, endtime=_endtime).merge()
         Logger.info(f"Read in {st_chunk}")
         try:
             new_party += new_tribe.detect(
