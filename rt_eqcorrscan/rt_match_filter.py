@@ -1139,10 +1139,10 @@ class RealTimeTribe(Tribe):
             "-T", threshold_type,
             "-i", str(trig_int),
             "-c", str(self.max_correlation_cores),
-            "-P",  # Enable parallel processing
-            "-s",  # Add on the list of expected seed ids
             "--starttime", str(starttime),
             "--endtime", str(endtime),
+            "-P",  # Enable parallel processing
+            "-s",  # Add on the list of expected seed ids
         ]
         _call.extend(self.expected_seed_ids)
 
