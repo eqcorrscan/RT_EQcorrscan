@@ -260,7 +260,7 @@ class RealTimeTribe(Tribe):
                     Logger.warning(f"Did not find backfiller temp dir {backfiller_name}")
             else:
                 active_backfillers.update({backfiller_name: backfill_process})
-        Logger.info(f"There are {len(active_backfillers)} backfillers currently active")
+        Logger.debug(f"There are {len(active_backfillers)} backfillers currently active")
         self._backfillers = active_backfillers
 
     def _access_wavebank(
@@ -534,7 +534,7 @@ class RealTimeTribe(Tribe):
             # Only sleep if this ran faster than sleep step
             iter_time = time.time() - tic
             sleep_step = self.sleep_step - iter_time
-            Logger.info(f"Iteration of wait took {iter_time}s. Sleeping for {sleep_step}s")
+            Logger.debug(f"Iteration of wait took {iter_time}s. Sleeping for {sleep_step}s")
             if sleep_step > 0:
                 time.sleep(sleep_step)
             toc_sleep = time.time()
@@ -942,7 +942,7 @@ class RealTimeTribe(Tribe):
         template_files = glob.glob(f"{self._template_dir}/*")
         if len(template_files) == 0:
             return []
-        Logger.info(f"Checking for events in {self._template_dir}")
+        Logger.debug(f"Checking for events in {self._template_dir}")
         new_tribe = Tribe()
         for template_file in template_files:
             if os.path.isdir(template_file):
@@ -961,7 +961,7 @@ class RealTimeTribe(Tribe):
                 if self._spoilers:
                     Logger.warning(msg)
                 else:
-                    Logger.error(msg)
+                    Logger.debug(msg)
                     continue  # Skip and do not remove template, we will get it later
             # If we got to here we can add the template to the tribe and remove the file.
             new_tribe += template
@@ -1101,7 +1101,7 @@ class RealTimeTribe(Tribe):
         Logger.debug(f"Getting stations for backfill: {bulk}")
         # st = self.get_wavebank_stream(bulk)
         st_files = self.get_wavebank_files(bulk)
-        Logger.info(f"Concatenating {len(st_files)} stream files for backfill")
+        Logger.debug(f"Concatenating {len(st_files)} stream files for backfill")
         
         self._number_of_backfillers += 1
 
