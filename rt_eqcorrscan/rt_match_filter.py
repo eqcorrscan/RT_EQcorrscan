@@ -13,8 +13,8 @@ import glob
 import subprocess
 
 # Memory tracking for debugging
-import psutil
-from pympler import summary, muppy
+# import psutil
+# from pympler import summary, muppy
 
 from typing import Union, List, Iterable
 
@@ -910,7 +910,7 @@ class RealTimeTribe(Tribe):
                     # Logger.info("Enforcing garbage collection")
                     # gc.collect()
                     # Memory output
-                    Logger.info("Working out memory use")
+                    # Logger.info("Working out memory use")
                     # sum1 = summary.summarize(muppy.get_objects())
                     # for line in summary.format_(sum1):
                     #     Logger.info(line)
@@ -969,7 +969,8 @@ class RealTimeTribe(Tribe):
                 os.remove(template_file)  # Remove file once done with it.
         new_tribe.templates = [t for t in new_tribe
                                if t.name not in self.running_templates]
-        Logger.info(f"Read in {len(new_tribe)} new templates from disk")
+        if len(new__tribe):
+            Logger.info(f"Read in {len(new_tribe)} new templates from disk")
         return new_tribe
 
     def _add_templates_from_disk(
