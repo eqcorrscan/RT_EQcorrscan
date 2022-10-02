@@ -13,8 +13,8 @@ import glob
 import subprocess
 
 # Memory tracking for debugging
-import psutil
-from pympler import summary, muppy
+# import psutil
+# from pympler import summary, muppy
 
 from typing import Union, List, Iterable
 
@@ -260,7 +260,7 @@ class RealTimeTribe(Tribe):
                     Logger.warning(f"Did not find backfiller temp dir {backfiller_name}")
             else:
                 active_backfillers.update({backfiller_name: backfill_process})
-        Logger.info(f"There are {len(active_backfillers)} backfillers currently active")
+        Logger.debug(f"There are {len(active_backfillers)} backfillers currently active")
         self._backfillers = active_backfillers
 
     def _access_wavebank(
@@ -295,7 +295,7 @@ class RealTimeTribe(Tribe):
                 Logger.error("No wavebank attached to streamer")
             return None
         timer, wait_step = 0.0, 0.5
-        Logger.info("Getting wavebank lock")
+        Logger.debug("Getting wavebank lock")
         with self.wavebank_lock:
             try:
                 func = self.wavebank.__getattribute__(method)
@@ -305,13 +305,13 @@ class RealTimeTribe(Tribe):
             # Attempt to access the underlying wavebank
             out = None
             while timer < timeout:
-                Logger.info(f"Trying to call {method} on wavebank")
+                Logger.debug(f"Trying to call {method} on wavebank")
                 tic = time.time()
                 try:
                     out = func(*args, **kwargs)
                     break
                 except (IOError, OSError) as e:
-                    Logger.info(f"Call to {method} failed due to {e}")
+                    Logger.warning(f"Call to {method} failed due to {e}")
                     time.sleep(wait_step)
                 toc = time.time()
                 timer += toc - tic
@@ -531,9 +531,14 @@ class RealTimeTribe(Tribe):
                 new_tribe = self._read_templates_from_disk()
                 if len(new_tribe) > 0:
                     self.templates.extend(new_tribe.templates)
-            time.sleep(self.sleep_step)
-            toc = time.time()
-            wait_length += (toc - tic)
+            # Only sleep if this ran faster than sleep step
+            iter_time = time.time() - tic
+            sleep_step = self.sleep_step - iter_time
+            Logger.debug(f"Iteration of wait took {iter_time}s. Sleeping for {sleep_step}s")
+            if sleep_step > 0:
+                time.sleep(sleep_step)
+            toc_sleep = time.time()
+            wait_length += (toc_sleep - tic)
             if wait is None:
                 if len(self.rt_client.buffer_ids) >= len(self.expected_seed_ids):
                     break
@@ -777,6 +782,8 @@ class RealTimeTribe(Tribe):
                         f"{last_data_received}")
                     self._stream_end = max(tr.stats.endtime for tr in st)
                     min_stream_end = min(tr.stats.endtime for tr in st)
+                    # Update detection kwargs endtime to end of current data - no need to backfill beyond that
+                    detection_kwargs["endtime"] = self._stream_end
                     Logger.info(
                         f"Real-time client provided data: \n{st.__str__(extended=True)}")
                     # Cope with data that doesn't come
@@ -903,7 +910,7 @@ class RealTimeTribe(Tribe):
                     # Logger.info("Enforcing garbage collection")
                     # gc.collect()
                     # Memory output
-                    Logger.info("Working out memory use")
+                    # Logger.info("Working out memory use")
                     # sum1 = summary.summarize(muppy.get_objects())
                     # for line in summary.format_(sum1):
                     #     Logger.info(line)
@@ -935,7 +942,7 @@ class RealTimeTribe(Tribe):
         template_files = glob.glob(f"{self._template_dir}/*")
         if len(template_files) == 0:
             return []
-        Logger.info(f"Checking for events in {self._template_dir}")
+        Logger.debug(f"Checking for events in {self._template_dir}")
         new_tribe = Tribe()
         for template_file in template_files:
             if os.path.isdir(template_file):
@@ -954,7 +961,7 @@ class RealTimeTribe(Tribe):
                 if self._spoilers:
                     Logger.warning(msg)
                 else:
-                    Logger.error(msg)
+                    Logger.debug(msg)
                     continue  # Skip and do not remove template, we will get it later
             # If we got to here we can add the template to the tribe and remove the file.
             new_tribe += template
@@ -962,7 +969,8 @@ class RealTimeTribe(Tribe):
                 os.remove(template_file)  # Remove file once done with it.
         new_tribe.templates = [t for t in new_tribe
                                if t.name not in self.running_templates]
-        Logger.info(f"Read in {len(new_tribe)} new templates from disk")
+        if len(new__tribe):
+            Logger.info(f"Read in {len(new_tribe)} new templates from disk")
         return new_tribe
 
     def _add_templates_from_disk(
@@ -1094,7 +1102,7 @@ class RealTimeTribe(Tribe):
         Logger.debug(f"Getting stations for backfill: {bulk}")
         # st = self.get_wavebank_stream(bulk)
         st_files = self.get_wavebank_files(bulk)
-        Logger.info(f"Concatenating {len(st_files)} stream files for backfill")
+        Logger.debug(f"Concatenating {len(st_files)} stream files for backfill")
         
         self._number_of_backfillers += 1
 
@@ -1132,10 +1140,10 @@ class RealTimeTribe(Tribe):
             "-T", threshold_type,
             "-i", str(trig_int),
             "-c", str(self.max_correlation_cores),
-            "-P",  # Enable parallel processing
-            "-s",  # Add on the list of expected seed ids
             "--starttime", str(starttime),
             "--endtime", str(endtime),
+            "-P",  # Enable parallel processing
+            "-s",  # Add on the list of expected seed ids
         ]
         _call.extend(self.expected_seed_ids)
 

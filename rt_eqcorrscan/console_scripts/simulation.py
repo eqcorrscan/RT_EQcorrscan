@@ -132,14 +132,28 @@ def synthesise_real_time(
                     Logger.info(
                         f"Downloading for {network.code}.{station.code}.{channel.location_code}.{channel.code} "
                         f"between {_starttime} and {_starttime + download_chunk_size}")
+                    # check if the waveform already exists in the wavebank
+                    st = None
+                    request_kwargs = dict(
+                        network=network.code,
+                        station=station.code,
+                        channel=channel.code,
+                        location=channel.location_code,
+                        starttime=_starttime,
+                        endtime=_starttime + download_chunk_size
+                    )
                     try:
-                        st = client.get_waveforms(
-                            network=network.code,
-                            station=station.code,
-                            channel=channel.code,
-                            location=channel.location_code,
-                            starttime=_starttime,
-                            endtime=_starttime + download_chunk_size)
+                        st = wavebank.get_waveforms(**request_kwargs)
+                    except Exception:
+                        pass
+                    if st:
+                        # check that it matches params
+                        tr = st.merge()[0]
+                        if abs(tr.stats.starttime - _starttime) <= 120 and abs(tr.stats.endtime - request_kwargs["endtime"]) <= 120:
+                            _starttime += download_chunk_size
+                            continue
+                    try:
+                        st = client.get_waveforms(**request_kwargs)
                     except Exception as e:
                         Logger.error(
                             "Could not download data for "

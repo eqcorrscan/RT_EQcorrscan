@@ -54,7 +54,7 @@ def backfill(
     Logger.info(f"Detection parameters: threshold={threshold}, threshold_type={threshold_type}, "
                 f"trig_int={trig_int}, peak_cores={peak_cores}, cores={cores}, "
                 f"parallel_processing={parallel_processing}, process_cores={process_cores}, "
-                f"log_to_screen={log_to_screen}")
+                f"log_to_screen={log_to_screen}, starttime={starttime}, endtime={endtime}")
 
     # Read in tribe
     new_tribe = Tribe().read("tribe.tgz")
@@ -74,8 +74,10 @@ def backfill(
     Logger.info("Starting backfill detection run with:")
     Logger.info(st_head.__str__(extended=True))
     # Break into chunks so that detections can be handled as they happen
-    starttime = starttime or min(tr.stats.starttime for tr in st_head)
-    endtime = endtime or max(tr.stats.endtime for tr in st_head)
+    # Can't actually start before the data start
+    starttime = max(starttime, min(tr.stats.starttime for tr in st_head))
+    # Can't actually end after the data end!
+    endtime = min(endtime, max(tr.stats.endtime for tr in st_head))
     del st_head  # Not needed anymore
     if endtime - starttime < minimum_data_for_detection:
         Logger.warning(f"Insufficient data between {starttime} and {endtime}. "
@@ -89,7 +91,8 @@ def backfill(
         Logger.warning("Insufficient data for backfill, not running")
         Logger.warning(f"{_endtime} >= {endtime + minimum_data_for_detection}")
     while _endtime < (endtime + minimum_data_for_detection):
-        st_chunk = read(st_filename, starttime=_starttime, endtime=_endtime)
+        st_chunk = read(st_filename, starttime=_starttime, endtime=_endtime).merge()
+        Logger.info(f"Read in {st_chunk}")
         try:
             new_party += new_tribe.detect(
                 stream=st_chunk, plot=False, threshold=threshold,
@@ -123,7 +126,9 @@ def backfill(
         #     Logger.info(line)
         total_memory_mb = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
         Logger.info(f"Total memory used by {os.getpid()}: {total_memory_mb:.2f} MB")
-    new_party.write(f"{working_dir}/party.tgz")
+    new_party.families = [f for f in new_party if len(f)]
+    if len(new_party):
+        new_party.write(f"{working_dir}/party.tgz")
     Logger.info("Backfiller completed")
     return
 

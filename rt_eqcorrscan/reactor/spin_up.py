@@ -166,7 +166,7 @@ def run(
         trig_int=config.rt_match_filter.trig_int,
         hypocentral_separation=config.rt_match_filter.hypocentral_separation,
         min_stations=min_stations,
-        keep_detections=86400,
+        keep_detections=config.rt_match_filter.keep_detections,
         detect_directory="{name}/detections",
         plot_detections=config.rt_match_filter.plot_detections,
         save_waveforms=config.rt_match_filter.save_waveforms,
