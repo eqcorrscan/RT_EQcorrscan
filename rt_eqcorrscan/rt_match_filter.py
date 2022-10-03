@@ -969,7 +969,7 @@ class RealTimeTribe(Tribe):
                 os.remove(template_file)  # Remove file once done with it.
         new_tribe.templates = [t for t in new_tribe
                                if t.name not in self.running_templates]
-        if len(new__tribe):
+        if len(new_tribe):
             Logger.info(f"Read in {len(new_tribe)} new templates from disk")
         return new_tribe
 
