@@ -6,14 +6,15 @@ Functions for spinning up and running a backfiller to detect with new templates 
 import os
 import logging
 import gc
+import numpy as np
 
 # Memory tracking for debugging
 import psutil
 from pympler import summary, muppy
 
-from obspy import read, UTCDateTime
+from obspy import read, UTCDateTime, Stream
 
-from eqcorrscan import Tribe, Party
+from eqcorrscan import Tribe, Party, Template
 from rt_eqcorrscan import Config
 from rt_eqcorrscan.rt_match_filter import squash_duplicates, reshape_templates
 
@@ -59,6 +60,8 @@ def backfill(
     # Read in tribe
     new_tribe = Tribe().read("tribe.tgz")
     st_filename = "stream.ms"
+    # Remove nan-channels that might have been added if the templates are already in use
+    new_tribe.templates = [_rm_nan(t) for t in new_tribe.templates]
     # Squash duplicate channels to avoid excessive channels
     new_tribe.templates = [squash_duplicates(t) for t in new_tribe.templates]
     # Reshape
@@ -133,10 +136,18 @@ def backfill(
     return
 
 
+def _rm_nan(template: Template) -> Template:
+    """
+    Remove nan channels in template
+    """
+    template.st = Stream(
+        [t for t in template.st if not np.all(np.isnan(t.data))])
+    return template
+
+
 if __name__ == "__main__":
     import argparse
 
-    # TODO: Add starttime and endtime args - stream provided may be too long
     parser = argparse.ArgumentParser(
         description="Script to spin-up a backfiller instance")
 
