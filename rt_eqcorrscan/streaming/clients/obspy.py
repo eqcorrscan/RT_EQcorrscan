@@ -196,13 +196,14 @@ class StreamClient:
             Starttime to initialise buffer from
         """
         st = Stream()
-        bulk = [tuple(seed_id.split('.') + [starttime,
-                                            starttime + self.buffer_length])
-                for seed_id in seed_ids]
+        bulk = [
+            tuple(seed_id.split('.') +
+            [starttime, starttime + self.buffer_length])
+            for seed_id in seed_ids]
         for _bulk in bulk:
             st += self.client.get_waveforms(*_bulk)
         self.stream = st
-        Logger.debug(f"Collected hidden buffer:\n{st}")
+        Logger.info(f"Collected hidden buffer:\n{st}")
         return
 
     def _clear_killer(self):
@@ -288,13 +289,13 @@ class StreamClient:
             Logger.debug(f"Hidden Streamer running for: {self.stats}")
             new_stream = Stream()
             for nslc, (starttime, endtime) in self.stats.items():
-                Logger.debug(f"Hidden Streamer: {nslc} length: "
-                             f"{endtime - starttime}, min-length: "
-                             f"{self._min_buffer_length}")
+                Logger.info(f"Hidden Streamer: {nslc} length: "
+                            f"{endtime - starttime}, min-length: "
+                            f"{self._min_buffer_length}")
                 if endtime - starttime <= self._min_buffer_length:
                     endtime = starttime + self.buffer_length
                     net, sta, loc, chan = nslc
-                    Logger.debug(
+                    Logger.info(
                         f"Updating buffer for {net}.{sta}.{loc}.{chan} "
                         f"between {starttime} and {endtime}")
                     new_stream += self.client.get_waveforms(
