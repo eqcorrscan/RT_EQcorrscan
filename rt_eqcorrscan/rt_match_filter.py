@@ -1252,6 +1252,7 @@ def squash_duplicates(template: Template):
     unique_template_st = Stream()
     unique_event_picks = []
     for seed_id, repeats in seed_ids.most_common():
+        # TODO: this restricts to only picks on that seed id - but we could just have matched picks on station
         seed_id_picks = [p for p in template.event.picks 
                          if p.waveform_id.get_seed_string() == seed_id 
                          and p.phase_hint[0] in "PS"]
