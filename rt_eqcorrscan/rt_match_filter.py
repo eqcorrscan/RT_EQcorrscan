@@ -892,6 +892,7 @@ class RealTimeTribe(Tribe):
                         detection_kwargs=detection_kwargs)
                     if not self._runtime_check(
                             run_start=run_start, max_run_length=max_run_length):
+                        self.stop()
                         break
                     if minimum_rate and UTCDateTime.now() > run_start + self._min_run_length:
                         _rate = average_rate(
