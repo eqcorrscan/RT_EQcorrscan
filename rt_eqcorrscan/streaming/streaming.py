@@ -60,6 +60,7 @@ class _StreamingClient(ABC):
     can_add_streams = True
     lock = multiprocessing.Lock()  # Lock for buffer access
     _stop_called = False
+    _timeout = 1
 
     def __init__(
         self,
@@ -158,7 +159,7 @@ class _StreamingClient(ABC):
             except Empty:
                 pass
             try:
-                self._buffer_full_queue.put(full, timeout=10)
+                self._buffer_full_queue.put(full, timeout=self._timeout)
             except Full:
                 Logger.debug("Could not update buffer full - queue is full")
 
@@ -184,7 +185,7 @@ class _StreamingClient(ABC):
                 Logger.debug("_last_data is empty :(")
                 pass
             try:
-                self._last_data_queue.put(timestamp, timeout=10)
+                self._last_data_queue.put(timestamp, timeout=self._timeout)
             except Full:
                 Logger.debug("Could not update the state of last data - "
                              "queue is full")
@@ -219,7 +220,7 @@ class _StreamingClient(ABC):
                 # Just in case the state changed...
                 pass
             try:
-                self._stream_queue.put(st, timeout=10)
+                self._stream_queue.put(st, timeout=self._timeout)
                 Logger.debug("Put stream into queue")
             except Full:
                 Logger.warning(
@@ -268,6 +269,19 @@ class _StreamingClient(ABC):
                 self._dead_queue.get(block=False)
             except Empty:
                 break
+
+    def _kill_check(self):
+        # If this is running in a process then we need to check the queue
+        try:
+            kill = self._killer_queue.get(block=False)
+        except Empty:
+            kill = False
+        Logger.info(f"Kill status: {kill}")
+        if kill:
+            Logger.warning(
+                "Termination called, stopping collect loop")
+            self.on_terminate()
+        return kill
 
     def _bg_run(self):
         while self.streaming:
