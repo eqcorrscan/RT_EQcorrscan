@@ -328,7 +328,7 @@ class StreamClient:
         return
 
     def stop(self) -> None:
-        Logger.info("STOP!")
+        Logger.info("STOP! Hidden streamer")
         self._stop_called = True
 
     def on_terminate(self):  # pragma: no cover
@@ -455,7 +455,7 @@ class RealTimeClient(_StreamingClient):
     def _collect_bulk(self, last_query_start, now, executor):
         query_passed, st = True, Stream()
         for _bulk in self.bulk:
-            jitter = random.randint(int(self.query_interval / 10))
+            jitter = random.randint(int(self.query_interval / 10) or 1)
             _bulk.update({
                 "starttime": last_query_start,
                 "endtime": now - jitter})
@@ -496,17 +496,8 @@ class RealTimeClient(_StreamingClient):
         now = deepcopy(self.starttime)
         self.last_data = UTCDateTime.now()
         last_query_start = now - self.query_interval
+        killed = False
         while not self._stop_called:
-            # If this is running in a process then we need to check the queue
-            try:
-                kill = self._killer_queue.get(block=False)
-            except Empty:
-                kill = False
-            Logger.debug(f"Kill status: {kill}")
-            if kill:
-                Logger.warning("Termination called, stopping collect loop")
-                self.on_terminate()
-                break
             _query_start = UTCDateTime.now()
             st, query_passed = self._collect_bulk(
                 last_query_start=last_query_start, now=now, executor=executor)
@@ -528,11 +519,22 @@ class RealTimeClient(_StreamingClient):
             if sleep_step > 0:
                 Logger.debug("Waiting {0:.2f}s before next query".format(
                     sleep_step))  # Report fake time
-                time.sleep(sleep_step / self.speed_up)  # Sleep in sped up time
+                _slept, _sleep_int = 0.0, min(1, (sleep_step / self.speed_up) / 100)
+                # Sleep in small steps to make death responsive
+                while _slept < sleep_step / self.speed_up:
+                    tic = time.perf_counter()
+                    time.sleep(_sleep_int)
+                    killed = self._kill_check()
+                    if killed:
+                        break
+                    _slept += time.perf_counter() - tic
                 Logger.debug("Waking up")
             else:
                 Logger.warning(f"Query ({_query_duration} took longer than query "
                                f"interval {self.query_interval}")
+                killed = self._kill_check()
+            if killed:
+                break
             now += max(self.query_interval, _query_duration)
             if query_passed:
                 last_query_start = min(_bulk["endtime"] for _bulk in self.bulk)
@@ -544,7 +546,9 @@ class RealTimeClient(_StreamingClient):
         return
 
     def stop(self) -> None:
-        Logger.info("STOP!")
+        Logger.info("STOP! obspy streamer")
+        if self.pre_empt_data:
+            self.client.background_stop()
         self._stop_called, self.started = True, False
 
 

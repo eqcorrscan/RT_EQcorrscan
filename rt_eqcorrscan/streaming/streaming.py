@@ -270,6 +270,19 @@ class _StreamingClient(ABC):
             except Empty:
                 break
 
+    def _kill_check(self):
+        # If this is running in a process then we need to check the queue
+        try:
+            kill = self._killer_queue.get(block=False)
+        except Empty:
+            kill = False
+        Logger.info(f"Kill status: {kill}")
+        if kill:
+            Logger.warning(
+                "Termination called, stopping collect loop")
+            self.on_terminate()
+        return kill
+
     def _bg_run(self):
         while self.streaming:
             self.run()

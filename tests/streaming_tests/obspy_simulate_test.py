@@ -60,7 +60,7 @@ class FDSNTest(unittest.TestCase):
         cls.rt_client = RealTimeClient(
             server_url="Unreal-streamer",
             client=cls.buffer, buffer_capacity=10,
-            starttime=UTCDateTime(2017, 1, 1), speed_up=4., query_interval=5.,
+            starttime=UTCDateTime(2018, 1, 1), speed_up=2., query_interval=5.,
             pre_empt_data=True)
 
     def test_background_streaming(self):
@@ -73,8 +73,11 @@ class FDSNTest(unittest.TestCase):
         except Exception as e:
             rt_client.background_stop()
             raise e
+        print(f"Sleeping for {SLEEP_STEP}s")
         time.sleep(SLEEP_STEP)
+        print("Stopping buffer")
         rt_client.background_stop()
+        print("Running checks")
         self.assertTrue(rt_client.buffer_full)
         self.assertEqual(rt_client.buffer_length,
                          rt_client.buffer_capacity)
