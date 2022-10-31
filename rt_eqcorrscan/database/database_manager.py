@@ -253,7 +253,7 @@ class TemplateBank(EventBank):
         {get_event_params}
         """
         with self.index_lock:
-            paths = str(self.bank_path) + self.read_index(
+            paths = str(self.bank_path) + os.sep + self.read_index(
                 columns=["path", "latitude", "longitude"], **kwargs).path
         paths = [path.replace(self.ext, self.template_ext) for path in paths]
         future = self.executor.map(_lazy_template_read, paths)

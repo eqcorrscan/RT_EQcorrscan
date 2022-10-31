@@ -334,6 +334,7 @@ class Reactor(object):
         Logger.info(f"Found {len(tribe)} templates")
         if len(tribe) == 0:
             Logger.info("No templates, not running")
+            return
         working_dir = _get_triggered_working_dir(
             triggering_event_id, exist_ok=True)
         tribe.write(os.path.join(working_dir, "tribe.tgz"))
