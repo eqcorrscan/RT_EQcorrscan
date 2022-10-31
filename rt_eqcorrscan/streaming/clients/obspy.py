@@ -67,34 +67,36 @@ class StreamClient:
         self._dead_queue = Queue(maxsize=1)
 
         self.processes = []
+        self.base_url = self.client.base_url
 
     @property
     def stream(self) -> Stream:
         with self._stream_lock:
-            Logger.info("Stream getter called")
+            Logger.debug("Stream getter called")
             st, i = Stream(), 0
             while True:
                 try:
                     st += self._stream_queue.get(block=True, timeout=0.5)
-                    Logger.info(f"{i}\tGot stream from queue: {st}")
+                    Logger.debug(f"{i}\tGot stream from queue: {st}")
                 except Empty:
                     if i == 0:
-                        Logger.warning("Stream queue is empty - have you initialized?")
+                        Logger.warning(
+                            "Stream queue is empty - have you initialized?")
                     break
                 i += 1
             self.__st = st.merge(method=1)
-            Logger.info(f"Putting stream back into queue: {self.__st}")
+            Logger.debug(f"Putting stream back into queue: {self.__st}")
             self._stream_queue.put(self.__st, block=True, timeout=0.5)
         return self.__st
 
     @stream.setter
     def stream(self, st: Stream):
-        Logger.info("Stream setter called")
+        Logger.debug("Stream setter called")
         # Put stream in queue
-        Logger.info("Putting stream in queue")
+        Logger.debug("Putting stream in queue")
         with self._stream_lock:
             self._stream_queue.put(st, block=True, timeout=0.5)
-        Logger.info("Synchronizing")
+        Logger.debug("Synchronizing")
         _ = self.stream  # Synchronize
 
     @property
@@ -138,29 +140,8 @@ class StreamClient:
         -------
         Stream of selected data.
         """
-        st = self.stream.select(
-            network=network, station=station, location=location, channel=channel)
-        if len(st) == 0:
-            Logger.warning(f"No data for {network}.{station}.{location}.{channel}")
-            return st
-        st = st.slice(starttime=starttime, endtime=endtime).copy()
-        if len(st) == 0:
-            Logger.warning(f"No data for {network}.{station}.{location}.{channel} "
-                           f"between {starttime} and {endtime}")
-            return st
-
-        if rm_selected:
-            # Buffer is deliberately written to remove the earliest data.
-            full_st = self.stream
-            trimmed = full_st.select(
-                network=network, station=station, location=location, channel=channel
-            ).trim(starttime=endtime).copy()
-            for tr in full_st.select(network=network, station=station, location=location, channel=channel):
-                full_st.remove(tr)
-            full_st += trimmed
-            # Put back into queue
-            self.stream = full_st
-        return st
+        return self.get_waveforms_bulk(
+            [network, station, location, channel, starttime, endtime])
 
     def get_waveforms_bulk(
             self,
@@ -175,28 +156,32 @@ class StreamClient:
             Bulk of (network, station, location, channel, starttime, endtime)
             to request data for.
         rm_selected
-            Whether to remove the selected data from the buffer. Defaults to True
+            Whether to remove the selected data from the buffer. Default: True
 
         Returns
         -------
         Stream of select data from buffer.
         """
-        st = Stream()
+        full_st, st = self.stream, Stream()  # Get local version of stream
         for _bulk in bulk:
-            st += self.get_waveforms(*_bulk, rm_selected=False)
+            n, s, l, c, _s, _e = _bulk
+            st += full_st.select(
+                network=n, station=s, location=l, channel=c).slice(
+                starttime=_s, endtime=_e).copy()
         # Remove all at once to avoid accessing the queue repeatedly
         if rm_selected:
-            full_st = self.stream
             trimmed_st = Stream()
             for _bulk in bulk:
                 network, station, location, channel, starttime, endtime = _bulk
                 trimmed = full_st.select(
-                    network=network, station=station, location=location, channel=channel)
+                    network=network, station=station, location=location,
+                    channel=channel)
                 if len(trimmed) == 0:
                     continue
                 trimmed_st += trimmed.trim(starttime=endtime)
             # Put back into queue
             self.stream = trimmed_st
+        Logger.debug(f"Returning stream for bulk: {bulk}:\n{st}")
         return st
 
     def initiate_buffer(self, seed_ids: Iterable[str], starttime: UTCDateTime):
@@ -211,11 +196,13 @@ class StreamClient:
             Starttime to initialise buffer from
         """
         st = Stream()
-        bulk = [tuple(seed_id.split('.') + [starttime, starttime + self.buffer_length])
+        bulk = [tuple(seed_id.split('.') + [starttime,
+                                            starttime + self.buffer_length])
                 for seed_id in seed_ids]
         for _bulk in bulk:
             st += self.client.get_waveforms(*_bulk)
         self.stream = st
+        Logger.debug(f"Collected hidden buffer:\n{st}")
         return
 
     def _clear_killer(self):
@@ -298,20 +285,23 @@ class StreamClient:
         """
         kill = False
         while not self._stop_called:
-            Logger.info(self.stats)
+            Logger.debug(f"Hidden Streamer running for: {self.stats}")
             new_stream = Stream()
             for nslc, (starttime, endtime) in self.stats.items():
-                Logger.info(f"{nslc} length: {endtime - starttime}, min-length: {self._min_buffer_length}")
+                Logger.debug(f"Hidden Streamer: {nslc} length: "
+                             f"{endtime - starttime}, min-length: "
+                             f"{self._min_buffer_length}")
                 if endtime - starttime <= self._min_buffer_length:
                     endtime = starttime + self.buffer_length
                     net, sta, loc, chan = nslc
-                    Logger.info(f"Updating buffer for {net}.{sta}.{loc}.{chan} "
-                                f"between {starttime} and {endtime}")
+                    Logger.debug(
+                        f"Updating buffer for {net}.{sta}.{loc}.{chan} "
+                        f"between {starttime} and {endtime}")
                     new_stream += self.client.get_waveforms(
                         network=net, station=sta, channel=chan, location=loc,
                         starttime=starttime, endtime=endtime)
             if len(new_stream):
-                Logger.info(f"Acquired new data for buffer: {new_stream}")
+                Logger.debug(f"Acquired new data for buffer: {new_stream}")
                 new_stream += self.stream
                 new_stream.merge()
                 self.stream = new_stream
@@ -393,6 +383,7 @@ class RealTimeClient(_StreamingClient):
         speed_up: float = 1.,
         buffer: Stream = None,
         buffer_capacity: float = 600.,
+        pre_empt_data: bool = True,
     ) -> None:
         if client is None:
             try:
@@ -411,6 +402,13 @@ class RealTimeClient(_StreamingClient):
         self.speed_up = speed_up
         self.bulk = []
         self.streaming = False
+        self.pre_empt_data = pre_empt_data
+
+        # Convert to pre-emptive client.
+        if pre_empt_data and not isinstance(self.client, StreamClient):
+            self.client = StreamClient(
+                self.client, min_buffer_fraction=0.2,
+                buffer_length=10 * buffer_capacity)
         Logger.info(
             "Instantiated simulated real-time client "
             "(starttime = {0}): {1}".format(self.starttime, self))
@@ -457,10 +455,16 @@ class RealTimeClient(_StreamingClient):
     def _collect_bulk(self, last_query_start, now, executor):
         query_passed, st = True, Stream()
         for _bulk in self.bulk:
-            jitter = random.randint(int(self.query_interval))
+            jitter = random.randint(int(self.query_interval / 10))
             _bulk.update({
                 "starttime": last_query_start,
                 "endtime": now - jitter})
+        if self.pre_empt_data:
+            # Use inbuilt bulk method - more efficient
+            return self.client.get_waveforms_bulk(
+                [(b['network'], b['station'], b['location'], b['channel'],
+                  b['starttime'], b['endtime'])
+                 for b in self.bulk]), True
         futures = {executor.submit(self.client.get_waveforms, **_bulk):
                    _bulk for _bulk in self.bulk}
         for future in as_completed(futures):
@@ -477,6 +481,15 @@ class RealTimeClient(_StreamingClient):
 
     def run(self) -> None:
         assert len(self.bulk) > 0, "Select a stream first"
+        if self.pre_empt_data:
+            Logger.info("Collecting pre-emptive data")
+            _sids = [
+                f"{b['network']}.{b['station']}.{b['location']}.{b['channel']}"
+                for b in self.bulk]
+            self.client.initiate_buffer(
+                seed_ids=_sids, starttime=self.starttime)
+            self.client.maintain_buffer()
+
         self.streaming = True
         # start threadpool executor
         executor = ThreadPoolExecutor(max_workers=min(len(self.bulk), self.max_threads))
@@ -497,11 +510,16 @@ class RealTimeClient(_StreamingClient):
             _query_start = UTCDateTime.now()
             st, query_passed = self._collect_bulk(
                 last_query_start=last_query_start, now=now, executor=executor)
+            a = UTCDateTime.now()
+            Logger.debug(f"Getting data took {(a - _query_start) * self.speed_up}s")
             for tr in st:
                 self.on_data(tr)
                 time.sleep(0.0001)
+            b = UTCDateTime.now()
+            Logger.debug(f"on_data took {(b - a) * self.speed_up}s")
             # Put the data in the buffer
             self._add_data_from_queue()
+            Logger.debug(f"_add_data_from_queue took {(UTCDateTime.now() - b) * self.speed_up}s")
             _query_duration = (UTCDateTime.now() - _query_start) * self.speed_up  # work in fake time
             Logger.debug(
                 "It took {0:.2f}s to query the database and sort data".format(
@@ -516,12 +534,13 @@ class RealTimeClient(_StreamingClient):
                 Logger.warning(f"Query ({_query_duration} took longer than query "
                                f"interval {self.query_interval}")
             now += max(self.query_interval, _query_duration)
-            Logger.debug(f"According to the streamer, the time now is {now}")
             if query_passed:
                 last_query_start = min(_bulk["endtime"] for _bulk in self.bulk)
         self.streaming = False
         # shut down threadpool, we done.
         executor.shutdown(wait=False, cancel_futures=True)
+        if self.pre_empt_data:
+            self.client.background_stop()
         return
 
     def stop(self) -> None:

@@ -55,10 +55,13 @@ class FDSNTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = Client("GEONET")
+        cls.buffer = StreamClient(
+            client=cls.client, buffer_length=60, min_buffer_fraction=0.25)
         cls.rt_client = RealTimeClient(
             server_url="Unreal-streamer",
-            client=cls.client, buffer_capacity=10,
-            starttime=UTCDateTime(2017, 1, 1), speed_up=4., query_interval=5.)
+            client=cls.buffer, buffer_capacity=10,
+            starttime=UTCDateTime(2017, 1, 1), speed_up=4., query_interval=5.,
+            pre_empt_data=True)
 
     def test_background_streaming(self):
         rt_client = self.rt_client.copy()

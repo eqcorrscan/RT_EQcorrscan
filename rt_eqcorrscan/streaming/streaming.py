@@ -60,6 +60,7 @@ class _StreamingClient(ABC):
     can_add_streams = True
     lock = multiprocessing.Lock()  # Lock for buffer access
     _stop_called = False
+    _timeout = 1
 
     def __init__(
         self,
@@ -158,7 +159,7 @@ class _StreamingClient(ABC):
             except Empty:
                 pass
             try:
-                self._buffer_full_queue.put(full, timeout=10)
+                self._buffer_full_queue.put(full, timeout=self._timeout)
             except Full:
                 Logger.debug("Could not update buffer full - queue is full")
 
@@ -184,7 +185,7 @@ class _StreamingClient(ABC):
                 Logger.debug("_last_data is empty :(")
                 pass
             try:
-                self._last_data_queue.put(timestamp, timeout=10)
+                self._last_data_queue.put(timestamp, timeout=self._timeout)
             except Full:
                 Logger.debug("Could not update the state of last data - "
                              "queue is full")
@@ -219,7 +220,7 @@ class _StreamingClient(ABC):
                 # Just in case the state changed...
                 pass
             try:
-                self._stream_queue.put(st, timeout=10)
+                self._stream_queue.put(st, timeout=self._timeout)
                 Logger.debug("Put stream into queue")
             except Full:
                 Logger.warning(
