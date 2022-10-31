@@ -335,7 +335,7 @@ class RealTimeTribe(Tribe):
                 method="read_index", timeout=120, network=_bulk[0],
                 station=_bulk[1], location=_bulk[2], channel=_bulk[3],
                 starttime=_bulk[4], endtime=_bulk[5])
-            files = (str(self.wavebank.bank_path) + index.path).unique()
+            files = (str(self.wavebank.bank_path) + os.sep + index.path).unique()
             paths.extend(list(files))
         return paths
 
