@@ -59,6 +59,7 @@ class StreamClient:
         self.client = client
         self.buffer_length = buffer_length
         self._min_buffer_length = buffer_length * min_buffer_fraction
+        self.speed_up = speed_up
 
         # Data queue for communication
         self._stream_queue = Queue()
