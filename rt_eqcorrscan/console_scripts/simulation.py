@@ -239,7 +239,6 @@ def main():
         "--pre-empt-len", type=float, default=None,
         help="Length of data in seconds to pre-emptively load into memory for "
              "the streamer")
-    )
     
     args = parser.parse_args()
 
