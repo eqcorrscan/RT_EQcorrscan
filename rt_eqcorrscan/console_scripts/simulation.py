@@ -168,6 +168,10 @@ def synthesise_real_time(
                     _starttime += download_chunk_size
                     wavebank.put_waveforms(st)
 
+    if pre_empt_len:
+        pre_empt_data = True
+    else:
+        pre_empt_data = False
     # Set up config to use the wavebank rather than FDSN.
     config.streaming.update(
         {"rt_client_url": str(wavebank.bank_path),
@@ -175,7 +179,7 @@ def synthesise_real_time(
          "starttime": trigger_origin.time - 60,
          "speed_up": speed_up,
          "query_interval": max(10, config.rt_match_filter.detect_interval / 10.0),
-         "pre_empt_data": True,
+         "pre_empt_data": pre_empt_data,
          "pre_empt_len": pre_empt_len,
          })
 
