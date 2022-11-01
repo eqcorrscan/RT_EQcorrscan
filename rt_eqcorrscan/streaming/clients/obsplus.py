@@ -51,6 +51,7 @@ class RealTimeClient(OBSRTCli):
         buffer: Stream = None,
         buffer_capacity: float = 600.,
         pre_empt_data: bool = True,
+        pre_empt_len: float = 6000.,
         **kwargs
     ) -> None:
         if client is None:
@@ -62,7 +63,8 @@ class RealTimeClient(OBSRTCli):
         super().__init__(
             server_url=server_url, starttime=starttime, client=client,
             query_interval=query_interval, speed_up=speed_up, buffer=buffer,
-            buffer_capacity=buffer_capacity, pre_empt_data=pre_empt_data)
+            buffer_capacity=buffer_capacity, pre_empt_data=pre_empt_data,
+            pre_empt_len=pre_empt_len)
 
 
 if __name__ == "__main__":

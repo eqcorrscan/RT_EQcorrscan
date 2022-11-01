@@ -54,6 +54,7 @@ class StreamClient:
         client,
         buffer_length: float = 3600,
         min_buffer_fraction: float = 0.25,
+        speed_up: float = 1.0,
     ):
         self.client = client
         self.buffer_length = buffer_length
@@ -307,7 +308,8 @@ class StreamClient:
                 new_stream.merge()
                 self.stream = new_stream
             # Sleep in small steps
-            _sleep, sleep_duration, sleep_step = 0, self._min_buffer_length / 2, 0.5
+            _sleep, sleep_duration, sleep_step = (
+                0, (self._min_buffer_length / 2) / self.speed_up, 0.5)
             Logger.debug(f"Sleeping for {sleep_duration}")
             while _sleep <= sleep_duration:
                 # If this is running in a process then we need to check the queue
@@ -385,6 +387,7 @@ class RealTimeClient(_StreamingClient):
         buffer: Stream = None,
         buffer_capacity: float = 600.,
         pre_empt_data: bool = True,
+        pre_empt_len: float = 6000.,
     ) -> None:
         if client is None:
             try:
@@ -409,7 +412,8 @@ class RealTimeClient(_StreamingClient):
         if pre_empt_data and not isinstance(self.client, StreamClient):
             self.client = StreamClient(
                 self.client, min_buffer_fraction=0.2,
-                buffer_length=10 * buffer_capacity)
+                buffer_length=pre_empt_len or 10 * buffer_capacity,
+                speed_up=speed_up)
         Logger.info(
             "Instantiated simulated real-time client "
             "(starttime = {0}): {1}".format(self.starttime, self))
