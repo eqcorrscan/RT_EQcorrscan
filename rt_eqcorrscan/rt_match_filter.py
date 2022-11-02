@@ -753,6 +753,7 @@ class RealTimeTribe(Tribe):
             maximum_backfill=first_data, endtime=None,
             min_stations=min_stations, earliest_detection_time=None)
 
+        long_runs, long_run_time = 0, 0  # Keep track of over-running loops
         try:
             while self.busy:
                 try:
@@ -877,11 +878,18 @@ class RealTimeTribe(Tribe):
                     run_time = (UTCDateTime.now() - start_time) * self._speed_up  # Work in fake time
                     Logger.info("Detection took {0:.2f}s".format(run_time))
                     if self.detect_interval <= run_time:
-                        Logger.warning(
-                            "detect_interval {0:.2f} shorter than run-time "
-                            "{1:.2f}, increasing detect_interval to {2:.2f}".format(
-                                self.detect_interval, run_time, run_time + 10))
-                        self.detect_interval = run_time + 10
+                        long_run_time += run_time
+                        long_runs += 1
+                        if long_runs > 10:
+                            long_run_time /= long_runs
+                            # NEVER EXCEED THE BUFFER LENGTH!!!!
+                            new_detect_interval = min(self.rt_client.buffer_length - 10, long_run_time + 10)
+                            Logger.warning(
+                                "detect_interval {0:.2f} shorter than run-time for 10 occasions"
+                                "{1:.2f}, increasing detect_interval to {2:.2f}".format(
+                                    self.detect_interval, run_time, new_detect_interval))
+                            self.detect_interval = new_detect_interval
+                            long_runs, long_run_time = 0, 0  # Reset counters
                     Logger.info("Iteration {0} took {1:.2f}s total".format(
                         detection_iteration, run_time))
                     Logger.info("Waiting {0:.2f}s until next run".format(
