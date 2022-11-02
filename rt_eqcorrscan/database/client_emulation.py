@@ -6,8 +6,10 @@ import logging
 import os
 import fnmatch
 
-from typing import Union
+from typing import Union, Iterable, List
 from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from obspy.clients.fdsn import Client
 from obspy import UTCDateTime, Stream, read
 from obsplus.bank import WaveBank, EventBank, StationBank
@@ -77,9 +79,14 @@ class LocalClient(object):
     """
     _waveform_db = dict()
 
-    def __init__(self, base_path: str):
+    def __init__(
+        self, 
+        base_path: str,
+        max_threads: int = None,
+    ):
         self.base_path = base_path
         self._build_db()
+        self._executor = ThreadPoolExecutor(max_workers=max_threads)
 
     def _build_db(self):
         for dirpath, dirnames, filenames in os.walk(self.base_path):
@@ -102,8 +109,24 @@ class LocalClient(object):
                     self._waveform_db.update({nslc: tr_db})
         return
 
-    @lru_cache(maxsize=4)
-    def get_waveforms(
+    def _file_reader(
+        self,
+        files: Iterable, 
+        starttime: UTCDateTime, 
+        endtime=UTCDateTime
+    ) -> Stream:
+        st = Stream()
+        future_streams = [
+            (f, self._executor.submit(read, f, starttime=starttime, endtime=endtime))
+            for f in useful_files]
+        for f, future_stream in future_streams:
+            try:
+                st += future_stream.result()
+            except Exception as e:
+                Logger.warning(f"Could not read {f} due to {e}")
+        return st.merge().trim(starttime, endtime)
+
+    def _db_lookup(
         self,
         network: str,
         station: str,
@@ -111,8 +134,7 @@ class LocalClient(object):
         channel: str,
         starttime: UTCDateTime,
         endtime: UTCDateTime,
-        *args, **kwargs
-    ):
+    ) -> List:
         tr_id = f"{network}.{station}.{location}.{channel}"
         # Need to be able to match wildcards
         known_tr_ids = self._waveform_db.keys()
@@ -126,17 +148,27 @@ class LocalClient(object):
                 or key[0] <= endtime.datetime <= key[1]  # end within file
                 or (starttime <= key[0] and endtime >= key[1])  # file between start and end
             ]))
-        # TODO: This should be threaded
-        for f in useful_files:
-            Logger.info(f"Reading from {f}")
-            st += read(f, starttime=starttime, endtime=endtime)
-        return st.merge().trim(starttime, endtime)
+        return useful_files
 
-    def get_waveforms_bulk(self, bulk, *args, **kwargs):
-        st = Stream()
+    def get_waveforms(
+        self,
+        network: str,
+        station: str,
+        location: str,
+        channel: str,
+        starttime: UTCDateTime,
+        endtime: UTCDateTime,
+        *args, **kwargs
+    ) -> Stream:
+        useful_files = self._db_lookup(
+            network, station, location, channel, starttime, endtime)
+        return self._file_reader(useful_files, starttime, endtime)
+
+    def get_waveforms_bulk(self, bulk, *args, **kwargs) -> Stream:
+        useful_files = []
         for _b in bulk:
-            st += self.get_waveforms(*_b, **kwargs)
-        return st
+            useful_files.extend(_b[0], _b[1], _b[2], _b[3], starttime, endtime)
+        return self._file_reader(useful_files, starttime, endtime)
 
     def get_stations(self, *args, **kwargs):
         raise NotImplementedError("No stations attached to this client")
