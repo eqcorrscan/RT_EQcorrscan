@@ -125,7 +125,7 @@ def synthesise_real_time(
 
     Logger.info("Downloading data")
     wavebank = WaveBank("simulation_wavebank")
-    download_chunk_size = min(86400, detection_runtime)
+    download_chunk_size = min(3600, detection_runtime)
     for network in inventory:
         for station in network:
             for channel in station:
