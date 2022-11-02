@@ -119,7 +119,7 @@ class LocalClient(object):
         st = Stream()
         future_streams = [
             (f, self._executor.submit(read, f, starttime=starttime, endtime=endtime))
-            for f in useful_files]
+            for f in files]
         for f, future_stream in future_streams:
             try:
                 st += future_stream.result()
@@ -140,16 +140,16 @@ class LocalClient(object):
         # Need to be able to match wildcards
         known_tr_ids = self._waveform_db.keys()
         matched_tr_ids = fnmatch.filter(known_tr_ids, tr_id)
-        useful_files = []
+        files = []
         for key in matched_tr_ids:
             tr_db = self._waveform_db.get(key)
-            useful_files.extend(sorted([
+            files.extend(sorted([
                 value for key, value in tr_db.items()
                 if key[0] <= starttime.datetime <= key[1]  # start within file
                 or key[0] <= endtime.datetime <= key[1]  # end within file
                 or (starttime <= key[0] and endtime >= key[1])  # file between start and end
             ]))
-        return useful_files
+        return files
 
     def get_waveforms(
         self,
@@ -161,15 +161,15 @@ class LocalClient(object):
         endtime: UTCDateTime,
         *args, **kwargs
     ) -> Stream:
-        useful_files = self._db_lookup(
+        files = self._db_lookup(
             network, station, location, channel, starttime, endtime)
-        return self._file_reader(useful_files, starttime, endtime)
+        return self._file_reader(files, starttime, endtime)
 
     def get_waveforms_bulk(self, bulk, *args, **kwargs) -> Stream:
-        useful_files = []
+        files = []
         for _b in bulk:
-            useful_files.extend(_b[0], _b[1], _b[2], _b[3], starttime, endtime)
-        return self._file_reader(useful_files, starttime, endtime)
+            files.extend(_b[0], _b[1], _b[2], _b[3], starttime, endtime)
+        return self._file_reader(files, starttime, endtime)
 
     def get_stations(self, *args, **kwargs):
         raise NotImplementedError("No stations attached to this client")
