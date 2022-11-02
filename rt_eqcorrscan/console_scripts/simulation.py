@@ -175,7 +175,7 @@ def synthesise_real_time(
     # Set up config to use the wavebank rather than FDSN.
     config.streaming.update(
         {"rt_client_url": str(wavebank.bank_path),
-         "rt_client_type": "obsplus",
+         "rt_client_type": "local",
          "starttime": trigger_origin.time - 60,
          "speed_up": speed_up,
          "query_interval": max(10, config.rt_match_filter.detect_interval / 10.0),
