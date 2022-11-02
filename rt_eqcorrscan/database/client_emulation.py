@@ -87,6 +87,7 @@ class LocalClient(object):
         self.base_path = base_path
         self._build_db()
         self._executor = ThreadPoolExecutor(max_workers=max_threads)
+        self.base_url = "I'm not a real client!"
 
     def _build_db(self):
         for dirpath, dirnames, filenames in os.walk(self.base_path):
