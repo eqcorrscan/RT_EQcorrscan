@@ -16,6 +16,7 @@ from obspy import read, UTCDateTime, Stream
 
 from eqcorrscan import Tribe, Party, Template
 from rt_eqcorrscan import Config
+from rt_eqcorrscan.database.client_emulation import LocalClient
 from rt_eqcorrscan.rt_match_filter import squash_duplicates, reshape_templates
 
 
@@ -59,7 +60,9 @@ def backfill(
 
     # Read in tribe
     new_tribe = Tribe().read("tribe.tgz")
-    st_filename = "stream.ms"
+    # Set up LocalClient in streams folder
+    st_client = LocalClient("streams")
+    # st_filename = "stream.ms"  # Avoid reading in whole stream - expensive in memory
     # Remove nan-channels that might have been added if the templates are already in use
     new_tribe.templates = [_rm_nan(t) for t in new_tribe.templates]
     # Squash duplicate channels to avoid excessive channels
@@ -71,17 +74,13 @@ def backfill(
     Logger.debug("Additional templates to be run: \n{0} "
                  "templates".format(len(new_tribe)))
 
-    # Get header info for stream
-    st_head = read(st_filename, headonly=True)
-
-    Logger.info("Starting backfill detection run with:")
-    Logger.info(st_head.__str__(extended=True))
+    Logger.info("Starting backfill detection run using:")
+    Logger.info(st_client._waveform_db.keys())
     # Break into chunks so that detections can be handled as they happen
     # Can't actually start before the data start
-    starttime = max(starttime, min(tr.stats.starttime for tr in st_head))
+    starttime = st_client.starttime
     # Can't actually end after the data end!
-    endtime = min(endtime, max(tr.stats.endtime for tr in st_head))
-    del st_head  # Not needed anymore
+    endtime = st_client.endtime
     if endtime - starttime < minimum_data_for_detection:
         Logger.warning(f"Insufficient data between {starttime} and {endtime}. "
                        f"Need {minimum_data_for_detection}s of data")
@@ -94,7 +93,10 @@ def backfill(
         Logger.warning("Insufficient data for backfill, not running")
         Logger.warning(f"{_endtime} >= {endtime + minimum_data_for_detection}")
     while _endtime < (endtime + minimum_data_for_detection):
-        st_chunk = read(st_filename, starttime=_starttime, endtime=_endtime).merge()
+        st_chunk = st_client.get_waveforms(
+            network="*", station="*", location="*", channel="*",
+            starttime=_starttime, endtime=_endtime).merge()
+        # st_chunk = read(st_filename, starttime=_starttime, endtime=_endtime).merge()
         Logger.info(f"Read in {st_chunk}")
         try:
             new_party += new_tribe.detect(

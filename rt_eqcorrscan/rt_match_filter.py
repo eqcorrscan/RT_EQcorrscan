@@ -1120,11 +1120,19 @@ class RealTimeTribe(Tribe):
         # Make working directory and write files.
         if not os.path.isdir(backfiller_name):
             os.makedirs(backfiller_name)
+
+        # Just copy all the files to a streams folder and use a LocalClient for backfiller
+        os.makedirs(f"{backfiller_name}/streams")
+        for st_file in st_files:
+            shutil.copyfile(
+                os.path.split(st_file)[-1],
+                f"{backfiller_name}/streams/{os.path.split(st_file)[-1]}")
+
         # st.write(f"{backfiller_name}/stream.ms", format="MSEED")
-        with open(f"{backfiller_name}/stream.ms", "wb") as fout:
-            for st_file in st_files:
-                with open(st_file, "rb") as fin:
-                    fout.write(fin.read())
+        # with open(f"{backfiller_name}/stream.ms", "wb") as fout:
+        #     for st_file in st_files:
+        #         with open(st_file, "rb") as fin:
+        #             fout.write(fin.read())
 
         if isinstance(templates, Tribe):
             tribe = templates

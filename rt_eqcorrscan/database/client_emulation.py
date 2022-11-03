@@ -110,6 +110,14 @@ class LocalClient(object):
                     self._waveform_db.update({nslc: tr_db})
         return
 
+    @property
+    def starttime(self):
+        return min(k[0] for tr_db in self._waveform_db.items() for k in tr_db.keys())
+
+    @property
+    def endtime(self):
+        return max(k[1] for tr_db in self._waveform_db.items() for k in tr_db.keys())
+
     def _file_reader(
         self,
         files: Iterable, 
