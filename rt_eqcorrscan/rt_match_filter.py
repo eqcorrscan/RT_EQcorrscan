@@ -1125,7 +1125,7 @@ class RealTimeTribe(Tribe):
         os.makedirs(f"{backfiller_name}/streams")
         for st_file in st_files:
             shutil.copyfile(
-                os.path.split(st_file)[-1],
+                st_file,
                 f"{backfiller_name}/streams/{os.path.split(st_file)[-1]}")
 
         # st.write(f"{backfiller_name}/stream.ms", format="MSEED")
