@@ -335,7 +335,7 @@ class RealTimeTribe(Tribe):
                 method="read_index", timeout=120, network=_bulk[0],
                 station=_bulk[1], location=_bulk[2], channel=_bulk[3],
                 starttime=_bulk[4], endtime=_bulk[5])
-            files = (str(self.wavebank.bank_path) + index.path).unique()
+            files = (str(self.wavebank.bank_path) + os.sep + index.path).unique()
             paths.extend(list(files))
         return paths
 
@@ -753,6 +753,7 @@ class RealTimeTribe(Tribe):
             maximum_backfill=first_data, endtime=None,
             min_stations=min_stations, earliest_detection_time=None)
 
+        long_runs, long_run_time = 0, 0  # Keep track of over-running loops
         try:
             while self.busy:
                 try:
@@ -877,11 +878,18 @@ class RealTimeTribe(Tribe):
                     run_time = (UTCDateTime.now() - start_time) * self._speed_up  # Work in fake time
                     Logger.info("Detection took {0:.2f}s".format(run_time))
                     if self.detect_interval <= run_time:
-                        Logger.warning(
-                            "detect_interval {0:.2f} shorter than run-time "
-                            "{1:.2f}, increasing detect_interval to {2:.2f}".format(
-                                self.detect_interval, run_time, run_time + 10))
-                        self.detect_interval = run_time + 10
+                        long_run_time += run_time
+                        long_runs += 1
+                        if long_runs > 10:
+                            long_run_time /= long_runs
+                            # NEVER EXCEED THE BUFFER LENGTH!!!!
+                            new_detect_interval = min(self.rt_client.buffer_length - 10, long_run_time + 10)
+                            Logger.warning(
+                                "detect_interval {0:.2f} shorter than run-time for 10 occasions"
+                                "{1:.2f}, increasing detect_interval to {2:.2f}".format(
+                                    self.detect_interval, run_time, new_detect_interval))
+                            self.detect_interval = new_detect_interval
+                            long_runs, long_run_time = 0, 0  # Reset counters
                     Logger.info("Iteration {0} took {1:.2f}s total".format(
                         detection_iteration, run_time))
                     Logger.info("Waiting {0:.2f}s until next run".format(
@@ -1252,6 +1260,7 @@ def squash_duplicates(template: Template):
     unique_template_st = Stream()
     unique_event_picks = []
     for seed_id, repeats in seed_ids.most_common():
+        # TODO: this restricts to only picks on that seed id - but we could just have matched picks on station
         seed_id_picks = [p for p in template.event.picks 
                          if p.waveform_id.get_seed_string() == seed_id 
                          and p.phase_hint[0] in "PS"]

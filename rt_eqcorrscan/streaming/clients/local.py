@@ -1,5 +1,5 @@
 """
-Data handling to simulate a real-time client from old data via ObsPlus WaveBank
+Data handling to simulate a real-time client from data on-disk
 for testing of real-time matched-filter detection.
 
 Author
@@ -11,9 +11,7 @@ import logging
 
 from obspy import Stream, UTCDateTime
 
-from obsplus import WaveBank
-
-from rt_eqcorrscan.database.client_emulation import ClientBank
+from rt_eqcorrscan.database.client_emulation import LocalClient
 from rt_eqcorrscan.streaming.clients.obspy import RealTimeClient as OBSRTCli
 
 
@@ -27,7 +25,7 @@ class RealTimeClient(OBSRTCli):
     Parameters
     ----------
     server_url
-        The base-path for the ObsPlus wavebank.
+        Path to waveforms - will glob and build record of waveforms
     client
         Any client or that supports waveform data queries.
     starttime
@@ -56,7 +54,7 @@ class RealTimeClient(OBSRTCli):
     ) -> None:
         if client is None:
             try:
-                client = ClientBank(wave_bank=WaveBank(server_url))
+                client = LocalClient(base_path=server_url)
             except Exception as e:
                 Logger.error("Could not instantiate simulated client")
                 raise e

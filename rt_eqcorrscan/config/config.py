@@ -133,7 +133,9 @@ class StreamingConfig(_ConfigAttribDict):
     }
     readonly = []
     rt_client_base = "rt_eqcorrscan.streaming.clients"
-    _known_keys = {"starttime", "query_interval", "speed_up", "client_type"}
+    _known_keys = {
+        "starttime", "query_interval", "speed_up", "client_type",
+        "pre_empt_data", "pre_empt_len"}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

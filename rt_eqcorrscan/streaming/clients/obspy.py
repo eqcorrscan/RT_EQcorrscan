@@ -54,10 +54,12 @@ class StreamClient:
         client,
         buffer_length: float = 3600,
         min_buffer_fraction: float = 0.25,
+        speed_up: float = 1.0,
     ):
         self.client = client
         self.buffer_length = buffer_length
         self._min_buffer_length = buffer_length * min_buffer_fraction
+        self.speed_up = speed_up
 
         # Data queue for communication
         self._stream_queue = Queue()
@@ -196,13 +198,14 @@ class StreamClient:
             Starttime to initialise buffer from
         """
         st = Stream()
-        bulk = [tuple(seed_id.split('.') + [starttime,
-                                            starttime + self.buffer_length])
-                for seed_id in seed_ids]
+        bulk = [
+            tuple(seed_id.split('.') +
+            [starttime, starttime + self.buffer_length])
+            for seed_id in seed_ids]
         for _bulk in bulk:
             st += self.client.get_waveforms(*_bulk)
         self.stream = st
-        Logger.debug(f"Collected hidden buffer:\n{st}")
+        Logger.info(f"Collected hidden buffer:\n{st}")
         return
 
     def _clear_killer(self):
@@ -288,13 +291,13 @@ class StreamClient:
             Logger.debug(f"Hidden Streamer running for: {self.stats}")
             new_stream = Stream()
             for nslc, (starttime, endtime) in self.stats.items():
-                Logger.debug(f"Hidden Streamer: {nslc} length: "
-                             f"{endtime - starttime}, min-length: "
-                             f"{self._min_buffer_length}")
+                Logger.info(f"Hidden Streamer: {nslc} length: "
+                            f"{endtime - starttime}, min-length: "
+                            f"{self._min_buffer_length}")
                 if endtime - starttime <= self._min_buffer_length:
                     endtime = starttime + self.buffer_length
                     net, sta, loc, chan = nslc
-                    Logger.debug(
+                    Logger.info(
                         f"Updating buffer for {net}.{sta}.{loc}.{chan} "
                         f"between {starttime} and {endtime}")
                     new_stream += self.client.get_waveforms(
@@ -306,7 +309,8 @@ class StreamClient:
                 new_stream.merge()
                 self.stream = new_stream
             # Sleep in small steps
-            _sleep, sleep_duration, sleep_step = 0, self._min_buffer_length / 2, 0.5
+            _sleep, sleep_duration, sleep_step = (
+                0, (self._min_buffer_length / 2) / self.speed_up, 0.5)
             Logger.debug(f"Sleeping for {sleep_duration}")
             while _sleep <= sleep_duration:
                 # If this is running in a process then we need to check the queue
@@ -384,6 +388,7 @@ class RealTimeClient(_StreamingClient):
         buffer: Stream = None,
         buffer_capacity: float = 600.,
         pre_empt_data: bool = True,
+        pre_empt_len: float = 6000.,
     ) -> None:
         if client is None:
             try:
@@ -408,7 +413,8 @@ class RealTimeClient(_StreamingClient):
         if pre_empt_data and not isinstance(self.client, StreamClient):
             self.client = StreamClient(
                 self.client, min_buffer_fraction=0.2,
-                buffer_length=10 * buffer_capacity)
+                buffer_length=pre_empt_len or 10 * buffer_capacity,
+                speed_up=speed_up)
         Logger.info(
             "Instantiated simulated real-time client "
             "(starttime = {0}): {1}".format(self.starttime, self))

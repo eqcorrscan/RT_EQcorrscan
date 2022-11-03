@@ -45,6 +45,7 @@ def synthesise_real_time(
     speed_up: float = 1,
     debug: bool = False,
     query_interval: float = 60,
+    pre_empt_len: float = None,
 ):
     """
     Synthesise a real-time matched-filter process for old data.
@@ -71,6 +72,8 @@ def synthesise_real_time(
         How often to query the waveform server in seconds.  Smaller numbers
         will query more often, but this is limited by disk read speeds - make
         sure you don't go too small and make your system stall!
+    pre_empt_len:
+        Length of data to store in memory for faster "streaming" simulation
     """
     if debug:
         config.log_level = "DEBUG"
@@ -122,7 +125,7 @@ def synthesise_real_time(
 
     Logger.info("Downloading data")
     wavebank = WaveBank("simulation_wavebank")
-    download_chunk_size = min(86400, detection_runtime)
+    download_chunk_size = min(3600, detection_runtime)
     for network in inventory:
         for station in network:
             for channel in station:
@@ -165,13 +168,20 @@ def synthesise_real_time(
                     _starttime += download_chunk_size
                     wavebank.put_waveforms(st)
 
+    if pre_empt_len:
+        pre_empt_data = True
+    else:
+        pre_empt_data = False
     # Set up config to use the wavebank rather than FDSN.
     config.streaming.update(
         {"rt_client_url": str(wavebank.bank_path),
-         "rt_client_type": "obsplus",
+         "rt_client_type": "local",
          "starttime": trigger_origin.time - 60,
          "speed_up": speed_up,
-         "query_interval": max(10, config.rt_match_filter.detect_interval / 10.0)})
+         "query_interval": max(10, config.rt_match_filter.detect_interval / 10.0),
+         "pre_empt_data": pre_empt_data,
+         "pre_empt_len": pre_empt_len,
+         })
 
     listener = CatalogListener(
         client=client, catalog_lookup_kwargs=region,
@@ -228,8 +238,11 @@ def main():
         help="Multiplier to speed-up RT match-filter by.")
     parser.add_argument(
         "--working-dir", type=str, default=".",
-        help="Directory to work in - will move to this directory and put all output here."
-    )
+        help="Directory to work in - will move to this directory and put all output here."),
+    parser.add_argument(
+        "--pre-empt-len", type=float, default=None,
+        help="Length of data in seconds to pre-emptively load into memory for "
+             "the streamer")
     
     args = parser.parse_args()
 
@@ -253,7 +266,7 @@ def main():
         triggering_event=trigger_event, database_duration=args.db_duration,
         config=config, make_templates=args.templates_made,
         debug=args.debug, speed_up=args.speed_up,
-        detection_runtime=args.runtime)
+        detection_runtime=args.runtime, pre_empt_len=args.pre_empt_len)
 
 
 if __name__ == "__main__":
