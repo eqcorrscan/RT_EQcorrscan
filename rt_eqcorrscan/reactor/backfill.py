@@ -78,9 +78,9 @@ def backfill(
     Logger.info(st_client._waveform_db.keys())
     # Break into chunks so that detections can be handled as they happen
     # Can't actually start before the data start
-    starttime = st_client.starttime
+    starttime = UTCDateTime(st_client.starttime)
     # Can't actually end after the data end!
-    endtime = st_client.endtime
+    endtime = UTCDateTime(st_client.endtime)
     if endtime - starttime < minimum_data_for_detection:
         Logger.warning(f"Insufficient data between {starttime} and {endtime}. "
                        f"Need {minimum_data_for_detection}s of data")
