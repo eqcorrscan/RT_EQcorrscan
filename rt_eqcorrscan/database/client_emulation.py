@@ -73,6 +73,24 @@ class ClientBank(object):
         return self.event_bank.get_events(*args, **kwargs)
 
 
+def _stream_info_from_file(filename: str) -> dict:
+    """ Extract start, end and seed id from file """
+    Logger.info(f"Reading from {filename}")
+    waveform_db = dict()
+    try:
+        st = read(filename, headonly=True)
+    except Exception as e:
+        Logger.warning(f"Could not read {filename} due to {e}")
+        return waveform_db
+    for tr in st:
+        nslc = tr.id
+        starttime, endtime = tr.stats.starttime, tr.stats.endtime
+        tr_db = waveform_db.get(nslc, dict())
+        tr_db.update({(starttime.datetime, endtime.datetime): filename})
+        waveform_db.update({nslc: tr_db})
+    return waveform_db
+
+
 class LocalClient(object):
     """
     Thin local waveform client.
@@ -85,36 +103,45 @@ class LocalClient(object):
         max_threads: int = None,
     ):
         self.base_path = base_path
-        self._build_db()
         self._executor = ThreadPoolExecutor(max_workers=max_threads)
+        self._build_db()
         self.base_url = "I'm not a real client!"
 
     def _build_db(self):
         for dirpath, dirnames, filenames in os.walk(self.base_path):
             if len(filenames) == 0:
                 continue
-            # TODO: This could be threaded, but only a one off
-            for f in filenames:
-                f = os.path.abspath(os.path.join(dirpath, f))
-                Logger.info(f"Reading from {f}")
+            filenames = [os.path.abspath(os.path.join(dirpath, f)) for f in filenames]
+            future_dbs = [
+                (f, self._executor.submit(_stream_info_from_file, f))
+                for f in filenames]
+            for f, future_db in future_dbs:
                 try:
-                    st = read(f, headonly=True)
+                    db = future_db.result()
                 except Exception as e:
-                    Logger.warning(f"Could not read {f} due to {e}")
+                    Logger.error(f"Could not extract file info from {f} due to {e}")
                     continue
-                for tr in st:
-                    nslc = tr.id
-                    starttime, endtime = tr.stats.starttime, tr.stats.endtime
-                    tr_db = self._waveform_db.get(nslc, dict())
-                    tr_db.update({(starttime.datetime, endtime.datetime): f})
-                    self._waveform_db.update({nslc: tr_db})
+                else:
+                    for nslc, tr_db in db.items():
+                        main_tr_db = self._waveform_db.get(nslc, dict())
+                        main_tr_db.update(tr_db)
+                        self._waveform_db.update({nslc: main_tr_db})
+
         return
+
+    @property
+    def starttime(self):
+        return min(k[0] for tr_db in self._waveform_db.values() for k in tr_db.keys())
+
+    @property
+    def endtime(self):
+        return max(k[1] for tr_db in self._waveform_db.values() for k in tr_db.keys())
 
     def _file_reader(
         self,
         files: Iterable, 
         starttime: UTCDateTime, 
-        endtime=UTCDateTime
+        endtime: UTCDateTime
     ) -> Stream:
         st = Stream()
         future_streams = [
@@ -165,10 +192,18 @@ class LocalClient(object):
             network, station, location, channel, starttime, endtime)
         return self._file_reader(files, starttime, endtime)
 
-    def get_waveforms_bulk(self, bulk, *args, **kwargs) -> Stream:
+    def get_waveforms_bulk(
+        self,
+        bulk: Iterable,
+        starttime: UTCDateTime,
+        endtime: UTCDateTime,
+        *args, **kwargs
+    ) -> Stream:
         files = []
         for _b in bulk:
-            files.extend(_b[0], _b[1], _b[2], _b[3], starttime, endtime)
+            files.extend(
+                self._db_lookup(_b[0], _b[1], _b[2], _b[3],
+                                starttime, endtime))
         return self._file_reader(files, starttime, endtime)
 
     def get_stations(self, *args, **kwargs):
