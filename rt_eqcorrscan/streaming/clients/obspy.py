@@ -21,6 +21,7 @@ from queue import Empty, Full
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from multiprocessing import Lock, Process, Queue
 
+from rt_eqcorrscan.database.client_emulation import LocalClient
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
 
 
@@ -465,8 +466,8 @@ class RealTimeClient(_StreamingClient):
             _bulk.update({
                 "starttime": last_query_start,
                 "endtime": now - jitter})
-        if self.pre_empt_data:
-            # Use inbuilt bulk method - more efficient
+        if self.pre_empt_data or isinstance(self.client, LocalClient):
+            # Use inbuilt bulk method - more efficient, LocalClient uses threading already
             return self.client.get_waveforms_bulk(
                 [(b['network'], b['station'], b['location'], b['channel'],
                   b['starttime'], b['endtime'])
@@ -507,6 +508,7 @@ class RealTimeClient(_StreamingClient):
             _query_start = UTCDateTime.now()
             st, query_passed = self._collect_bulk(
                 last_query_start=last_query_start, now=now, executor=executor)
+            Logger.info(f"Received strem from streamer: {st}")
             a = UTCDateTime.now()
             Logger.debug(f"Getting data took {(a - _query_start) * self.speed_up}s")
             for tr in st:
