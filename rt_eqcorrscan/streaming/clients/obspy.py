@@ -21,6 +21,7 @@ from queue import Empty, Full
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from multiprocessing import Lock, Process, Queue
 
+from rt_eqcorrscan.database.client_emulation import LocalClient
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
 
 
@@ -507,6 +508,7 @@ class RealTimeClient(_StreamingClient):
             _query_start = UTCDateTime.now()
             st, query_passed = self._collect_bulk(
                 last_query_start=last_query_start, now=now, executor=executor)
+            Logger.info(f"Received stream from streamer: {st}")
             a = UTCDateTime.now()
             Logger.debug(f"Getting data took {(a - _query_start) * self.speed_up}s")
             for tr in st:

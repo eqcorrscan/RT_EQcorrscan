@@ -103,7 +103,10 @@ class LocalClient(object):
         max_threads: int = None,
     ):
         self.base_path = base_path
-        self._executor = ThreadPoolExecutor(max_workers=max_threads)
+        if max_threads and max_threads > 1:
+            self._executor = ThreadPoolExecutor(max_workers=max_threads)
+        else:
+            self._executor = None
         self._build_db()
         self.base_url = "I'm not a real client!"
 
@@ -112,16 +115,24 @@ class LocalClient(object):
             if len(filenames) == 0:
                 continue
             filenames = [os.path.abspath(os.path.join(dirpath, f)) for f in filenames]
-            future_dbs = [
-                (f, self._executor.submit(_stream_info_from_file, f))
-                for f in filenames]
-            for f, future_db in future_dbs:
-                try:
-                    db = future_db.result()
-                except Exception as e:
-                    Logger.error(f"Could not extract file info from {f} due to {e}")
-                    continue
-                else:
+            if self._executor:
+                future_dbs = [
+                    (f, self._executor.submit(_stream_info_from_file, f))
+                    for f in filenames]
+                for f, future_db in future_dbs:
+                    try:
+                        db = future_db.result()
+                    except Exception as e:
+                        Logger.error(f"Could not extract file info from {f} due to {e}")
+                        continue
+                    else:
+                        for nslc, tr_db in db.items():
+                            main_tr_db = self._waveform_db.get(nslc, dict())
+                            main_tr_db.update(tr_db)
+                            self._waveform_db.update({nslc: main_tr_db})
+            else:
+                for f in filenames:
+                    db = _stream_info_from_file(f)
                     for nslc, tr_db in db.items():
                         main_tr_db = self._waveform_db.get(nslc, dict())
                         main_tr_db.update(tr_db)
@@ -144,14 +155,21 @@ class LocalClient(object):
         endtime: UTCDateTime
     ) -> Stream:
         st = Stream()
-        future_streams = [
-            (f, self._executor.submit(read, f, starttime=starttime, endtime=endtime))
-            for f in files]
-        for f, future_stream in future_streams:
-            try:
-                st += future_stream.result()
-            except Exception as e:
-                Logger.warning(f"Could not read {f} due to {e}")
+        if self._executor:
+            future_streams = [
+                (f, self._executor.submit(read, f, starttime=starttime, endtime=endtime))
+                for f in files]
+            for f, future_stream in future_streams:
+                try:
+                    st += future_stream.result()
+                except Exception as e:
+                    Logger.warning(f"Could not read {f} due to {e}")
+        else:
+            for f in files:
+                try:
+                    st += read(f, starttime=starttime, endtime=endtime)
+                except Exception as e:
+                    Logger.warning(f"Could not read {f} due to {e}")
         return st.merge().trim(starttime, endtime)
 
     def _db_lookup(
@@ -195,16 +213,24 @@ class LocalClient(object):
     def get_waveforms_bulk(
         self,
         bulk: Iterable,
-        starttime: UTCDateTime,
-        endtime: UTCDateTime,
         *args, **kwargs
     ) -> Stream:
         files = []
         for _b in bulk:
             files.extend(
                 self._db_lookup(_b[0], _b[1], _b[2], _b[3],
-                                starttime, endtime))
-        return self._file_reader(files, starttime, endtime)
+                                _b[4], _b[5]))
+        starttime = min(b[4] for b in bulk)
+        endtime = max(b[5] for b in bulk)
+        st = self._file_reader(files, starttime, endtime).merge()
+        # Trim
+        for _b in bulk:
+            st.select(
+                network=_b[0],
+                station=_b[1],
+                location=_b[2],
+                channel=_b[3]).trim(_b[4], _b[5])
+        return st
 
     def get_stations(self, *args, **kwargs):
         raise NotImplementedError("No stations attached to this client")
