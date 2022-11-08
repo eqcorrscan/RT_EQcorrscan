@@ -7,10 +7,11 @@ import os
 import logging
 import gc
 import numpy as np
+import traceback
 
 # Memory tracking for debugging
 import psutil
-from pympler import summary, muppy
+# from pympler import summary, muppy
 
 from obspy import read, UTCDateTime, Stream
 
@@ -111,7 +112,8 @@ def backfill(
                 **kwargs)
             Logger.info(f"Backfiller made {len(new_party)} detections between {_starttime} and {_endtime}")
         except Exception as e:
-            Logger.error(e)
+            Logger.critical(f"Uncaught error: {e}")
+            Logger.error(traceback.format_exc())
             _starttime += minimum_data_for_detection
             _endtime += minimum_data_for_detection
             continue
