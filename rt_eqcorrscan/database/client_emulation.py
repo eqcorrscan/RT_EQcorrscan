@@ -75,7 +75,7 @@ class ClientBank(object):
 
 def _stream_info_from_file(filename: str) -> dict:
     """ Extract start, end and seed id from file """
-    Logger.info(f"Reading from {filename}")
+    Logger.debug(f"Reading from {filename}")
     waveform_db = dict()
     try:
         st = read(filename, headonly=True)

@@ -7,10 +7,11 @@ import os
 import logging
 import gc
 import numpy as np
+import traceback
 
 # Memory tracking for debugging
 import psutil
-from pympler import summary, muppy
+# from pympler import summary, muppy
 
 from obspy import read, UTCDateTime, Stream
 
@@ -96,6 +97,7 @@ def backfill(
         st_chunk = st_client.get_waveforms(
             network="*", station="*", location="*", channel="*",
             starttime=_starttime, endtime=_endtime).merge()
+        # TODO: Check data integrity here to avoid length errors
         # st_chunk = read(st_filename, starttime=_starttime, endtime=_endtime).merge()
         Logger.info(f"Read in {st_chunk}")
         try:
@@ -108,10 +110,12 @@ def backfill(
                 cores=cores,
                 parallel_process=parallel_processing,
                 process_cores=process_cores, copy_data=False,
+                ignore_bad_data=True,
                 **kwargs)
             Logger.info(f"Backfiller made {len(new_party)} detections between {_starttime} and {_endtime}")
         except Exception as e:
-            Logger.error(e)
+            Logger.critical(f"Uncaught error: {e}")
+            Logger.error(traceback.format_exc())
             _starttime += minimum_data_for_detection
             _endtime += minimum_data_for_detection
             continue

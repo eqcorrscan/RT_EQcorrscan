@@ -1111,7 +1111,7 @@ class RealTimeTribe(Tribe):
         Logger.debug(f"Getting stations for backfill: {bulk}")
         # st = self.get_wavebank_stream(bulk)
         st_files = self.get_wavebank_files(bulk)
-        Logger.debug(f"Concatenating {len(st_files)} stream files for backfill")
+        Logger.info(f"Concatenating {len(st_files)} stream files for backfill")
         
         self._number_of_backfillers += 1
 
@@ -1119,14 +1119,16 @@ class RealTimeTribe(Tribe):
 
         # Make working directory and write files.
         if not os.path.isdir(backfiller_name):
-            os.makedirs(backfiller_name)
+            os.makedirs(backfiller_name, exist_ok=True)
 
         # Just copy all the files to a streams folder and use a LocalClient for backfiller
         os.makedirs(f"{backfiller_name}/streams")
         for st_file in st_files:
-            shutil.copyfile(
-                st_file,
-                f"{backfiller_name}/streams/{os.path.split(st_file)[-1]}")
+            st_file_new_path = st_file.split(str(self.wavebank.bank_path))[-1]
+            st_file_new_path = f"{backfiller_name}/streams/{st_file_new_path}"
+            os.makedirs(os.path.split(st_file_new_path)[0], exist_ok=True)
+            # shutil.copyfile(st_file, st_file_new_path)
+            os.link(st_file, st_file_new_path)  # Link, rather than copy
 
         # st.write(f"{backfiller_name}/stream.ms", format="MSEED")
         # with open(f"{backfiller_name}/stream.ms", "wb") as fout:
