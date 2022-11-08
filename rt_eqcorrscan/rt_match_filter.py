@@ -1127,7 +1127,8 @@ class RealTimeTribe(Tribe):
             st_file_new_path = st_file.split(str(self.wavebank.bank_path))[-1]
             st_file_new_path = f"{backfiller_name}/streams/{st_file_new_path}"
             os.makedirs(os.path.split(st_file_new_path)[0], exist_ok=True)
-            shutil.copyfile(st_file, st_file_new_path)
+            # shutil.copyfile(st_file, st_file_new_path)
+            os.link(st_file, st_file_new_path)  # Link, rather than copy
 
         # st.write(f"{backfiller_name}/stream.ms", format="MSEED")
         # with open(f"{backfiller_name}/stream.ms", "wb") as fout:
