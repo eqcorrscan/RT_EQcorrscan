@@ -373,7 +373,7 @@ class RealTimeTribe(Tribe):
                 earliest_detection_time=earliest_detection_time,
                 detect_directory=detect_directory,
                 save_waveforms=save_waveforms,
-                plot_detections=plot_detections, st=None)
+                plot_detections=plot_detections, st=None, skip_existing=False)
             self._remove_old_detections(earliest_detection_time)
             Logger.info("Party now contains {0} detections".format(
                 len(self.detections)))
@@ -390,6 +390,7 @@ class RealTimeTribe(Tribe):
         save_waveforms: bool,
         plot_detections: bool,
         st: Stream = None,
+        skip_existing: bool = True,
         **kwargs
     ) -> None:
         """
@@ -416,6 +417,8 @@ class RealTimeTribe(Tribe):
         st
             The stream the detection was made in - required for save_waveform
             and plot_detection.
+        skip_existing
+            Whether to skip detections already written to disk.
         """
         _detected_templates = [f.template.name for f in self.party]
         for family in new_party:
@@ -452,7 +455,7 @@ class RealTimeTribe(Tribe):
                 detect_file_base = _detection_filename(
                     detection=detection, detect_directory=detect_directory)
                 _filename = f"{detect_file_base}.xml"
-                if os.path.isfile(f"{detect_file_base}.xml"):
+                if os.path.isfile(f"{detect_file_base}.xml") and skip_existing:
                     Logger.info(f"{_filename} exists, skipping")
                     continue
                 Logger.debug(f"Writing detection: {detection.detect_time}")
