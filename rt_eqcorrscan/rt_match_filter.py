@@ -444,9 +444,9 @@ class RealTimeTribe(Tribe):
         if st is None:
             read_st = True
 
-        # TODO: this is slow - need to not write detections for already existing dets
         for family in self.party:
             for detection in family:
+                # TODO: this check doesn't necassarily work well - detections may be the same physical detection, but different Detection objects
                 if detection in self.detections:
                     continue
                 detect_file_base = _detection_filename(
