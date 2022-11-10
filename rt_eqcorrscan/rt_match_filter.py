@@ -373,7 +373,7 @@ class RealTimeTribe(Tribe):
                 earliest_detection_time=earliest_detection_time,
                 detect_directory=detect_directory,
                 save_waveforms=save_waveforms,
-                plot_detections=plot_detections, st=None)
+                plot_detections=plot_detections, st=None, skip_existing=False)
             self._remove_old_detections(earliest_detection_time)
             Logger.info("Party now contains {0} detections".format(
                 len(self.detections)))
@@ -390,6 +390,7 @@ class RealTimeTribe(Tribe):
         save_waveforms: bool,
         plot_detections: bool,
         st: Stream = None,
+        skip_existing: bool = True,
         **kwargs
     ) -> None:
         """
@@ -416,6 +417,8 @@ class RealTimeTribe(Tribe):
         st
             The stream the detection was made in - required for save_waveform
             and plot_detection.
+        skip_existing
+            Whether to skip detections already written to disk.
         """
         _detected_templates = [f.template.name for f in self.party]
         for family in new_party:
@@ -446,7 +449,14 @@ class RealTimeTribe(Tribe):
 
         for family in self.party:
             for detection in family:
+                # TODO: this check doesn't necassarily work well - detections may be the same physical detection, but different Detection objects
                 if detection in self.detections:
+                    continue
+                detect_file_base = _detection_filename(
+                    detection=detection, detect_directory=detect_directory)
+                _filename = f"{detect_file_base}.xml"
+                if os.path.isfile(f"{detect_file_base}.xml") and skip_existing:
+                    Logger.info(f"{_filename} exists, skipping")
                     continue
                 Logger.debug(f"Writing detection: {detection.detect_time}")
                 if read_st:
@@ -464,7 +474,7 @@ class RealTimeTribe(Tribe):
                     st = self.wavebank.get_waveforms_bulk(bulk)
                 self._fig = _write_detection(
                     detection=detection,
-                    detect_directory=detect_directory,
+                    detect_file_base=detect_file_base,
                     save_waveform=save_waveforms,
                     plot_detection=plot_detections, stream=st,
                     fig=self._fig)
@@ -503,6 +513,9 @@ class RealTimeTribe(Tribe):
 
     def _wait(self, wait: float = None, detection_kwargs: dict = None) -> None:
         """ Wait for `wait` seconds, or until all channels are available. """
+        if wait is not None and wait <= 0:
+            Logger.info(f"No fucking about - get back! (wait: {wait}")
+            return
         Logger.info("Waiting for data.")
         max_wait = min(self._max_wait_length, self.rt_client.buffer_capacity)
         wait_length = 0.
@@ -1303,9 +1316,23 @@ def squash_duplicates(template: Template):
     return template
 
 
+def _detection_filename(
+        detection: Detection,
+        detect_directory: str,
+) -> str:
+    _path = os.path.join(
+        detect_directory, detection.detect_time.strftime("%Y"),
+        detection.detect_time.strftime("%j"))
+    if not os.path.isdir(_path):
+        os.makedirs(_path)
+    _filename = os.path.join(
+        _path, detection.detect_time.strftime("%Y%m%dT%H%M%S"))
+    return _filename
+
+
 def _write_detection(
     detection: Detection,
-    detect_directory: str,
+    detect_file_base: str,
     save_waveform: bool,
     plot_detection: bool,
     stream: Stream,
@@ -1338,18 +1365,8 @@ def _write_detection(
     """
     from rt_eqcorrscan.plotting.plot_event import plot_event
 
-    _path = os.path.join(
-        detect_directory, detection.detect_time.strftime("%Y"),
-        detection.detect_time.strftime("%j"))
-    if not os.path.isdir(_path):
-        os.makedirs(_path)
-    _filename = os.path.join(
-        _path, detection.detect_time.strftime("%Y%m%dT%H%M%S"))
-    if os.path.isfile(_filename):
-        Logger.info(f"{_filename} exists, skipping")
-        return fig
     try:
-        detection.event.write(f"{_filename}.xml", format="QUAKEML")
+        detection.event.write(f"{detect_file_base}.xml", format="QUAKEML")
     except Exception as e:
         Logger.error(f"Could not write event file due to {e}")
     detection.event.picks.sort(key=lambda p: p.time)
@@ -1361,14 +1378,14 @@ def _write_detection(
         fig = plot_event(fig=fig, event=detection.event, st=st,
                          length=90, show=False)
         try:
-            fig.savefig(f"{_filename}.png")
+            fig.savefig(f"{detect_file_base}.png")
         except Exception as e:
             Logger.error(f"Could not write plot due to {e}")
         fig.clf()
     if save_waveform:
         st = _check_stream_is_int(st)
         try:
-            st.write(f"{_filename}.ms", format="MSEED")
+            st.write(f"{detect_file_base}.ms", format="MSEED")
         except Exception as e:
             Logger.error(f"Could not write stream due to {e}")
     return fig
