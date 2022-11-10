@@ -510,7 +510,7 @@ class RealTimeTribe(Tribe):
 
     def _wait(self, wait: float = None, detection_kwargs: dict = None) -> None:
         """ Wait for `wait` seconds, or until all channels are available. """
-        if wait <= 0:
+        if wait is not None and wait <= 0:
             Logger.info(f"No fucking about - get back! (wait: {wait}")
             return
         Logger.info("Waiting for data.")
