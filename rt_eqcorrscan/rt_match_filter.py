@@ -11,6 +11,7 @@ import numpy
 import gc
 import glob
 import subprocess
+import numpy as np
 
 # Memory tracking for debugging
 # import psutil
