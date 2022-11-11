@@ -96,7 +96,13 @@ def backfill(
     while _endtime < (endtime + minimum_data_for_detection):
         st_chunk = st_client.get_waveforms(
             network="*", station="*", location="*", channel="*",
-            starttime=_starttime, endtime=_endtime).merge()
+            starttime=_starttime, endtime=_endtime)
+        if st_chunk is None or len(st_chunk) == 0:
+            Logger.error(f"No data between {_starttime} and {_endtime}")
+            _starttime += minimum_data_for_detection
+            _endtime += minimum_data_for_detection
+            continue
+        st_chunk.merge()
         # TODO: Check data integrity here to avoid length errors
         # st_chunk = read(st_filename, starttime=_starttime, endtime=_endtime).merge()
         Logger.info(f"Read in {st_chunk}")
@@ -135,6 +141,9 @@ def backfill(
         #     Logger.info(line)
         total_memory_mb = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
         Logger.info(f"Total memory used by {os.getpid()}: {total_memory_mb:.2f} MB")
+    # Because of overlap we need to decluster
+    new_party = new_party.decluster(trig_int=trig_int)
+    # TODO: Somehow the party is writing a tribe_cat with many unknown events.
     new_party.families = [f for f in new_party if len(f)]
     if len(new_party):
         new_party.write(f"{working_dir}/party.tgz")
