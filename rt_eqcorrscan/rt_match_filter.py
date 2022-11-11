@@ -435,6 +435,7 @@ class RealTimeTribe(Tribe):
         Logger.info("Removing duplicate detections")
         Logger.info(f"Party contained {len(self.party)} before decluster")
         if len(self.party) > 0:
+            # TODO: Need to remove detections from disk that are removed in decluster
             self.party.decluster(
                 trig_int=trig_int, timing="origin", metric="cor_sum",
                 hypocentral_separation=hypocentral_separation)
@@ -447,6 +448,8 @@ class RealTimeTribe(Tribe):
         if st is None:
             read_st = True
 
+        # TODO: Need a better way to keep track of written detections - unique keys for detections?
+        # TODO: This loop can be quite slow, A few seconds (~10s) for 4k detections
         for family in self.party:
             for detection in family:
                 # TODO: this check doesn't necassarily work well - detections may be the same physical detection, but different Detection objects
@@ -773,11 +776,20 @@ class RealTimeTribe(Tribe):
                     self._running = True  # Lock tribe
                     start_time = UTCDateTime.now()
                     st = self.rt_client.stream.split().merge()
+                    # Warn if data are gappy
+                    gappy = False
+                    for tr in st:
+                        if np.ma.is_masked(tr.data):
+                            gappy = True
+                            gaps = tr.split().get_gaps()
+                            Logger.warning(f"Masked data found on {tr.id}. Gaps: {gaps}")
+                    if gappy:
+                        st = st.merge() # Re-merge after gap checking
                     if self.has_wavebank:
                         st = _check_stream_is_int(st)
                         try:
                             self._access_wavebank(
-                                method="put_waveforms", timeout=120.,
+                                method="put_waveforms", timeout=10.,
                                 stream=st)
                         except Exception as e:
                             Logger.error(
