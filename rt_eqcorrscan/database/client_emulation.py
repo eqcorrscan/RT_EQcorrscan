@@ -157,7 +157,7 @@ class LocalClient(object):
         st = Stream()
         if self._executor:
             future_streams = [
-                (f, self._executor.submit(read, f, starttime=starttime, endtime=endtime))
+                (f, self._executor.submit(_cache_read, f))
                 for f in files]
             for f, future_stream in future_streams:
                 try:
@@ -167,7 +167,7 @@ class LocalClient(object):
         else:
             for f in files:
                 try:
-                    st += read(f, starttime=starttime, endtime=endtime)
+                    st += _cache_read(f)
                 except Exception as e:
                     Logger.warning(f"Could not read {f} due to {e}")
         return st.merge().trim(starttime, endtime)
@@ -241,6 +241,10 @@ class LocalClient(object):
     def get_events(self, *args, **kwargs):
         raise NotImplementedError("No events attached to this client")
 
+
+@lru_cache(maxsize=20)
+def _cache_read(filename: str) -> Stream:
+    return read(filename)
 
 if __name__ == "__main__":
     import doctest
