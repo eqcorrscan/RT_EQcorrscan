@@ -18,7 +18,8 @@ from obspy import read, UTCDateTime, Stream
 from eqcorrscan import Tribe, Party, Template
 from rt_eqcorrscan import Config
 from rt_eqcorrscan.database.client_emulation import LocalClient
-from rt_eqcorrscan.rt_match_filter import squash_duplicates, reshape_templates
+from rt_eqcorrscan.rt_match_filter import (
+    squash_duplicates, reshape_templates, _write_detection, _detection_filename)
 
 
 Logger = logging.getLogger(__name__)
@@ -38,6 +39,7 @@ def backfill(
     log_to_screen: bool = False,
     starttime: UTCDateTime = None,
     endtime: UTCDateTime = None,
+    plot_detections: bool = False,
     **kwargs
 ) -> None:
     """ Background backfill method designed to work in a subprocess. """
@@ -147,6 +149,25 @@ def backfill(
     new_party.families = [f for f in new_party if len(f)]
     if len(new_party):
         new_party.write(f"{working_dir}/party.tgz")
+    Logger.info("Handling detections")
+    os.makedirs("detections")
+    fig = pyplot.Figure()
+    for family in new_party:
+        for detection in family:
+            detection._calculate_event(template=family.template)
+            det_starttime = min(p.time for p in detection.event.picks)
+            det_endtime = max(p.time for p in detection.event.picks)
+            det_starttime -= 20
+            det_endtime += 20
+            st = st_client.get_waveforms(
+                "*", "*", "*", "*", det_starttime, det_endtime)
+            fig = _write_detection(
+                detection=detection,
+                detect_file_base=_detection_filename(
+                    detection=detection, detect_directory="detections"),
+                save_waveform=True, plot_detection=plot_detections,
+                stream=st, fig=fig)
+
     Logger.info("Backfiller completed")
     return
 
@@ -208,6 +229,10 @@ if __name__ == "__main__":
         "--endtime", type=UTCDateTime, required=False,
         help="Endtime as UTCDateTime parsable string"
     )
+    parser.add_argument(
+        "--plot", action="store_true",
+        help="Flag to turn on detections plotting"
+    )
 
     args = parser.parse_args()
 
@@ -218,4 +243,4 @@ if __name__ == "__main__":
              cores=args.cores, parallel_processing=args.parallel_processing,
              process_cores=args.process_cores,
              log_to_screen=args.log_to_screen, starttime=args.starttime,
-             endtime=args.endtime)
+             endtime=args.endtime, plot_detections=args.plot)

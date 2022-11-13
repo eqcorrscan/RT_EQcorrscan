@@ -374,7 +374,8 @@ class RealTimeTribe(Tribe):
                 earliest_detection_time=earliest_detection_time,
                 detect_directory=detect_directory,
                 save_waveforms=save_waveforms,
-                plot_detections=plot_detections, st=None, skip_existing=False)
+                plot_detections=plot_detections, st=None, skip_existing=False,
+                backfill_dir=backfiller_name)
             self._remove_old_detections(earliest_detection_time)
             Logger.info("Party now contains {0} detections".format(
                 len(self.detections)))
@@ -392,6 +393,7 @@ class RealTimeTribe(Tribe):
         plot_detections: bool,
         st: Stream = None,
         skip_existing: bool = True,
+        backfill_dir: str = None,
         **kwargs
     ) -> None:
         """
@@ -420,6 +422,8 @@ class RealTimeTribe(Tribe):
             and plot_detection.
         skip_existing
             Whether to skip detections already written to disk.
+        backfill_dir
+            Location of backfiller if these detections have come from a backfiller.
         """
         _detected_templates = [f.template.name for f in self.party]
         for family in new_party:
@@ -450,7 +454,6 @@ class RealTimeTribe(Tribe):
             read_st = True
 
         # TODO: Need a better way to keep track of written detections - unique keys for detections?
-        # TODO: This loop can be quite slow, A few seconds (~10s) for 4k detections
         for family in self.party:
             for detection in family:
                 # TODO: this check doesn't necassarily work well - detections may be the same physical detection, but different Detection objects
@@ -463,7 +466,16 @@ class RealTimeTribe(Tribe):
                     Logger.info(f"{_filename} exists, skipping")
                     continue
                 Logger.debug(f"Writing detection: {detection.detect_time}")
-                if read_st:
+                # TODO: copy detections from backfillers rather than reading waveforms
+                st_read = False
+                if backfill_dir and read_st:
+                    expected_waveform = f"{backfill_dir}/{detect_file_base}.ms"
+                    if os.path.isfile(expected_waveform):
+                        st = read(expected_waveform)
+                        Logger.info(f"Read stream from {expected_waveform}")
+                        # Note, can't compare to None because st might be passed
+                        st_read = True
+                if read_st and not st_read:
                     max_shift = (
                         max(tr.stats.endtime for tr in family.template.st) -
                         min(tr.stats.starttime for tr in family.template.st))
@@ -476,6 +488,7 @@ class RealTimeTribe(Tribe):
                          (detection.detect_time + max_shift + 5))
                         for tr in family.template.st]
                     st = self.wavebank.get_waveforms_bulk(bulk)
+                    st_read = True
                 self._fig = _write_detection(
                     detection=detection,
                     detect_file_base=detect_file_base,
@@ -1188,8 +1201,10 @@ class RealTimeTribe(Tribe):
             "--starttime", str(starttime),
             "--endtime", str(endtime),
             "-P",  # Enable parallel processing
-            "-s",  # Add on the list of expected seed ids
         ]
+        # if plot_detections:  # TODO: Currently not handled properly in return to main process
+        #     _call.append("--plot")
+        _call.append("-s") # Add on the list of expected seed ids
         _call.extend(self.expected_seed_ids)
 
         Logger.info("Running `{call}`".format(call=" ".join(_call)))
