@@ -1391,7 +1391,9 @@ def _write_detection(
     from rt_eqcorrscan.plotting.plot_event import plot_event
 
     if backfill_dir:
-        for f in glob.glob(f"{backfill_dir}/{detect_file_base}.*"):
+        backfill_dets = glob.glob(f"{backfill_dir}/{detect_file_base}.*")
+        Logger.info(f"Copying {len(backfill_dets)} to main detections")
+        for f in backfill_dets:
             ext = os.path.splitext(f)[-1]
             shutil.copyfile(f, f"{detect_file_base}{ext}")
             Logger.info(f"Copied {f} to {detect_file_base}{ext}")
