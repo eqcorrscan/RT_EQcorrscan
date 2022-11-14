@@ -450,7 +450,7 @@ class RealTimeTribe(Tribe):
 
         # Cope with not being given a stream
         read_st = False
-        if st is None:
+        if st is None and backfill_dir is None:
             read_st = True
 
         # TODO: Need a better way to keep track of written detections - unique keys for detections?
@@ -467,15 +467,7 @@ class RealTimeTribe(Tribe):
                     continue
                 Logger.debug(f"Writing detection: {detection.detect_time}")
                 # TODO: copy detections from backfillers rather than reading waveforms
-                st_read = False
-                if backfill_dir and read_st:
-                    expected_waveform = f"{backfill_dir}/{detect_file_base}.ms"
-                    if os.path.isfile(expected_waveform):
-                        st = read(expected_waveform)
-                        Logger.info(f"Read stream from {expected_waveform}")
-                        # Note, can't compare to None because st might be passed
-                        st_read = True
-                if read_st and not st_read:
+                if read_st:
                     max_shift = (
                         max(tr.stats.endtime for tr in family.template.st) -
                         min(tr.stats.starttime for tr in family.template.st))
@@ -494,7 +486,7 @@ class RealTimeTribe(Tribe):
                     detect_file_base=detect_file_base,
                     save_waveform=save_waveforms,
                     plot_detection=plot_detections, stream=st,
-                    fig=self._fig)
+                    fig=self._fig, backfill_dir=backfill_dir)
         Logger.info("Expiring old detections")
         # Empty self.detections
         self.detections.clear()
@@ -1366,6 +1358,7 @@ def _write_detection(
     plot_detection: bool,
     stream: Stream,
     fig=None,
+    backfill_dir: str = None,
 ) -> Figure:
     """
     Handle detection writing including writing streams and figures.
@@ -1386,6 +1379,9 @@ def _write_detection(
         plot_detection.
     fig
         A figure object to reuse.
+    backfill_dir:
+        Backfill directory - set if the detections have already been written
+        to this dir and just need to be copied.
 
     Returns
     -------
@@ -1393,6 +1389,13 @@ def _write_detection(
     passed to it.
     """
     from rt_eqcorrscan.plotting.plot_event import plot_event
+
+    if backfill_dir:
+        for f in glob.glob(f"{backfill_dir}/{detect_file_base}.*"):
+            ext = os.path.splitext(f)[-1]
+            shutil.copyfile(f, f"{detect_file_base}{ext}")
+            Logger.info(f"Copied {f} to {detect_file_base}{ext}")
+        return fig
 
     try:
         detection.event.write(f"{detect_file_base}.xml", format="QUAKEML")
