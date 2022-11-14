@@ -1090,6 +1090,7 @@ class RealTimeTribe(Tribe):
         trig_int: float,
         maximum_backfill: Union[float, UTCDateTime] = None,
         endtime: UTCDateTime = None,
+        plot_detections: bool = False,
         **kwargs
     ) -> None:
         """
@@ -1202,8 +1203,8 @@ class RealTimeTribe(Tribe):
             "--endtime", str(endtime),
             "-P",  # Enable parallel processing
         ]
-        # if plot_detections:  # TODO: Currently not handled properly in return to main process
-        #     _call.append("--plot")
+        if plot_detections:
+            _call.append("--plot")
         _call.append("-s") # Add on the list of expected seed ids
         _call.extend(self.expected_seed_ids)
 
