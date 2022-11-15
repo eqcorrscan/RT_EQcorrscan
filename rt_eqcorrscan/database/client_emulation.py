@@ -206,9 +206,9 @@ class LocalClient(object):
         endtime: UTCDateTime,
         *args, **kwargs
     ) -> Stream:
-        Logger.info(
-            f"Querying for data with args: "
-            f"({network}, {station}, {location}, {channel}, {starttime}, {endtime}")
+        # Logger.info(
+        #     f"Querying for data with args: "
+        #     f"({network}, {station}, {location}, {channel}, {starttime}, {endtime}")
         files = self._db_lookup(
             network, station, location, channel, starttime, endtime)
         return self._file_reader(files, starttime, endtime)
