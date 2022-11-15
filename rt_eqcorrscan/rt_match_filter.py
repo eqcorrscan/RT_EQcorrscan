@@ -486,7 +486,8 @@ class RealTimeTribe(Tribe):
                     detect_file_base=detect_file_base,
                     save_waveform=save_waveforms,
                     plot_detection=plot_detections, stream=st,
-                    fig=self._fig, backfill_dir=backfill_dir)
+                    fig=self._fig, backfill_dir=backfill_dir,
+                    detect_dir=detect_directory)
         Logger.info("Expiring old detections")
         # Empty self.detections
         self.detections.clear()
@@ -1359,6 +1360,7 @@ def _write_detection(
     stream: Stream,
     fig=None,
     backfill_dir: str = None,
+    detect_dir: str = None
 ) -> Figure:
     """
     Handle detection writing including writing streams and figures.
@@ -1367,9 +1369,8 @@ def _write_detection(
     ----------
     detection
         The Detection to write
-    detect_directory
-        The head directory to write to - will create
-        "{detect_directory}/{year}/{julian day}" directories
+    detect_file_base
+        File to write to (without extension)
     save_waveform
         Whether to save the waveform for the detected event or not
     plot_detection
@@ -1382,6 +1383,8 @@ def _write_detection(
     backfill_dir:
         Backfill directory - set if the detections have already been written
         to this dir and just need to be copied.
+    detect_dir
+        Detection directory - only used to manipulate backfillers.
 
     Returns
     -------
@@ -1391,8 +1394,9 @@ def _write_detection(
     from rt_eqcorrscan.plotting.plot_event import plot_event
 
     if backfill_dir:
-        Logger.info(f"Looking for detections in {backfill_dir}/{detect_file_base}.*")
-        backfill_dets = glob.glob(f"{backfill_dir}/{detect_file_base}.*")
+        backfill_file_base = backfill_dir + detect_file_base.split(detect_dir)[-1]
+        Logger.info(f"Looking for detections in {backfill_file_base}.*")
+        backfill_dets = glob.glob(f"{backfill_file_base}.*")
         Logger.info(f"Copying {len(backfill_dets)} to main detections")
         for f in backfill_dets:
             ext = os.path.splitext(f)[-1]
