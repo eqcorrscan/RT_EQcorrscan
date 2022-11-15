@@ -462,7 +462,8 @@ class RealTimeClient(_StreamingClient):
     def _collect_bulk(self, last_query_start, now, executor):
         query_passed, st = True, Stream()
         for _bulk in self.bulk:
-            jitter = random.randint(int(self.query_interval / 10) or 1)
+            # jitter = random.randint(int(self.query_interval / 10) or 1)
+            jitter = 0
             _bulk.update({
                 "starttime": last_query_start,
                 "endtime": now - jitter})
@@ -545,7 +546,8 @@ class RealTimeClient(_StreamingClient):
                 break
             now += max(self.query_interval, _query_duration)
             if query_passed:
-                last_query_start = min(_bulk["endtime"] for _bulk in self.bulk)
+                # last_query_start = min(_bulk["endtime"] for _bulk in self.bulk)
+                last_query_start = min(tr.stats.endtime for tr in st)
         self.streaming = False
         # shut down threadpool, we done.
         executor.shutdown(wait=False, cancel_futures=True)
