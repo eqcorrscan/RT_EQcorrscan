@@ -8,6 +8,7 @@ import logging
 import gc
 import numpy as np
 import traceback
+import matplotlib.pyplot as plt
 
 # Memory tracking for debugging
 import psutil
@@ -145,13 +146,11 @@ def backfill(
         Logger.info(f"Total memory used by {os.getpid()}: {total_memory_mb:.2f} MB")
     # Because of overlap we need to decluster
     new_party = new_party.decluster(trig_int=trig_int)
-    # TODO: Somehow the party is writing a tribe_cat with many unknown events.
     new_party.families = [f for f in new_party if len(f)]
-    if len(new_party):
-        new_party.write(f"{working_dir}/party.tgz")
+
     Logger.info("Handling detections")
     os.makedirs("detections")
-    fig = pyplot.Figure()
+    fig = plt.Figure()
     for family in new_party:
         for detection in family:
             detection._calculate_event(template=family.template)
@@ -167,6 +166,9 @@ def backfill(
                     detection=detection, detect_directory="detections"),
                 save_waveform=True, plot_detection=plot_detections,
                 stream=st, fig=fig)
+
+    if len(new_party):
+        new_party.write(f"{working_dir}/party.tgz")
 
     Logger.info("Backfiller completed")
     return
