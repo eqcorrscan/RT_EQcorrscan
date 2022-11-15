@@ -178,7 +178,7 @@ def synthesise_real_time(
          "rt_client_type": "local",
          "starttime": trigger_origin.time - 60,
          "speed_up": speed_up,
-         "query_interval": max(10, config.rt_match_filter.detect_interval / 10.0),
+         "query_interval": max(15 * speed_up, config.rt_match_filter.detect_interval / 10.0),
          "pre_empt_data": pre_empt_data,
          "pre_empt_len": pre_empt_len,
          })
