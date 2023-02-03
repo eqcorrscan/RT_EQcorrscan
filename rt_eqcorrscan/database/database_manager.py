@@ -263,7 +263,7 @@ class TemplateBank(EventBank):
         self,
         templates: Union[list, Tribe],
         update_index: bool = True,
-        write_events: bool = False,
+        write_events: bool = Trueq,
     ) -> None:
         """
         Save templates to the database.
