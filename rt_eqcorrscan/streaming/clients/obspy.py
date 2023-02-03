@@ -547,7 +547,9 @@ class RealTimeClient(_StreamingClient):
             now += max(self.query_interval, _query_duration)
             if query_passed:
                 # last_query_start = min(_bulk["endtime"] for _bulk in self.bulk)
-                last_query_start = min(tr.stats.endtime for tr in st)
+                if len(st):
+                    last_query_start = min(tr.stats.endtime for tr in st)
+                    # Don't update if we didn't get a stream!
         self.streaming = False
         # shut down threadpool, we done.
         executor.shutdown(wait=False, cancel_futures=True)
