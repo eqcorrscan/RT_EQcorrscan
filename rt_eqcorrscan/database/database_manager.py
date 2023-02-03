@@ -263,6 +263,7 @@ class TemplateBank(EventBank):
         self,
         templates: Union[list, Tribe],
         update_index: bool = True,
+        write_events: bool = False,
     ) -> None:
         """
         Save templates to the database.
@@ -274,12 +275,15 @@ class TemplateBank(EventBank):
         update_index
             Flag to indicate whether or not to update the event index
             after writing the new events.
+        write_events
+            Optionally write out the event file as well as the template.
         """
         for t in templates:
             assert(isinstance(t, Template))
-        catalog = Catalog([t.event for t in templates])
-        with self.index_lock:
-            self.put_events(catalog, update_index=update_index)
+        if write_events:
+            catalog = Catalog([t.event for t in templates])
+            with self.index_lock:
+                self.put_events(catalog, update_index=update_index)
         inner_put_template = partial(
             _put_template, path_structure=self.path_structure,
             template_name_structure=self.name_structure,

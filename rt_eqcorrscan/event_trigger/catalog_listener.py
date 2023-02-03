@@ -230,6 +230,10 @@ class CatalogListener(_Listener):
         else:
             self.previous_time = starttime
         template_kwargs = template_kwargs or dict()
+        if 'save_raw' not in template_kwargs.keys():
+            template_kwargs['save_raw'] = False
+            # Unless someone really wants this, we don't need the raw for
+            # anything else.
         loop_duration = 0  # Timer for loop, used in synthesising speed-ups
         while self.busy:
             tic = time.time()  # Timer for loop, used in synthesising speed-ups
