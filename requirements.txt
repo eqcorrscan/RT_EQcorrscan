@@ -1,4 +1,5 @@
 numpy>=1.12
+notifiers
 matplotlib>=1.3.0
 scipy>=0.18
 bokeh

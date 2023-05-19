@@ -112,6 +112,7 @@ class Reactor(object):
             min_stations=config.database_manager.min_stations,
             template_kwargs=config.template,
             starttime=listener_starttime)
+        self.notifier = config.notifier.notifier
         # Time-keepers
         self._run_start = None
         self._running = False
@@ -286,6 +287,9 @@ class Reactor(object):
                 continue
             Logger.warning(
                 "Listener triggered by event {0}".format(trigger_event))
+            # Send this as an email
+            self.notifier.notify(
+                content=f"Listener triggered by event {trigger_event}")
             if len(self._running_regions) >= self.available_cores:
                 Logger.error("No more available processors")
                 continue
@@ -359,6 +363,8 @@ class Reactor(object):
 
     def _handle_interupt(self, signum, frame) -> None:
         Logger.critical(f"Received signal: {signum}")
+        self.notifier.notify(
+            content=f"CRITICAL: Stopping reactor after interupt: {signum}")
         self.stop()
 
     def stop(self, raise_exit: bool=True) -> None:
