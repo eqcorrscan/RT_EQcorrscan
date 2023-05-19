@@ -60,6 +60,7 @@ class _StreamingClient(ABC):
     can_add_streams = True
     lock = multiprocessing.Lock()  # Lock for buffer access
     _stop_called = False
+    _timeout = 1
 
     def __init__(
         self,
@@ -82,7 +83,7 @@ class _StreamingClient(ABC):
         # Incoming data - no limit on size, just empty it!
         self._incoming_queue = Queue()
 
-        # Quereyable attributes to get a view of the size of the buffer
+        # Queryable attributes to get a view of the size of the buffer
         self._last_data_queue = Queue(maxsize=1)
         self._buffer_full_queue = Queue(maxsize=1)
 
@@ -158,9 +159,9 @@ class _StreamingClient(ABC):
             except Empty:
                 pass
             try:
-                self._buffer_full_queue.put(full, timeout=10)
+                self._buffer_full_queue.put(full, timeout=self._timeout)
             except Full:
-                Logger.error("Could not update buffer full - queue is full")
+                Logger.debug("Could not update buffer full - queue is full")
 
     @property
     def last_data(self) -> UTCDateTime:
@@ -184,9 +185,10 @@ class _StreamingClient(ABC):
                 Logger.debug("_last_data is empty :(")
                 pass
             try:
-                self._last_data_queue.put(timestamp, timeout=10)
+                self._last_data_queue.put(timestamp, timeout=self._timeout)
             except Full:
-                Logger.error("Could not update the state of last data - queue is full")
+                Logger.debug("Could not update the state of last data - "
+                             "queue is full")
 
     @property
     def stream(self) -> Stream:
@@ -218,10 +220,10 @@ class _StreamingClient(ABC):
                 # Just in case the state changed...
                 pass
             try:
-                self._stream_queue.put(st, timeout=10)
+                self._stream_queue.put(st, timeout=self._timeout)
                 Logger.debug("Put stream into queue")
             except Full:
-                Logger.error(
+                Logger.warning(
                     "Could not update the state of stream - queue is full")
 
     @property
@@ -267,6 +269,19 @@ class _StreamingClient(ABC):
                 self._dead_queue.get(block=False)
             except Empty:
                 break
+
+    def _kill_check(self):
+        # If this is running in a process then we need to check the queue
+        try:
+            kill = self._killer_queue.get(block=False)
+        except Empty:
+            kill = False
+        Logger.debug(f"Kill status: {kill}")
+        if kill:
+            Logger.warning(
+                "Termination called, stopping collect loop")
+            self.on_terminate()
+        return kill
 
     def _bg_run(self):
         while self.streaming:
@@ -346,6 +361,7 @@ class _StreamingClient(ABC):
             New data.
         """
         self.last_data = UTCDateTime.now()
+        Logger.debug(f"Received trace: {trace}")
         Logger.debug("Packet of {0} samples for {1}".format(
             trace.stats.npts, trace.id))
         # Put data into queue - get the run process to handle it!

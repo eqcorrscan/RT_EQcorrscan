@@ -32,7 +32,13 @@ def _read_event_list(fname: str) -> List[str]:
     return event_ids
 
 
-def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
+def run(
+    working_dir: str,
+    cores: int = 1,
+    log_to_screen: bool = False,
+    speed_up: float = 1.0,
+    synthetic_time_offset: float = 0,
+):
     os.chdir(working_dir)
     Logger.debug("Reading config")
     config = read_config('rt_eqcorrscan_config.yml')
@@ -83,8 +89,14 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
         tribe=tribe, inventory=inventory, rt_client=rt_client,
         detect_interval=detect_interval, plot=plot,
         plot_options=config.plot,
+        backfill_interval=config.rt_match_filter.backfill_interval,
         name=triggering_event.resource_id.id.split('/')[-1],
-        wavebank=config.rt_match_filter.local_wave_bank)
+        wavebank=config.rt_match_filter.local_wave_bank,
+        notifer=config.notifier)
+    real_time_tribe._speed_up = speed_up
+    if speed_up > 1:
+        Logger.warning(f"Speed-up of {speed_up}: disallowing spoilers.")
+        real_time_tribe._spoilers = False
     if real_time_tribe.expected_seed_ids is None:
         Logger.error("No matching channels in inventory and templates")
         return
@@ -102,12 +114,12 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
     # TODO: How will this work? Currently notifiers are not implemented
     # real_time_tribe.notifier = None
 
-    backfill_to = event_time(triggering_event) - 180
+    backfill_to = event_time(triggering_event) - config.template.process_len
     backfill_client = config.rt_match_filter.get_waveform_client()
 
     if backfill_client and real_time_tribe.wavebank:
         # Download the required data and write it to disk.
-        endtime = UTCDateTime.now()
+        endtime = UTCDateTime.now() - synthetic_time_offset  # Adjust for simulations
         Logger.info(
             f"Backfilling between {backfill_to} and {endtime}")
         st = Stream()
@@ -144,11 +156,7 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
             templates=backfill_templates,
             threshold=config.rt_match_filter.threshold,
             threshold_type=config.rt_match_filter.threshold_type,
-            trig_int=config.rt_match_filter.trig_int,
-            hypocentral_separation=config.rt_match_filter.hypocentral_separation,
-            keep_detections=86400,
-            detect_directory="{name}/detections",
-            plot_detections=config.rt_match_filter.plot_detections)
+            trig_int=config.rt_match_filter.trig_int)
 
     Logger.info("Starting real-time run")
     
@@ -158,13 +166,14 @@ def run(working_dir: str, cores: int = 1, log_to_screen: bool = False):
         trig_int=config.rt_match_filter.trig_int,
         hypocentral_separation=config.rt_match_filter.hypocentral_separation,
         min_stations=min_stations,
-        keep_detections=86400,
+        keep_detections=config.rt_match_filter.keep_detections,
         detect_directory="{name}/detections",
         plot_detections=config.rt_match_filter.plot_detections,
         save_waveforms=config.rt_match_filter.save_waveforms,
         max_run_length=config.rt_match_filter.max_run_length,
         minimum_rate=config.rt_match_filter.minimum_rate,
-        backfill_to=backfill_to)
+        backfill_to=backfill_to,
+        backfill_client=backfill_client)
 
 
 def get_inventory(
@@ -280,8 +289,16 @@ if __name__ == "__main__":
     parser.add_argument(
         "-l", "--log-to-screen", action="store_true",
         help="Whether to log to screen or not, defaults to False")
+    parser.add_argument(
+        "-s", "--speed-up", type=float,
+        help="Speed-up multiplier for synthetic runs")
+    parser.add_argument(
+        "-o", "--offset", type=float, default=0.0,
+        help="Synthetic time offset from now in seconds - used for "
+             "simulation")
 
     args = parser.parse_args()
 
     run(working_dir=args.working_dir, cores=args.n_processors,
-        log_to_screen=args.log_to_screen)
+        log_to_screen=args.log_to_screen,
+        speed_up=args.speed_up, synthetic_time_offset=args.offset)
