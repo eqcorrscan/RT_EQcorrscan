@@ -62,12 +62,14 @@ class RTMatchFilterConfig(_ConfigAttribDict):
         "min_stations": 5,
         "max_distance": 1000.,
         "detect_interval": 60.,
+        "backfill_interval": 600.,
         "max_run_length": None,
         "minimum_rate": None,
         "plot": True,
         "threshold": 0.3,
         "threshold_type": "av_chan_corr",
         "trig_int": 2.0,
+        "keep_detections": 86400,
         "hypocentral_separation": 30.0,
         "save_waveforms": True,
         "plot_detections": False,
@@ -131,7 +133,9 @@ class StreamingConfig(_ConfigAttribDict):
     }
     readonly = []
     rt_client_base = "rt_eqcorrscan.streaming.clients"
-    _known_keys = {"starttime", "query_interval", "speed_up", "client_type"}
+    _known_keys = {
+        "starttime", "query_interval", "speed_up", "client_type",
+        "pre_empt_data", "pre_empt_len"}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -389,7 +393,7 @@ class Config(object):
         handlers = []
         if file:
             file_log_args = dict(filename=filename, mode='a',
-                                 maxBytes=20*1024*1024, backupCount=2,
+                                 maxBytes=20*1024*1024, backupCount=10,
                                  encoding=None, delay=0)
             file_log_args.update(kwargs)
             rotating_handler = RotatingFileHandler(**file_log_args)

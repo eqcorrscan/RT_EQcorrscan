@@ -27,7 +27,6 @@ class _Listener(ABC):
 
     threads = []
     client = None
-    # TODO: old_events should be a property with getter and setter methods that are threadsafe!
     _old_events = []  # List of tuples of (event_id, event_time)
     keep = 86400  # Time in seconds to keep old events
     lock = threading.Lock()  # Lock for access to old_events

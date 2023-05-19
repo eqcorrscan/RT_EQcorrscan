@@ -59,3 +59,12 @@ These citations help to keep the developers in work and keep maintaining these s
 > RT-EQcorrscan: Near-Real-Time Matched-Filtering for Rapid Development
 > of Dense Earthquake Catalogs, Seismol. Res. Lett. XX, 1–11, 
 > doi: 10.1785/0220200171.
+
+# Funding
+
+![RCET](docs/images/RCET_logo_transparent.png)
+
+Continued development of the RT-EQcorrscan package is directly supported by the 
+[RCET](https://www.rcet.science/), Rapid Characterisation of Earthquakes and Tsunami
+programme funded by the New Zealand Ministry of Business, Innovation and Employment
+Endeavour fund.
