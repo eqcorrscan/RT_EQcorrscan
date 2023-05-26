@@ -4,6 +4,7 @@ Tools for managing a database of template information.
 
 import logging
 import os
+import threading
 
 from pathlib import Path
 from collections import Counter
@@ -221,6 +222,8 @@ class TemplateBank(EventBank):
         executors. Set the `TemplateBank.executor` attribute to your required
         executor.
     """
+    index_lock = threading.Lock()  # Lock access to index
+
     def __init__(
         self,
         base_path: Union[str, Path, "EventBank"] = ".",
@@ -249,8 +252,9 @@ class TemplateBank(EventBank):
 
         {get_event_params}
         """
-        paths = str(self.bank_path) + self.read_index(
-            columns=["path", "latitude", "longitude"], **kwargs).path
+        with self.index_lock:
+            paths = str(self.bank_path) + os.sep + self.read_index(
+                columns=["path", "latitude", "longitude"], **kwargs).path
         paths = [path.replace(self.ext, self.template_ext) for path in paths]
         future = self.executor.map(_lazy_template_read, paths)
         return Tribe([t for t in future if t is not None])
@@ -259,6 +263,7 @@ class TemplateBank(EventBank):
         self,
         templates: Union[list, Tribe],
         update_index: bool = True,
+        write_events: bool = True,
     ) -> None:
         """
         Save templates to the database.
@@ -270,16 +275,21 @@ class TemplateBank(EventBank):
         update_index
             Flag to indicate whether or not to update the event index
             after writing the new events.
+        write_events
+            Optionally write out the event file as well as the template.
         """
         for t in templates:
             assert(isinstance(t, Template))
-        catalog = Catalog([t.event for t in templates])
-        self.put_events(catalog, update_index=update_index)
+        if write_events:
+            catalog = Catalog([t.event for t in templates])
+            with self.index_lock:
+                self.put_events(catalog, update_index=update_index)
         inner_put_template = partial(
             _put_template, path_structure=self.path_structure,
             template_name_structure=self.name_structure,
             bank_path=self.bank_path)
-        _ = [_ for _ in self.executor.map(inner_put_template, templates)]
+        with self.index_lock:
+            _ = [_ for _ in self.executor.map(inner_put_template, templates)]
 
     def make_templates(
         self,

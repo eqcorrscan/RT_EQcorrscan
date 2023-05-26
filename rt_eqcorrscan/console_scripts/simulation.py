@@ -8,6 +8,7 @@ This script has 3 main steps:
     3. Start the RealTimeTribe
 """
 import logging
+import os
 
 from obspy import UTCDateTime
 from obspy.core.event import Event
@@ -44,6 +45,7 @@ def synthesise_real_time(
     speed_up: float = 1,
     debug: bool = False,
     query_interval: float = 60,
+    pre_empt_len: float = None,
 ):
     """
     Synthesise a real-time matched-filter process for old data.
@@ -70,6 +72,8 @@ def synthesise_real_time(
         How often to query the waveform server in seconds.  Smaller numbers
         will query more often, but this is limited by disk read speeds - make
         sure you don't go too small and make your system stall!
+    pre_empt_len:
+        Length of data to store in memory for faster "streaming" simulation
     """
     if debug:
         config.log_level = "DEBUG"
@@ -121,33 +125,63 @@ def synthesise_real_time(
 
     Logger.info("Downloading data")
     wavebank = WaveBank("simulation_wavebank")
+    download_chunk_size = min(3600, detection_runtime)
     for network in inventory:
         for station in network:
             for channel in station:
-                try:
-                    st = client.get_waveforms(
-                        network=network.code, 
-                        station=station.code, 
+                _starttime = trigger_origin.time - 60
+                _endtime = _starttime + detection_runtime
+                while _starttime <= _endtime:
+                    Logger.info(
+                        f"Downloading for {network.code}.{station.code}.{channel.location_code}.{channel.code} "
+                        f"between {_starttime} and {_starttime + download_chunk_size}")
+                    # check if the waveform already exists in the wavebank
+                    st = None
+                    request_kwargs = dict(
+                        network=network.code,
+                        station=station.code,
                         channel=channel.code,
                         location=channel.location_code,
-                        starttime=trigger_origin.time - 60.,
-                        endtime=trigger_origin.time + detection_runtime)
-                except Exception as e:
-                    Logger.error(
-                        "Could not download data for "
-                        f"{network.code}.{station.code}."
-                        f"{channel.location_code}.{channel.code}")
-                    Logger.error(e)
-                    continue
-                wavebank.put_waveforms(st)
+                        starttime=_starttime,
+                        endtime=_starttime + download_chunk_size
+                    )
+                    try:
+                        st = wavebank.get_waveforms(**request_kwargs)
+                    except Exception:
+                        pass
+                    if st:
+                        # check that it matches params
+                        tr = st.merge()[0]
+                        if abs(tr.stats.starttime - _starttime) <= 120 and abs(tr.stats.endtime - request_kwargs["endtime"]) <= 120:
+                            _starttime += download_chunk_size
+                            continue
+                    try:
+                        st = client.get_waveforms(**request_kwargs)
+                    except Exception as e:
+                        Logger.error(
+                            "Could not download data for "
+                            f"{network.code}.{station.code}."
+                            f"{channel.location_code}.{channel.code}")
+                        Logger.error(e)
+                        _starttime += download_chunk_size
+                        continue
+                    _starttime += download_chunk_size
+                    wavebank.put_waveforms(st)
 
+    if pre_empt_len:
+        pre_empt_data = True
+    else:
+        pre_empt_data = False
     # Set up config to use the wavebank rather than FDSN.
     config.streaming.update(
         {"rt_client_url": str(wavebank.bank_path),
-         "rt_client_type": "obsplus",
+         "rt_client_type": "local",
          "starttime": trigger_origin.time - 60,
          "speed_up": speed_up,
-         "query_interval": 1.0})
+         "query_interval": max(15 * speed_up, config.rt_match_filter.detect_interval / 10.0),
+         "pre_empt_data": pre_empt_data,
+         "pre_empt_len": pre_empt_len,
+         })
 
     listener = CatalogListener(
         client=client, catalog_lookup_kwargs=region,
@@ -157,12 +191,16 @@ def synthesise_real_time(
     listener._test_start_step = UTCDateTime.now() - trigger_origin.time
     listener._test_start_step += 60  # Start up 1 minute before the event
 
+    # TODO: Make sure that the simulated run doesn't get spoilers! No templates from the future!
     reactor = Reactor(
         client=client,
         listener=listener, trigger_func=trigger_func,
         template_database=template_bank, config=config)
+    reactor._speed_up = speed_up
+    reactor._test_start_step = listener._test_start_step
     Logger.info("Starting reactor")
-    reactor.run(max_run_length=config.reactor.max_run_length)
+    # reactor.run(max_run_length=config.reactor.max_run_length)
+    reactor.run(max_run_length=detection_runtime)
 
 
 def main():
@@ -181,6 +219,9 @@ def main():
         "--db-duration", type=int, default=365,
         help="Number of days to generate the database for prior to the chosen event")
     parser.add_argument(
+        "--runtime", type=float, default=3600,
+        help="Duration in seconds to run the detector for.")
+    parser.add_argument(
         "--radius", type=float, default=0.5,
         help="Radius in degrees to build database for")
     parser.add_argument(
@@ -195,6 +236,13 @@ def main():
     parser.add_argument(
         "--speed-up", type=float, default=1,
         help="Multiplier to speed-up RT match-filter by.")
+    parser.add_argument(
+        "--working-dir", type=str, default=".",
+        help="Directory to work in - will move to this directory and put all output here."),
+    parser.add_argument(
+        "--pre-empt-len", type=float, default=None,
+        help="Length of data in seconds to pre-emptively load into memory for "
+             "the streamer")
     
     args = parser.parse_args()
 
@@ -208,10 +256,17 @@ def main():
     quake_id = KNOWN_QUAKES.get(args.quake, args.quake)
     trigger_event = client.get_events(eventid=quake_id)[0]
 
+    # Move to working directory
+    if not os.path.isdir(args.working_dir):
+        Logger.info(f"Making directory {args.working_dir}")
+        os.makedirs(args.working_dir)
+    os.chdir(args.working_dir)
+
     synthesise_real_time(
         triggering_event=trigger_event, database_duration=args.db_duration,
         config=config, make_templates=args.templates_made,
-        debug=args.debug, speed_up=args.speed_up)
+        debug=args.debug, speed_up=args.speed_up,
+        detection_runtime=args.runtime, pre_empt_len=args.pre_empt_len)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ import signal
 import subprocess
 
 from copy import deepcopy
-from typing import Callable, Union
+from typing import Callable, Union, List
 from multiprocessing import cpu_count
 
 from obspy import UTCDateTime, Catalog
@@ -87,6 +87,10 @@ class Reactor(object):
     n_stations = 10
     sleep_step = 15
 
+    # Fudge factors for past sequence simulation
+    _speed_up = 1
+    _test_start_step = 0.0
+
     # Maximum processors dedicated to one detection routine.
     _max_detect_cores = 12
 
@@ -112,6 +116,7 @@ class Reactor(object):
             min_stations=config.database_manager.min_stations,
             template_kwargs=config.template,
             starttime=listener_starttime)
+        self.notifier = config.notifier.notifier
         # Time-keepers
         self._run_start = None
         self._running = False
@@ -221,7 +226,7 @@ class Reactor(object):
             if os.path.isfile(f"{working_dir}/.stopfile"):
                 self.stop_tribe(trigger_event_id)
 
-    def process_new_events(self, new_events: Catalog) -> None:
+    def process_new_events(self, new_events: Union[Catalog, List[Event]]) -> None:
         """
         Process any new events in the system.
 
@@ -234,6 +239,9 @@ class Reactor(object):
         new_events
             Catalog of new-events to be assessed.
         """
+        # Convert to catalog
+        if isinstance(new_events, list):
+            new_events = Catalog(new_events)
         for triggering_event_id, tribe_region in self._running_regions.items():
             try:
                 add_events = get_events(new_events, **tribe_region)
@@ -286,6 +294,9 @@ class Reactor(object):
                 continue
             Logger.warning(
                 "Listener triggered by event {0}".format(trigger_event))
+            # Send this as an email
+            self.notifier.notify(
+                content=f"Listener triggered by event {trigger_event}")
             if len(self._running_regions) >= self.available_cores:
                 Logger.error("No more available processors")
                 continue
@@ -317,11 +328,13 @@ class Reactor(object):
         Logger.debug(f"event-ids in region: {event_ids}")
         # Write file of event id's
         if len(event_ids) == 0:
+            Logger.warning(f"Found no events in region: {region} - no detection to run.")
             return
         tribe = self.template_database.get_templates(eventid=event_ids)
         Logger.info(f"Found {len(tribe)} templates")
         if len(tribe) == 0:
             Logger.info("No templates, not running")
+            return
         working_dir = _get_triggered_working_dir(
             triggering_event_id, exist_ok=True)
         tribe.write(os.path.join(working_dir, "tribe.tgz"))
@@ -332,7 +345,9 @@ class Reactor(object):
         script_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "spin_up.py")
         _call = ["python", script_path, "-w", working_dir,
-                 "-n", str(min(self.available_cores, self._max_detect_cores))]
+                 "-n", str(min(self.available_cores, self._max_detect_cores)),
+                 "-s", str(self._speed_up),
+                 "-o", str(self._test_start_step)]
         Logger.info("Running `{call}`".format(call=" ".join(_call)))
         proc = subprocess.Popen(_call)
         self.detecting_processes.update({triggering_event_id: proc})
@@ -359,6 +374,8 @@ class Reactor(object):
 
     def _handle_interupt(self, signum, frame) -> None:
         Logger.critical(f"Received signal: {signum}")
+        self.notifier.notify(
+            content=f"CRITICAL: Stopping reactor after interupt: {signum}")
         self.stop()
 
     def stop(self, raise_exit: bool=True) -> None:

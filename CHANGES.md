@@ -1,3 +1,13 @@
+# simulation-testing
+- Fix threadlock when backfillers attempt to decluster in multithreaded mode
+  (requires update to EQcorrscan)
+- Share backfiller stream as file rather than in-memory to reduce memory use in backfilling
+- Backfillers operate in subprocesses rather than multiprocessing Processes
+
+# email-support
+- Attempted to add email support, but gmail authentification kept breaking
+- Switched to using notifiers
+
 # 0.1.4
 - Keep track of data stream coming in from streamer, and restart if stream 
   goes stale (See PR #12).
