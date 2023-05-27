@@ -432,11 +432,14 @@ class RealTimeTribe(Tribe):
             for d in family:
                 d._calculate_event(template=family.template)
                 Logger.debug(f"New detection at {d.detect_time}")
+            # Cope with no picks and hence no origins - these events have to be removed
+            family.detections = [d for d in family if len(d.event.origins)]
             if family.template.name not in _detected_templates:
                 self.party.families.append(family)
             else:
                 self.party.select(family.template.name).detections.extend(
                     family.detections)
+
         Logger.info("Removing duplicate detections")
         Logger.info(f"Party contained {len(self.party)} before decluster")
         if len(self.party) > 0:
