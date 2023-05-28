@@ -865,6 +865,8 @@ class RealTimeTribe(Tribe):
                         Logger.error("Insufficient data after trimming, accumulating")
                         continue
                     Logger.info("Starting detection run")
+                    # merge again - checking length can split the data?
+                    st = st.merge()
                     Logger.info("Using data: \n{0}".format(
                         st.__str__(extended=True)))
                     try:
