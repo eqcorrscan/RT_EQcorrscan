@@ -457,6 +457,7 @@ class RealTimeTribe(Tribe):
             read_st = True
 
         # TODO: Need a better way to keep track of written detections - unique keys for detections?
+        # TODO: This is slow, and for Kaikoura, this is what stops it from running in real time
         for family in self.party:
             for detection in family:
                 # TODO: this check doesn't necassarily work well - detections may be the same physical detection, but different Detection objects
@@ -469,7 +470,7 @@ class RealTimeTribe(Tribe):
                     Logger.info(f"{_filename} exists, skipping")
                     continue
                 Logger.debug(f"Writing detection: {detection.detect_time}")
-                # TODO: copy detections from backfillers rather than reading waveforms
+                # TODO: Do not do this, let some other process work on making the waveforms.
                 if read_st:
                     max_shift = (
                         max(tr.stats.endtime for tr in family.template.st) -
