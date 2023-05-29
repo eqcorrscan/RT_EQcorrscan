@@ -441,8 +441,12 @@ class RealTimeTribe(Tribe):
         Logger.info(f"Removing {len(removed_ids)} detections from disk")
         for did in removed_ids:
             files_to_remove = glob.glob(f"{detect_directory}/*/*/{did}.*")
+            # Move files so that we can keep track for testing porpoises
             for f in files_to_remove:
-                os.remove(f)
+                rm_dir = os.path.join(os.path.dirname(f), ".removed")
+                if not os.path.isdir(rm_dir):
+                    os.makedirs(rm_dir)
+                shutil.move(f, os.path.join(rm_dir, os.path.basename(f)))
 
         Logger.info("Writing detections to disk")
 
