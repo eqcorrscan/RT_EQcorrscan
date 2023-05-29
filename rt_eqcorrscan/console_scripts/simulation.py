@@ -11,7 +11,7 @@ import logging
 import os
 
 from obspy import UTCDateTime
-from obspy.core.event import Event
+from obspy.core.event import Event, Catalog
 from obspy.clients.fdsn import Client
 
 from obsplus import WaveBank
@@ -109,9 +109,20 @@ def synthesise_real_time(
 
     if make_templates:
         Logger.info("Downloading template events")
-        catalog = client.get_events(
-            starttime=database_starttime, endtime=database_endtime,
-            **region)
+        try:
+            catalog = client.get_events(
+                starttime=database_starttime, endtime=database_endtime,
+                **region)
+        except Exception as e:
+            Logger.error(f"Could not download due to {e}. Trying chunks")
+            chunk_len = 100 * 86400
+            _start = database_starttime
+            catalog = Catalog()
+            while _start <= database_endtime:
+                _end = min(database_endtime, _start + chunk_len)
+                catalog += client.get_events(
+                    starttime=_start, endtime=_end, **region)
+                _start += chunk_len
         Logger.info(f"Downloaded {len(catalog)} events")
         Logger.info("Building template database")
         template_bank.make_templates(
