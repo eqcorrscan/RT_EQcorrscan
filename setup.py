@@ -90,7 +90,8 @@ def setup_package():
             'rt_eqcorrscan', 'rt_eqcorrscan.config', 'rt_eqcorrscan.database',
             'rt_eqcorrscan.event_trigger', 'rt_eqcorrscan.plotting',
             'rt_eqcorrscan.reactor', 'rt_eqcorrscan.streaming',
-            'rt_eqcorrscan.streaming.clients', 'rt_eqcorrscan.console_scripts']
+            'rt_eqcorrscan.streaming.clients', 'rt_eqcorrscan.console_scripts',
+            'rt_eqcorrscan.plugins']
     if os.path.isdir("build"):
         shutil.rmtree("build")
     setup(**setup_args)

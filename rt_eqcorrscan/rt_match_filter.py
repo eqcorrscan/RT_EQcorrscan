@@ -12,6 +12,7 @@ import gc
 import glob
 import subprocess
 import numpy as np
+import pickle
 
 # Memory tracking for debugging
 # import psutil
@@ -21,14 +22,14 @@ from typing import Union, List, Iterable
 
 from obspy import Stream, UTCDateTime, Inventory, Trace
 from obsplus import WaveBank
-from matplotlib.figure import Figure
 from multiprocessing import Lock
-from eqcorrscan import Tribe, Template, Party, Detection
+from eqcorrscan import Tribe, Template, Party
 from eqcorrscan.utils.pre_processing import _prep_data_for_correlation
 
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
 from rt_eqcorrscan.event_trigger.triggers import average_rate
 from rt_eqcorrscan.config.mailer import Notifier
+from rt_eqcorrscan.plugins.detection_manager import _detection_filename
 
 Logger = logging.getLogger(__name__)
 
@@ -80,6 +81,7 @@ class RealTimeTribe(Tribe):
     _last_backfill_start = UTCDateTime.now()  # Time of last backfill run - update on run
     _number_of_backfillers = 0  # Book-keeping of backfiller processes.
     _clean_backfillers = False  # If false will leave temporary backfiller dirs
+    _detection_manager = None
 
     busy = False
 
@@ -236,8 +238,6 @@ class RealTimeTribe(Tribe):
         hypocentral_separation: float,
         earliest_detection_time: UTCDateTime,
         detect_directory: str,
-        save_waveforms: bool,
-        plot_detections: bool,
         **kwargs
     ):
         """ Expire unused back fill processes to release resources. """
@@ -250,18 +250,18 @@ class RealTimeTribe(Tribe):
                     trig_int=trig_int,
                     hypocentral_separation=hypocentral_separation,
                     earliest_detection_time=earliest_detection_time,
-                    detect_directory=detect_directory,
-                    save_waveforms=save_waveforms,
-                    plot_detections=plot_detections)
+                    detect_directory=detect_directory)
                 Logger.info(f"Cleaning backfiller {backfiller_name}")
                 if os.path.isdir(backfiller_name):
                     if self._clean_backfillers:
                         shutil.rmtree(backfiller_name)
                 else:
-                    Logger.warning(f"Did not find backfiller temp dir {backfiller_name}")
+                    Logger.warning(
+                        f"Did not find backfiller temp dir {backfiller_name}")
             else:
                 active_backfillers.update({backfiller_name: backfill_process})
-        Logger.debug(f"There are {len(active_backfillers)} backfillers currently active")
+        Logger.debug(f"There are {len(active_backfillers)} "
+                     f"backfillers currently active")
         self._backfillers = active_backfillers
 
     def _access_wavebank(
@@ -336,7 +336,8 @@ class RealTimeTribe(Tribe):
                 method="read_index", timeout=120, network=_bulk[0],
                 station=_bulk[1], location=_bulk[2], channel=_bulk[3],
                 starttime=_bulk[4], endtime=_bulk[5])
-            files = (str(self.wavebank.bank_path) + os.sep + index.path).unique()
+            files = (str(
+                self.wavebank.bank_path) + os.sep + index.path).unique()
             paths.extend(list(files))
         return paths
 
@@ -347,8 +348,6 @@ class RealTimeTribe(Tribe):
         hypocentral_separation: float,
         earliest_detection_time: UTCDateTime,
         detect_directory: str,
-        save_waveforms: bool,
-        plot_detections: bool,
     ):
         """
         Handle finalisation of backfillers.
@@ -357,8 +356,11 @@ class RealTimeTribe(Tribe):
         ----------
         backfiller_name
         """
-        if os.path.isfile(f"{backfiller_name}/party.tgz"):
-            party = Party().read(f"{backfiller_name}/party.tgz")
+        # if os.path.isfile(f"{backfiller_name}/party.tgz"):
+        #     party = Party().read(f"{backfiller_name}/party.tgz")
+        if os.path.isfile(f"{backfiller_name}/party.pkl"):
+            with open(f"{backfiller_name}/party.pkl", "rb") as f:
+                party = pickle.load(f)
         else:
             Logger.info("No party written by backfiller - no detections")
             return
@@ -372,10 +374,7 @@ class RealTimeTribe(Tribe):
                 party, trig_int=trig_int,
                 hypocentral_separation=hypocentral_separation,
                 earliest_detection_time=earliest_detection_time,
-                detect_directory=detect_directory,
-                save_waveforms=save_waveforms,
-                plot_detections=plot_detections, st=None, skip_existing=False,
-                backfill_dir=backfiller_name)
+                detect_directory=detect_directory)
             self._remove_old_detections(earliest_detection_time)
             Logger.info("Party now contains {0} detections".format(
                 len(self.detections)))
@@ -389,11 +388,6 @@ class RealTimeTribe(Tribe):
         hypocentral_separation: float,
         earliest_detection_time: UTCDateTime,
         detect_directory: str,
-        save_waveforms: bool,
-        plot_detections: bool,
-        st: Stream = None,
-        skip_existing: bool = True,
-        backfill_dir: str = None,
         **kwargs
     ) -> None:
         """
@@ -413,17 +407,6 @@ class RealTimeTribe(Tribe):
         detect_directory
             The head directory to write to - will create
             "{detect_directory}/{year}/{julian day}" directories
-        save_waveforms
-            Whether to save the waveform for the detected event or not
-        plot_detections
-            Whether to plot the detection waveform or not
-        st
-            The stream the detection was made in - required for save_waveform
-            and plot_detection.
-        skip_existing
-            Whether to skip detections already written to disk.
-        backfill_dir
-            Location of backfiller if these detections have come from a backfiller.
         """
         _detected_templates = [f.template.name for f in self.party]
         for family in new_party:
@@ -432,7 +415,7 @@ class RealTimeTribe(Tribe):
             for d in family:
                 d._calculate_event(template=family.template)
                 Logger.debug(f"New detection at {d.detect_time}")
-            # Cope with no picks and hence no origins - these events have to be removed
+            # Remove events with no picks and hence no origins: can't decluster
             family.detections = [d for d in family if len(d.event.origins)]
             if family.template.name not in _detected_templates:
                 self.party.families.append(family)
@@ -443,62 +426,50 @@ class RealTimeTribe(Tribe):
         Logger.info("Removing duplicate detections")
         Logger.info(f"Party contained {len(self.party)} before decluster")
         if len(self.party) > 0:
-            # TODO: Need to remove detections from disk that are removed in decluster
+            # Get the ids of all detections - use these to find out which have
+            # been removed post-decluster
+            det_ids = {d.id for f in self.party for d in f}
             self.party.decluster(
                 trig_int=trig_int, timing="origin", metric="cor_sum",
                 hypocentral_separation=hypocentral_separation)
+            removed_ids = det_ids.difference(
+                {d.id for f in self.party for d in f})
+        else:
+            removed_ids = set()
         Logger.info("Completed decluster")
         Logger.info(f"Party contains {len(self.party)} after decluster")
+        Logger.info(f"Removing {len(removed_ids)} detections from disk")
+        for did in removed_ids:
+            files_to_remove = glob.glob(f"{detect_directory}/*/*/{did}.*")
+            for f in files_to_remove:
+                os.remove(f)
+
         Logger.info("Writing detections to disk")
 
-        # Cope with not being given a stream
-        read_st = False
-        if st is None and backfill_dir is None:
-            read_st = True
-
-        # TODO: Need a better way to keep track of written detections - unique keys for detections?
-        # TODO: This is slow, and for Kaikoura, this is what stops it from running in real time
+        # Pickle detections - handling formatting to events and streams will
+        # be done by detection_manager
+        current_detection_ids = {d.id for d in self.detections}
         for family in self.party:
             for detection in family:
-                # TODO: this check doesn't necassarily work well - detections may be the same physical detection, but different Detection objects
-                if detection in self.detections:
+                if detection.id in current_detection_ids:
                     continue
                 detect_file_base = _detection_filename(
-                    detection=detection, detect_directory=detect_directory)
-                _filename = f"{detect_file_base}.xml"
-                if os.path.isfile(f"{detect_file_base}.xml") and skip_existing:
-                    Logger.info(f"{_filename} exists, skipping")
-                    continue
-                Logger.debug(f"Writing detection: {detection.detect_time}")
-                # TODO: Do not do this, let some other process work on making the waveforms.
-                if read_st:
-                    max_shift = (
-                        max(tr.stats.endtime for tr in family.template.st) -
-                        min(tr.stats.starttime for tr in family.template.st))
-                    bulk = [
-                        (tr.stats.network,
-                         tr.stats.station,
-                         tr.stats.location,
-                         tr.stats.channel,
-                         (detection.detect_time - 5),
-                         (detection.detect_time + max_shift + 5))
-                        for tr in family.template.st]
-                    st = self.wavebank.get_waveforms_bulk(bulk)
-                    st_read = True
-                self._fig = _write_detection(
                     detection=detection,
-                    detect_file_base=detect_file_base,
-                    save_waveform=save_waveforms,
-                    plot_detection=plot_detections, stream=st,
-                    fig=self._fig, backfill_dir=backfill_dir,
-                    detect_dir=detect_directory)
+                    detect_directory=detect_directory)
+                detect_filename = f"{detect_file_base}.pkl"
+                if os.path.isfile(detect_filename):
+                    continue
+                with open(detect_filename, "wb") as f:
+                    pickle.dump(detection, f)
+
         Logger.info("Expiring old detections")
         # Empty self.detections
         self.detections.clear()
         for family in self.party:
             Logger.debug(f"Checking for {family.template.name}")
             family.detections = [
-                d for d in family.detections if d.detect_time >= earliest_detection_time]
+                d for d in family.detections
+                if d.detect_time >= earliest_detection_time]
             Logger.debug(f"Appending {len(family)} detections")
             for detection in family:
                 # Need to append rather than create a new object
@@ -776,9 +747,24 @@ class RealTimeTribe(Tribe):
             threshold=threshold, threshold_type=threshold_type,
             trig_int=trig_int, hypocentral_separation=hypocentral_separation,
             keep_detections=keep_detections, detect_directory=detect_directory,
-            plot_detections=plot_detections, save_waveforms=save_waveforms,
             maximum_backfill=first_data, endtime=None,
             min_stations=min_stations, earliest_detection_time=None)
+
+        Logger.info("Starting detection manager")
+        script_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "plugins", "detection_manager.py")
+        _call = [
+            "python", script_path,
+            "-d", detect_directory,
+            "-w", str(self.wavebank.bank_path)]
+        if plot_detections:
+            _call.append("-p")
+        if save_waveforms:
+            _call.append("-s")
+
+        Logger.info("Running `{call}`".format(call=" ".join(_call)))
+        self._detection_manager = subprocess.Popen(_call)
 
         long_runs, long_run_time = 0, 0  # Keep track of over-running loops
         try:
@@ -795,7 +781,7 @@ class RealTimeTribe(Tribe):
                             gaps = tr.split().get_gaps()
                             Logger.warning(f"Masked data found on {tr.id}. Gaps: {gaps}")
                     if gappy:
-                        st = st.merge() # Re-merge after gap checking
+                        st = st.merge()  # Re-merge after gap checking
                     if self.has_wavebank:
                         st = _check_stream_is_int(st)
                         try:
@@ -1089,7 +1075,6 @@ class RealTimeTribe(Tribe):
         trig_int: float,
         maximum_backfill: Union[float, UTCDateTime] = None,
         endtime: UTCDateTime = None,
-        plot_detections: bool = False,
         **kwargs
     ) -> None:
         """
@@ -1179,7 +1164,9 @@ class RealTimeTribe(Tribe):
             tribe = templates
         else:
             tribe = Tribe(templates)
-        tribe.write(f"{backfiller_name}/tribe.tgz")
+        with open(f"{backfiller_name}/tribe.pkl", "wb") as f:
+            pickle.dump(tribe, f)
+        # tribe.write(f"{backfiller_name}/tribe.tgz")
 
         del st_files
         # Force garbage collection before creating new process
@@ -1202,9 +1189,7 @@ class RealTimeTribe(Tribe):
             "--endtime", str(endtime),
             "-P",  # Enable parallel processing
         ]
-        if plot_detections:
-            _call.append("--plot")
-        _call.append("-s") # Add on the list of expected seed ids
+        _call.append("-s")  # Add on the list of expected seed ids
         _call.extend(self.expected_seed_ids)
 
         Logger.info("Running `{call}`".format(call=" ".join(_call)))
@@ -1237,6 +1222,9 @@ class RealTimeTribe(Tribe):
             for backfiller_name in self._backfillers.keys():
                 if os.path.isdir(backfiller_name):
                     shutil.rmtree(backfiller_name)
+        # Stop the detection manager
+        if self._detection_manager:
+            self._detection_manager.kill()
         if write_stopfile:
             with open(".stopfile", "a") as f:
                 f.write(f"{self.name}\n")
@@ -1291,6 +1279,18 @@ def reshape_templates(
     return templates_back
 
 
+def _check_stream_is_int(st):
+    st = st.split()
+    for tr in st:
+        # Ensure data are int32, see https://github.com/obspy/obspy/issues/2683
+        if tr.data.dtype == numpy.int32 and \
+                tr.data.dtype.type != numpy.int32:
+            tr.data = tr.data.astype(numpy.int32, subok=False)
+        if tr.data.dtype.type == numpy.intc:
+            tr.data = tr.data.astype(numpy.int32, subok=False)
+    return st
+
+
 def squash_duplicates(template: Template):
     """
     Remove duplicate channels in templates. 
@@ -1342,111 +1342,6 @@ def squash_duplicates(template: Template):
     template.st = unique_template_st
     template.event.picks = unique_event_picks
     return template
-
-
-def _detection_filename(
-        detection: Detection,
-        detect_directory: str,
-) -> str:
-    _path = os.path.join(
-        detect_directory, detection.detect_time.strftime("%Y"),
-        detection.detect_time.strftime("%j"))
-    if not os.path.isdir(_path):
-        os.makedirs(_path)
-    _filename = os.path.join(
-        _path, detection.detect_time.strftime("%Y%m%dT%H%M%S"))
-    return _filename
-
-
-def _write_detection(
-    detection: Detection,
-    detect_file_base: str,
-    save_waveform: bool,
-    plot_detection: bool,
-    stream: Stream,
-    fig=None,
-    backfill_dir: str = None,
-    detect_dir: str = None
-) -> Figure:
-    """
-    Handle detection writing including writing streams and figures.
-
-    Parameters
-    ----------
-    detection
-        The Detection to write
-    detect_file_base
-        File to write to (without extension)
-    save_waveform
-        Whether to save the waveform for the detected event or not
-    plot_detection
-        Whether to plot the detection waveform or not
-    stream
-        The stream the detection was made in - required for save_waveform and
-        plot_detection.
-    fig
-        A figure object to reuse.
-    backfill_dir:
-        Backfill directory - set if the detections have already been written
-        to this dir and just need to be copied.
-    detect_dir
-        Detection directory - only used to manipulate backfillers.
-
-    Returns
-    -------
-    An empty figure object to be reused if a figure was created, or the figure
-    passed to it.
-    """
-    from rt_eqcorrscan.plotting.plot_event import plot_event
-
-    if backfill_dir:
-        backfill_file_base = (
-            f"{backfill_dir}/detections/{detect_file_base.split(detect_dir)[-1]}")
-        Logger.info(f"Looking for detections in {backfill_file_base}.*")
-        backfill_dets = glob.glob(f"{backfill_file_base}.*")
-        Logger.info(f"Copying {len(backfill_dets)} to main detections")
-        for f in backfill_dets:
-            ext = os.path.splitext(f)[-1]
-            shutil.copyfile(f, f"{detect_file_base}{ext}")
-            Logger.info(f"Copied {f} to {detect_file_base}{ext}")
-        return fig
-
-    try:
-        detection.event.write(f"{detect_file_base}.xml", format="QUAKEML")
-    except Exception as e:
-        Logger.error(f"Could not write event file due to {e}")
-    detection.event.picks.sort(key=lambda p: p.time)
-    st = stream.slice(
-        detection.event.picks[0].time - 10,
-        detection.event.picks[-1].time + 20).copy()
-    if plot_detection:
-        # Make plot
-        fig = plot_event(fig=fig, event=detection.event, st=st,
-                         length=90, show=False)
-        try:
-            fig.savefig(f"{detect_file_base}.png")
-        except Exception as e:
-            Logger.error(f"Could not write plot due to {e}")
-        fig.clf()
-    if save_waveform:
-        st = _check_stream_is_int(st)
-        try:
-            st.write(f"{detect_file_base}.ms", format="MSEED")
-        except Exception as e:
-            Logger.error(f"Could not write stream due to {e}")
-    return fig
-
-
-def _check_stream_is_int(st):
-    st = st.split()
-    for tr in st:
-        # Ensure data are int32, see https://github.com/obspy/obspy/issues/2683
-        if tr.data.dtype == numpy.int32 and \
-                tr.data.dtype.type != numpy.int32:
-            tr.data = tr.data.astype(numpy.int32, subok=False)
-        if tr.data.dtype.type == numpy.intc:
-            tr.data = tr.data.astype(numpy.int32, subok=False)
-    return st
 
 
 def _numpy_len(arr: Union[numpy.ndarray, numpy.ma.MaskedArray]) -> int:

@@ -9,18 +9,19 @@ import gc
 import numpy as np
 import traceback
 import matplotlib.pyplot as plt
+import pickle
 
 # Memory tracking for debugging
 import psutil
 # from pympler import summary, muppy
 
-from obspy import read, UTCDateTime, Stream
+from obspy import UTCDateTime, Stream
 
-from eqcorrscan import Tribe, Party, Template
+from eqcorrscan import Party, Template
 from rt_eqcorrscan import Config
 from rt_eqcorrscan.database.client_emulation import LocalClient
 from rt_eqcorrscan.rt_match_filter import (
-    squash_duplicates, reshape_templates, _write_detection, _detection_filename)
+    squash_duplicates, reshape_templates, _detection_filename)
 
 
 Logger = logging.getLogger(__name__)
@@ -63,7 +64,9 @@ def backfill(
                 f"log_to_screen={log_to_screen}, starttime={starttime}, endtime={endtime}")
 
     # Read in tribe
-    new_tribe = Tribe().read("tribe.tgz")
+    # new_tribe = Tribe().read("tribe.tgz")
+    with open("tribe.pkl", "rb") as f:
+        new_tribe = pickle.load(f)
     # Set up LocalClient in streams folder
     st_client = LocalClient("streams")
     # st_filename = "stream.ms"  # Avoid reading in whole stream - expensive in memory
@@ -154,21 +157,11 @@ def backfill(
     for family in new_party:
         for detection in family:
             detection._calculate_event(template=family.template)
-            det_starttime = min(p.time for p in detection.event.picks)
-            det_endtime = max(p.time for p in detection.event.picks)
-            det_starttime -= 20
-            det_endtime += 20
-            st = st_client.get_waveforms(
-                "*", "*", "*", "*", det_starttime, det_endtime)
-            fig = _write_detection(
-                detection=detection,
-                detect_file_base=_detection_filename(
-                    detection=detection, detect_directory="detections"),
-                save_waveform=True, plot_detection=plot_detections,
-                stream=st, fig=fig)
 
     if len(new_party):
-        new_party.write(f"{working_dir}/party.tgz")
+        with open(f"{working_dir}/party.pkl", "wb") as f:
+            pickle.dump(new_party, f)
+        # new_party.write(f"{working_dir}/party.tgz")
 
     Logger.info("Backfiller completed")
     return
