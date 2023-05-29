@@ -84,7 +84,11 @@ def synthesise_real_time(
 
     trigger_origin = (
             triggering_event.preferred_origin() or triggering_event.origins[0])
-    region = estimate_region(triggering_event)
+    region = estimate_region(
+        event=triggering_event,
+        min_length=config.reactor.minimum_lookup_radius,
+        scaling_relation=config.reactor.scaling_relation,
+        multiplier=config.reactor.scaling_multiplier)
     database_starttime = trigger_origin.time - (database_duration * 86400)
     database_endtime = trigger_origin.time
 
