@@ -9,6 +9,7 @@ License
     GPL v3.0
 """
 
+import os
 import logging
 import faulthandler
 
@@ -34,11 +35,15 @@ def run(**kwargs):
     debug = kwargs.get("debug", False)
     update_bank = kwargs.get("update_bank", True)
     listener_starttime = kwargs.get("listener_starttime", None)
+    working_dir = kwargs.get("working_dir", '.')
     if debug:
         config.log_level = "DEBUG"
         print("Using the following configuration:\n{0}".format(config))
     config.setup_logging()
     Logger.debug("Running in debug mode - expect lots of output!")
+
+    Logger.info(f"Changing to working directory: {working_dir}")
+    os.chdir(working_dir)
 
     client = config.rt_match_filter.get_client()
 
@@ -96,12 +101,17 @@ def main():
         "-s", "--listener-starttime", type=UTCDateTime, 
         help="UTCDateTime parsable starttime for the listener - will collect "
              "events from this date to now and react to them.")
+    parser.add_argument(
+        "-w", "--working-dir", type=str,
+        help="Working directory - will change to this directory after reading "
+             "config file. All paths must be correct for this working dir.")
 
     args = parser.parse_args()
 
     kwargs.update({"debug": args.debug, "config_file": args.config,
                    "update_bank": args.update_bank, 
-                   "listener_starttime": args.listener_starttime})
+                   "listener_starttime": args.listener_starttime,
+                   "working_dir": args.working_dir})
     run(**kwargs)
 
 
