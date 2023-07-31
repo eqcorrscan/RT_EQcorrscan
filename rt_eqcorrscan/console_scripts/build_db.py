@@ -8,6 +8,7 @@ License
     GPL v3.0
 """
 
+import os
 import logging
 import faulthandler
 
@@ -33,11 +34,17 @@ def run(
 ):
     config = read_config(config_file=kwargs.get("config_file", None))
     debug = kwargs.get("debug", False)
+    working_dir = kawrgs.get("working_dir", None)
     if debug:
         config.log_level = "DEBUG"
         print(f"Using the following configuration:\n{config}")
     config.setup_logging()
     Logger.debug("Running in debug mode - expect lots of output!")
+
+    if working_dir:
+        Logger.info(f"Changing to working directory: {working_dir}")
+        os.chdir(working_dir)
+
 
     client = config.rt_match_filter.get_client()
 
@@ -104,6 +111,10 @@ def main():
         "-n", "--max-workers", type=int, default=None,
         help="Maximum workers for ProcessPoolExecutor, defaults to the number "
              "of cores on the machine")
+    parser.add_argument(
+        "-w", "--working-dir", type=str,
+        help="Working directory - will change to this directory after reading "
+             "config file. All paths must be correct for this working dir.")
 
     args = parser.parse_args()
 
@@ -124,7 +135,8 @@ def main():
     else:
         endtime = UTCDateTime()
 
-    kwargs.update({"debug": args.debug, "config_file": args.config})
+    kwargs.update({"debug": args.debug, "config_file": args.config, 
+                   "working_dir": args.working_dir})
     run(starttime=starttime, endtime=endtime, 
         chunk_size=args.chunk_interval, rebuild=args.rebuild,
         max_workers=args.max_workers, **kwargs)
