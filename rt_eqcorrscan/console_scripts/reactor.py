@@ -42,8 +42,9 @@ def run(**kwargs):
     config.setup_logging()
     Logger.debug("Running in debug mode - expect lots of output!")
 
-    Logger.info(f"Changing to working directory: {working_dir}")
-    os.chdir(working_dir)
+    if working_dir:
+        Logger.info(f"Changing to working directory: {working_dir}")
+        os.chdir(working_dir)
 
     client = config.rt_match_filter.get_client()
 
