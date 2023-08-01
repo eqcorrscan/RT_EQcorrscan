@@ -47,6 +47,7 @@ def run(
 
 
     client = config.rt_match_filter.get_client()
+    waveform_client = config.rt_match_filter.get_waveform_client()
 
     template_bank = TemplateBank(
         config.database_manager.event_path,
@@ -76,7 +77,7 @@ def run(
         Logger.info(f"Will make templates for {len(catalog)} events")
 
         tribe = template_bank.make_templates(
-            catalog=catalog, rebuild=rebuild, client=client, **config.template)
+            catalog=catalog, rebuild=rebuild, client=waveform_client, **config.template)
         Logger.info(f"Made {len(tribe)} templates")
 
 
