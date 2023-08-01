@@ -34,7 +34,7 @@ def run(
 ):
     config = read_config(config_file=kwargs.get("config_file", None))
     debug = kwargs.get("debug", False)
-    working_dir = kawrgs.get("working_dir", None)
+    working_dir = kwargs.get("working_dir", None)
     if debug:
         config.log_level = "DEBUG"
         print(f"Using the following configuration:\n{config}")
