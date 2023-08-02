@@ -79,7 +79,7 @@ class RealTimeTribe(Tribe):
     _backfill_tribe = Tribe()  # Tribe of as-yet unused templates for backfilling
     _last_backfill_start = UTCDateTime.now()  # Time of last backfill run - update on run
     _number_of_backfillers = 0  # Book-keeping of backfiller processes.
-    _clean_backfillers = False  # If false will leave temporary backfiller dirs
+    _clean_backfillers = True  # If false will leave temporary backfiller dirs
 
     busy = False
 
@@ -875,6 +875,7 @@ class RealTimeTribe(Tribe):
                             process_cores=self.process_cores,
                             parallel_process=self._parallel_processing,
                             ignore_bad_data=True, copy_data=False,
+                            concurrent_processing=False,
                             **kwargs)
                         Logger.info("Completed detection")
                     except Exception as e:  # pragma: no cover
