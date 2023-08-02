@@ -30,6 +30,7 @@ def run(
     chunk_size: float = 30,
     rebuild: bool = True,
     max_workers: int = None,
+    save_raw: bool = False,
     **kwargs
 ):
     config = read_config(config_file=kwargs.get("config_file", None))
@@ -77,7 +78,8 @@ def run(
         Logger.info(f"Will make templates for {len(catalog)} events")
 
         tribe = template_bank.make_templates(
-            catalog=catalog, rebuild=rebuild, client=waveform_client, **config.template)
+            catalog=catalog, rebuild=rebuild, client=waveform_client,
+            save_raw=save_raw, **config.template)
         Logger.info(f"Made {len(tribe)} templates")
 
 
@@ -113,6 +115,9 @@ def main():
         help="Maximum workers for ProcessPoolExecutor, defaults to the number "
              "of cores on the machine")
     parser.add_argument(
+        "--save-raw", action="store_true",
+        help="Flag to turn on saving of raw miniseed waveforms")
+    parser.add_argument(
         "-w", "--working-dir", type=str,
         help="Working directory - will change to this directory after reading "
              "config file. All paths must be correct for this working dir.")
@@ -140,7 +145,7 @@ def main():
                    "working_dir": args.working_dir})
     run(starttime=starttime, endtime=endtime, 
         chunk_size=args.chunk_interval, rebuild=args.rebuild,
-        max_workers=args.max_workers, **kwargs)
+        max_workers=args.max_workers, save_raw=args.save_raw, **kwargs)
 
 
 if __name__ == "__main__":
