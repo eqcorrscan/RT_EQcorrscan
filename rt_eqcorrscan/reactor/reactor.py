@@ -172,21 +172,25 @@ class Reactor(object):
         # Query the catalog in the listener every so often and check
         self._running = True
         first_iteration = True
+        previous_old_events , working_cat = [], Catalog()  # Initialise state
         while self._running:
             old_events = deepcopy(self.listener.old_events)
             Logger.info(f"Old events from the listener has {len(old_events)} events")
+            # Clear out stale events from working_cat
+            event_ids = [_[0] for _ in old_events]
+            working_cat.events = [ev for ev in working_cat if ev.resource_id in event_ids]
+            new_old_events = [ev for ev in old_events if not in previous_old_events]
             # Get these locally to avoid accessing shared memory multiple times
-            if len(old_events) > 0:
-                working_ids = [_[0] for _ in old_events]
+            if len(new_old_events) > 0:
+                working_ids = [_[0] for _ in new_old_events]
+                Logger.info(f"Getting event info from database for {', '.join(working_ids)}")
                 try:
-                    working_cat = self.template_database.get_events(
+                    new_working_cat = self.template_database.get_events(
                         eventid=working_ids, _allow_update=False)
                 except Exception as e:
                     Logger.error(f"Could not get template events from database due to {e}")
-                    working_cat = Catalog()
-                if len(working_ids) and not len(working_cat):
+                if len(working_ids) and not len(new_working_cat):
                     Logger.warning("Error getting events from database, getting individually")
-                    working_cat = Catalog()
                     for working_id in working_ids:
                         try:
                             working_cat += self.template_database.get_events(
@@ -194,12 +198,13 @@ class Reactor(object):
                         except Exception as e:
                             Logger.error(f"Could not read {working_id} due to {e}")
                             continue
-            else:
-                working_cat = []
-            Logger.info("Currently analysing a catalog of {0} events".format(
-                len(working_cat)))
-            self.process_new_events(new_events=working_cat)
-            Logger.debug("Finished processing new events")
+                else:
+                    working_cat += new_working_cat
+                Logger.info("Currently analysing a catalog of {0} events".format(
+                    len(working_cat)))
+                self.process_new_events(new_events=working_cat)
+                Logger.debug("Finished processing new events")
+            previous_old_events = old_events  # Overload
             self.set_up_time(UTCDateTime.now())
             Logger.debug(f"Up-time: {self.up_time}")
             if max_run_length is not None and self.up_time >= max_run_length:
