@@ -179,7 +179,7 @@ class Reactor(object):
             # Clear out stale events from working_cat
             event_ids = [_[0] for _ in old_events]
             working_cat.events = [ev for ev in working_cat if ev.resource_id in event_ids]
-            new_old_events = [ev for ev in old_events if not in previous_old_events]
+            new_old_events = [ev for ev in old_events if ev not in previous_old_events]
             # Get these locally to avoid accessing shared memory multiple times
             if len(new_old_events) > 0:
                 working_ids = [_[0] for _ in new_old_events]
