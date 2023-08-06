@@ -178,15 +178,19 @@ class Reactor(object):
             # Get these locally to avoid accessing shared memory multiple times
             if len(old_events) > 0:
                 working_ids = [_[0] for _ in old_events]
-                working_cat = self.template_database.get_events(
-                    eventid=working_ids)
+                try:
+                    working_cat = self.template_database.get_events(
+                        eventid=working_ids, _allow_update=False)
+                except Exception as e:
+                    Logger.error(f"Could not get template events from database due to {e}")
+                    working_cat = Catalog()
                 if len(working_ids) and not len(working_cat):
                     Logger.warning("Error getting events from database, getting individually")
                     working_cat = Catalog()
                     for working_id in working_ids:
                         try:
                             working_cat += self.template_database.get_events(
-                                eventid=working_id)
+                                eventid=working_id, _allow_update=False)
                         except Exception as e:
                             Logger.error(f"Could not read {working_id} due to {e}")
                             continue
