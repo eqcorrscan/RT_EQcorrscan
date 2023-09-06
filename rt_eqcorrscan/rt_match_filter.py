@@ -79,7 +79,7 @@ class RealTimeTribe(Tribe):
     _backfill_tribe = Tribe()  # Tribe of as-yet unused templates for backfilling
     _last_backfill_start = UTCDateTime.now()  # Time of last backfill run - update on run
     _number_of_backfillers = 0  # Book-keeping of backfiller processes.
-    _clean_backfillers = False  # If false will leave temporary backfiller dirs
+    _clean_backfillers = True  # If false will leave temporary backfiller dirs
 
     busy = False
 
@@ -432,11 +432,14 @@ class RealTimeTribe(Tribe):
             for d in family:
                 d._calculate_event(template=family.template)
                 Logger.debug(f"New detection at {d.detect_time}")
+            # Cope with no picks and hence no origins - these events have to be removed
+            family.detections = [d for d in family if len(d.event.origins)]
             if family.template.name not in _detected_templates:
                 self.party.families.append(family)
             else:
                 self.party.select(family.template.name).detections.extend(
                     family.detections)
+
         Logger.info("Removing duplicate detections")
         Logger.info(f"Party contained {len(self.party)} before decluster")
         if len(self.party) > 0:
@@ -454,6 +457,7 @@ class RealTimeTribe(Tribe):
             read_st = True
 
         # TODO: Need a better way to keep track of written detections - unique keys for detections?
+        # TODO: This is slow, and for Kaikoura, this is what stops it from running in real time
         for family in self.party:
             for detection in family:
                 # TODO: this check doesn't necassarily work well - detections may be the same physical detection, but different Detection objects
@@ -466,7 +470,7 @@ class RealTimeTribe(Tribe):
                     Logger.info(f"{_filename} exists, skipping")
                     continue
                 Logger.debug(f"Writing detection: {detection.detect_time}")
-                # TODO: copy detections from backfillers rather than reading waveforms
+                # TODO: Do not do this, let some other process work on making the waveforms.
                 if read_st:
                     max_shift = (
                         max(tr.stats.endtime for tr in family.template.st) -
@@ -862,6 +866,8 @@ class RealTimeTribe(Tribe):
                         Logger.error("Insufficient data after trimming, accumulating")
                         continue
                     Logger.info("Starting detection run")
+                    # merge again - checking length can split the data?
+                    st = st.merge()
                     Logger.info("Using data: \n{0}".format(
                         st.__str__(extended=True)))
                     try:
@@ -875,6 +881,7 @@ class RealTimeTribe(Tribe):
                             process_cores=self.process_cores,
                             parallel_process=self._parallel_processing,
                             ignore_bad_data=True, copy_data=False,
+                            concurrent_processing=False,
                             **kwargs)
                         Logger.info("Completed detection")
                     except Exception as e:  # pragma: no cover
