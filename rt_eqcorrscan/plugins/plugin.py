@@ -16,7 +16,9 @@ from typing import List, Set, Iterable
 # Plugin death is communicated by a kill_file
 
 REGISTERED_PLUGINS = {
-    "reloc": "relocation/relocator.py"
+    "reloc": "relocation/relocator.py",
+    "hyp": "relocation/hyp_runner.py",
+    "mag-calc": "magnitudes/local_magnitudes.py",
 }
 
 Logger = logging.getLogger(__name__)
