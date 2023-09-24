@@ -5,6 +5,7 @@ import shutil
 import time
 import traceback
 import os
+import pickle
 import logging
 import copy
 import numpy
@@ -498,7 +499,8 @@ class RealTimeTribe(Tribe):
         for family in self.party:
             Logger.debug(f"Checking for {family.template.name}")
             family.detections = [
-                d for d in family.detections if d.detect_time >= earliest_detection_time]
+                d for d in family.detections
+                if d.detect_time >= earliest_detection_time]
             Logger.debug(f"Appending {len(family)} detections")
             for detection in family:
                 # Need to append rather than create a new object
@@ -718,6 +720,13 @@ class RealTimeTribe(Tribe):
         detect_directory = detect_directory.format(name=self.name)
         if not os.path.isdir(detect_directory):
             os.makedirs(detect_directory)
+
+        # dump templates to the record of templates running
+        if not os.path.isfile("running_templates"):
+            os.makedirs("running_templates")
+            for template in self.templates:
+                with open(f"running_templates/{template.name}.pkl", "wb") as f:
+                    pickle.dump(template, f)
         # Get this locally before streaming starts
         buffer_capacity = self.rt_client.buffer_capacity  
         # Start the streamer
@@ -793,9 +802,10 @@ class RealTimeTribe(Tribe):
                         if np.ma.is_masked(tr.data):
                             gappy = True
                             gaps = tr.split().get_gaps()
-                            Logger.warning(f"Masked data found on {tr.id}. Gaps: {gaps}")
+                            Logger.warning(
+                                f"Masked data found on {tr.id}. Gaps: {gaps}")
                     if gappy:
-                        st = st.merge() # Re-merge after gap checking
+                        st = st.merge()  # Re-merge after gap checking
                     if self.has_wavebank:
                         st = _check_stream_is_int(st)
                         try:
@@ -811,25 +821,31 @@ class RealTimeTribe(Tribe):
                         Logger.warning("No data")
                         continue
                     elif last_data_received is None:
-                        Logger.warning("Streamer incorrectly reported None for last data received, "
-                                       "setting to stream end")
+                        Logger.warning(
+                            "Streamer incorrectly reported None for last "
+                            "data received, setting to stream end")
                         last_data_received = max(tr.stats.endtime for tr in st)
                     Logger.info(
                         f"Streaming Client last received data at "
                         f"{last_data_received}")
                     self._stream_end = max(tr.stats.endtime for tr in st)
                     min_stream_end = min(tr.stats.endtime for tr in st)
-                    # Update detection kwargs endtime to end of current data - no need to backfill beyond that
+                    # Update detection kwargs endtime to end of current data -
+                    # no need to backfill beyond that
                     detection_kwargs["endtime"] = self._stream_end
                     Logger.info(
-                        f"Real-time client provided data: \n{st.__str__(extended=True)}")
+                        "Real-time client provided data: \n"
+                        f"{st.__str__(extended=True)}")
                     # Cope with data that doesn't come
                     if start_time - last_data_received > restart_interval:
                         Logger.warning(
-                            "The streaming client has not given any new data for "
-                            f"{restart_interval} seconds. Restarting Streaming client")
-                        Logger.info(f"start_time: {start_time}, last_data_received: "
-                                    f"{last_data_received}, stream_end: {self._stream_end}")
+                            "The streaming client has not given any new "
+                            f"data for {restart_interval} seconds. Restarting"
+                            " Streaming client")
+                        Logger.info(
+                            f"start_time: {start_time}, last_data_received: "
+                            f"{last_data_received}, "
+                            f"stream_end: {self._stream_end}")
                         Logger.info("Stopping streamer")
                         self.rt_client.background_stop()
                         self.rt_client.stop()
@@ -888,18 +904,21 @@ class RealTimeTribe(Tribe):
                         Logger.error(e)
                         Logger.error(traceback.format_exc())
                         if "Cannot allocate memory" in str(e):
-                            Logger.error("Out of memory, stopping this detector")
+                            Logger.error(
+                                "Out of memory, stopping this detector")
                             self.stop()
                             break
                         if not self._runtime_check(
-                                run_start=run_start, max_run_length=max_run_length):
+                                run_start=run_start,
+                                max_run_length=max_run_length):
                             break
                         Logger.info(
                             "Waiting for {0:.2f}s and hoping this gets "
                             "better".format(self.detect_interval))
                         time.sleep(self.detect_interval)
                         continue
-                    Logger.info(f"Trying to get lock - Lock status: {self.lock}")
+                    Logger.info(
+                        f"Trying to get lock - Lock status: {self.lock}")
                     detection_kwargs.update(
                         dict(earliest_detection_time=self._stream_end - keep_detections))
                     with self.lock:
@@ -1019,6 +1038,13 @@ class RealTimeTribe(Tribe):
                                if t.name not in self.running_templates]
         if len(new_tribe):
             Logger.info(f"Read in {len(new_tribe)} new templates from disk")
+
+        # dump them to the record of templates running
+        if not os.path.isfile("running_templates"):
+            os.makedirs("running_templates")
+            for template in new_tribe:
+                with open(f"running_templates/{template.name}.pkl", "wb") as f:
+                    pickle.dump(template, f)
         return new_tribe
 
     def _add_templates_from_disk(

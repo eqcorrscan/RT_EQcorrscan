@@ -5,6 +5,7 @@ Functions for spinning up and running a real-time tribe based on trigger-events
 
 import os
 import logging
+import pickle
 
 from collections import Counter
 from typing import List, Union
@@ -76,12 +77,13 @@ def run(
     inventory = get_inventory(
         client, tribe, triggering_event=triggering_event,
         max_distance=config.rt_match_filter.max_distance,
-        n_stations=config.rt_match_filter.n_stations)
+        n_stations=config.rt_match_filter.n_stations, level="response")
     if len(inventory) == 0:
         Logger.critical(
             f"No inventory within {config.rt_match_filter.max_distance}"
             f"km of the trigger matching your templates, not running")
         return None, None
+    inventory.write("inventory.xml", format="STATIONXML")
     detect_interval = config.rt_match_filter.get(
         "detect_interval", 60)
     plot = config.rt_match_filter.get("plot", False)
@@ -93,6 +95,7 @@ def run(
         name=triggering_event.resource_id.id.split('/')[-1],
         wavebank=config.rt_match_filter.local_wave_bank,
         notifer=config.notifier)
+
     real_time_tribe._speed_up = speed_up
     if speed_up > 1:
         Logger.warning(f"Speed-up of {speed_up}: disallowing spoilers.")
