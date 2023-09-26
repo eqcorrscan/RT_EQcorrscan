@@ -35,17 +35,20 @@ from obsplus import WaveBank
 
 from eqcorrscan import Tribe, Party, Family, Detection
 from eqcorrscan.utils.catalog_to_dd import (
-    _hypodd_event_str, write_station, _compute_dt_correlations)
+    _hypodd_event_str, write_station, _compute_dt_correlations,
+    write_correlations, write_event, write_phase)
 
 from rt_eqcorrscan.config import read_config
 from rt_eqcorrscan.plugins.plugin import Watcher
 from rt_eqcorrscan.plugins.relocation.hyp_runner import (
     seisan_hyp, VelocityModel)
-
+from rt_eqcorrscan.plugins.relocation.growclust_runner import (
+    write_stlist, phase_to_evlist, run_growclust)
 
 Logger = logging.getLogger(__name__)
 
 ####################### WAVEFORM DB HELPERS #############################
+
 
 def _within_times(
     required: Tuple[UTCDateTime, UTCDateTime],
@@ -171,17 +174,6 @@ def bulk_for_event(
 
 ######################### RUNNERS #############################
 
-
-def run_growclust():
-    """ Run growclust """
-    return
-
-
-def run_hyp():
-    """ Run hypocentre """
-    return
-
-
 def family_from_event(
     event: Event,
     tribe: Tribe,
@@ -256,7 +248,7 @@ def relocator(
     watcher = Watcher(watch_pattern=f"{detect_dir}/????/???/*.xml")
 
     _remodel = True
-    event_id_mapper = dict()
+    event_id_mapper, stream_dict = None, dict()
     while True:
         watcher.check_for_updates()
 
@@ -307,7 +299,7 @@ def relocator(
             st += waveform_db.get_waveforms(n, s, l, c, starttime, endtime)
         st = st.merge()
 
-        # Fill gaps to make proccessing easier
+        # Fill gaps to make processing easier
         st = st.split().detrend().taper(
             max_length=0.5, max_percentage=0.5).merge(fill_value=0)
 
@@ -323,26 +315,91 @@ def relocator(
         )
 
         # Run location code (hyp)
-        for i in len(post_cat):
+        for i in range(len(post_cat)):
+            # TODO: in offline runs we remove picks that do not fit well.
             post_cat[i] = seisan_hyp(
                 event=post_cat[i], inventory=inv, velocities=vmodel.velocities,
                 vpvs=vmodel.vpvs, remodel=_remodel, clean=False)
             # Only remodel the traveltime tables the first run.
             _remodel = False
 
+        # TODO: More configurable params
+        extract_len, pre_pick, shift_len = 20., 5., 0.5
         # TODO: Add to waveform dict
+        for ev in post_cat:
+            ev_st = Stream()
+            for pick in ev.picks:
+                tr_id = pick.waveform_id.get_seed_string()
+                tr = st.select(id=tr_id).slice(
+                    pick.time - (pre_pick + shift_len),
+                    (pick.time - pre_pick) + extract_len + 2 * shift_len)
+                ev_st += tr.copy()
+            stream_dict.update({ev.resource_id.id: ev_st})
+        # We are done with the full stream now
+        del(st)
 
         # Compute correlations using _compute_dt_correlations
         # TODO: To do this efficiently we should have prepped waveforms in memory?
+        # TODO: Ideally we would just correlate the new events each time...
+        # if event_id_mapper is None:  # First run, do it all
+        event_id_mapper = write_correlations(
+                catalog=post_cat,
+                stream_dict=stream_dict,
+                extract_len=extract_len,
+                pre_pick=pre_pick,
+                shift_len=shift_len,
+                lowcut=1.0,
+                highcut=10.0,
+                max_sep=8,
+                min_link=8,
+                min_cc=0.0,
+                interpolate=False,
+                all_horiz=False,
+                max_workers=None,
+                parallel_process=False,
+                weight_by_square=True)
 
+        # TODO: Everything from here to EOF should be in growcluster_runner
 
         # Write event.dat (append to already existing file)
+        if os.path.isfile("event.dat"):
+            with open("event.dat", "r") as f:
+                original_events = f.read().splitlines()
+            os.remove("event.dat")
+        else:
+            original_events = []
+        write_event(post_cat, event_id_mapper)
+        with open("event.dat", "r") as f:
+            new_events = f.read().splitlines()
+        original_events.extend(new_events)
+        with open("event.dat", "w") as f:
+            f.write("\n".join(original_events))
 
-        # Write dt.cc (append to already existing file)
+        # Write phase.dat (then convert to phaselist)
+        if os.path.isfile("phase.dat"):
+            with open("phase.dat", "r") as f:
+                original_phases = f.read().splitlines()
+        else:
+            original_phases = []
+        write_phase(post_cat, event_id_mapper)
+        with open("phase.dat", "r") as f:
+            new_phases = f.read().splitlines()
+        original_phases.extend(new_phases)
+        with open("phase.dat", "w") as f:
+            f.write("\n".join(original_phases))
+        phase_to_evlist("phase.dat")
 
+        write_stlist(inv)
+        # TODO: Write growclust.inp file. This should be written as a func in growclust_runner
         # Run relocation code (growclust)
+        run_growclust()
 
-        # Write out current state of catalogue - try to not maintain too much in memory!
+        # Read back in growclust results
+
+        # TODO: EOF
+
+        # Write out current state of catalogue.
+        # # TODO: try to not maintain too much in memory!
 
         # Update old events
         watcher.processed(watcher.new)

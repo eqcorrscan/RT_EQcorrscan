@@ -59,17 +59,24 @@ class VelocityModel(object):
     def __repr__(self):
         return f"VelocityModel(<{len(self.velocities)} layers>, ..., vpvs={self.vpvs})"
 
-    def __str__(self):
-        lines = ["VelocityModel"]
-        for v in self.velocities:
-            lines.append(f"{v.top},{v.vp},{v.moho}")
-        lines.append(f"vpvs: {self.vpvs}")
-        return "\n".join(lines)
+    def __str__(self, format: str = "SEISAN"):
+        if format.upper() == "SEISAN":
+            lines = ["VelocityModel"]
+            for v in self.velocities:
+                lines.append(f"{v.top},{v.vp},{v.moho}")
+            lines.append(f"vpvs: {self.vpvs}")
+            return "\n".join(lines)
+        elif format.upper() == "GROWCLUST":
+            lines = []
+            for v in self.velocities:
+                lines.append(
+                    f"{v.top:4.1f} {v.vp:2.1f} {v.vp / self.vpvs:2.1f}")
+            return "\n".join(lines)
 
 
-    def write(self, filename: str):
+    def write(self, filename: str, format: str = "SEISAN"):
         with open(filename, "w") as f:
-            f.write(self.__str__())
+            f.write(self.__str__(format=format))
 
     @classmethod
     def read(cls, filename: str):
@@ -142,6 +149,24 @@ def seisan_hyp(
     # We lose some info in the round-trip to nordic
     event_out.origins[0] = event_back[0].origins[0]
     event_out.magnitudes = event_back[0].magnitudes
+    # Fix the seed ids in the seisan picks
+    for pick in event_back[0].picks:
+        matched_pick = [
+            p for p in event_out.picks
+            if p.waveform_id.station_code == pick.waveform_id.station_code and
+            p.waveform_id.channel_code[-1] == pick.waveform_id.channel_code[-1] and
+            abs(p.time - pick.time) < 0.1]
+        assert len(matched_pick) > 0, "No picks matched"
+        assert (len(set(p.waveform_id.get_seed_string()
+                        for p in matched_pick)) == 0,
+                "Multiple seed ids for matched picks")
+        print(f"Matched {pick.waveform_id.get_seed_string()} to "
+              f"{matched_pick[0].waveform_id.get_seed_string()}")
+        pick.waveform_id.network_code = matched_pick[0].waveform_id.network_code
+        pick.waveform_id.station_code = matched_pick[0].waveform_id.station_code
+        pick.waveform_id.location_code = matched_pick[0].waveform_id.location_code
+        pick.waveform_id.channel_code = matched_pick[0].waveform_id.channel_code
+
     event_out.picks = event_back[0].picks
     if clean:
         _cleanup()

@@ -26,6 +26,8 @@ from obspy.core.event import (
 
 from eqcorrscan.utils.catalog_to_dd import write_correlations, write_phase
 
+WORKING_DIR = os.path.dirname(os.path.abspath(__file__))
+GROWCLUST_DEFAULTS = f"{WORKING_DIR}/growclust.inp"
 
 Logger = logging.getLogger(__name__)
 
@@ -46,13 +48,17 @@ XCORR_PARAMS = {
 }
 
 
-def run_growclust(workers: int = 1):
+def run_growclust(workers: int = 1, control_file: str = GROWCLUST_DEFAULTS):
     """
     Requires a growclust julia runner script.
     """
     import subprocess
 
-    subprocess.run(["julia", f"-p{workers}", "run_growclust.jl", "growclust.inp"])
+    subprocess.run([
+        "julia",
+        f"-p{workers}",
+        f"{WORKING_DIR}/run_growclust.jl",
+        control_file])
     return
 
 
@@ -167,9 +173,11 @@ def write_stations(
             used_inv += net
     inv = used_inv
 
-    # lineformat:
-    # SMRN   39.5370 -119.7283 1331
-    # 12345678901234567890123456789
+    write_stlist(inv)
+    return
+
+
+def write_stlist(inv):
     lineformat = "{station:6s}{latitude:8.4f}{longitude:10.4f}{elevation:5d}"
     lines = []
     for net in inv:
@@ -183,7 +191,6 @@ def write_stations(
             lines.append(line)
     with open("stlist.txt", "w") as f:
         f.write("\n".join(lines))
-    return
 
 
 def process_input_catalog(catalog: Catalog, wavedir: str, indir: str) -> dict:
