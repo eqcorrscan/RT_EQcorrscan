@@ -3,7 +3,7 @@ Relocate!
 
 Steps:
 1. Read in event data
-2. Read in relevent waveform data
+2. Read in relevant waveform data
 3. Correlate
 4. Output to GrowClust format
 5. Run Growclust
@@ -26,6 +26,8 @@ from obspy.core.event import (
 
 from eqcorrscan.utils.catalog_to_dd import write_correlations, write_phase
 
+from rt_eqcorrscan.config.config import _ConfigAttribDict
+
 WORKING_DIR = os.path.dirname(os.path.abspath(__file__))
 GROWCLUST_DEFAULTS = f"{WORKING_DIR}/growclust.inp"
 
@@ -46,6 +48,109 @@ XCORR_PARAMS = {
     "max_workers": None,
     "parallel_process": False
 }
+
+
+class GrowClustConfig(_ConfigAttribDict):
+    """
+    Configuration holder for GrowClust.
+
+    Note that this would work better if we just wrote a json file then read
+    that json file in julia, but I can't be bothered to edit the julia code
+    yet.
+    """
+    defaults = {
+        "evlist_fmt": "1",
+        "fin_evlist": "evlist.txt",
+        "stlist_fmt": "2",
+        "fin_stlist": "stlist.txt",
+        "xcordat_fmt": "1 12",
+        "fin_xcordat": "dt.cc",
+        "ttabsrc": "trace",
+        "fin_vzmld": "vzmodel.txt",
+        "fdir_ttab": "tt",
+        "projection": "tmerc WGS84 0.0 0.0 0.0",
+        "vpvs_factor": 1.732,
+        "rayparam_min": 0.0,
+        "tt_zmin": -4.0,
+        "tt_zmax": 500.0,
+        "tt_zstep": 1.0,
+        "tt_xmin": 0.0,
+        "tt_xmax": 1000.0,
+        "tt_xstep": 1.0,
+        "rmin": 0.6,
+        "delmax": 80,
+        "rmsmax": 0.2,
+        "rpsavgmin": 0,
+        "rmincut": 0,
+        "ngoodmin": 0,
+        "iponly": 0,
+        "nboot": 0,
+        "nbranch_min": 2,
+        "fout_cat": "growclust_out.cat",
+        "fout_clust": "growclust_out.clust",
+        "fout_log": "growclust_out.log",
+        "fout_boot": "NONE",
+    }
+    readonly = []
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def write(self, filename: str = "growclust.inp"):
+        """
+        Write the input file for growclust.
+
+        The growclust file is fixed lines with comments between.
+        """
+        lines = [
+            "* Growclust parameter file written by RT-EQcorrscan",
+            "* evlist_fmt",
+            self.evlist_fmt,
+            "* fin_evlist",
+            self.fin_evlist,
+            "* "
+            "* stlist (1: station name, 2: incl. elev)",
+            self.stlist_fmt,
+            "* fin_stlist (station list file name)",
+            self.fin_stlist,
+            "*"
+            "* xcordat_fmt (1 = text), tdif_fmt (21 = tt2-tt1, 12 = tt1-tt2)",
+            self.scordat_fmt,
+            "* fin_xcordat",
+            self.fin_xcordat,
+            "*",
+            "* ttabsrc: travel time table source ('trace' or 'nllgrid')",
+            self.ttabsrc,
+            "* fin_vzmdl (model name)",
+            self.fin_vzmdl,
+            "* fdir_ttab (directory for travel time tables/grids or NONE)",
+            self.fdit_ttab,
+            "* projection (proj, ellps, lon0, lat0, rotANG, [latP1, latP2])",
+            self.projection,
+            "* vpvs_factor  rayparam_min",
+            f"{self.vpvs_factor}         {self.rayparam_min}",
+            "* tt_zmin  tt_zmax  tt_zstep",
+            f"{self.tt_zmin}   {self.tt_zmax}  {self.tt_zstep}",
+            "* tt_xmin  tt_xmax  tt_xstep",
+            f"{self.tt_xmin}  {self.tt_xmax}  {self.tt_xstep}",
+            "* rmin  delmax rmsmax",
+            f"{self.rmin}  {self.delmax}  {self.rmsmax}",
+            "* rpsavgmin, rmincut  ngoodmin   iponly",
+            f"{self.rpsavgmin}  {self.rmincut}  {self.ngoodmin}  {self.iponly}",
+            "* nboot  nbranch_min",
+            f"{self.nboot}    {self.nbranch_min}",
+            "* fout_cat (relocated catalog)",
+            self.fout_cat,
+            "* fout_clust (relocated cluster file)",
+            self.fout_clust,
+            "* fout_log (program log)",
+            self.fout_log,
+            "* fout_boot (bootstrap distribution)",
+            self.fout_boot
+        ]
+        with open(filename, "w") as f:
+            f.write("\n".join(lines))
+        return
 
 
 def run_growclust(workers: int = 1, control_file: str = GROWCLUST_DEFAULTS):
