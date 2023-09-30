@@ -1,7 +1,7 @@
-numpy>=1.12
+numpy>=1.22.2
 notifiers
 matplotlib>=1.3.0
-scipy>=0.18
+scipy>=1.10.0rc1
 bokeh
 obspy>=1.0.3
 notifiers
@@ -20,3 +20,6 @@ pytest-xdist
 pytest-rerunfailures
 pytest-mpl
 pillow>=6.2.3 # not directly required, pinned by Snyk to avoid a vulnerability
+certifi>=2023.7.22 # not directly required, pinned by Snyk to avoid a vulnerability
+requests>=2.31.0 # not directly required, pinned by Snyk to avoid a vulnerability
+setuptools>=65.5.1 # not directly required, pinned by Snyk to avoid a vulnerability
