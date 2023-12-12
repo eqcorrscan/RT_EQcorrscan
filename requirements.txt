@@ -19,4 +19,5 @@ pytest-pep8
 pytest-xdist
 pytest-rerunfailures
 pytest-mpl
+tornado>=6.3.3 # not directly required, pinned by Snyk to avoid a vulnerability
 pillow>=10.0.0 # not directly required, pinned by Snyk to avoid a vulnerability
