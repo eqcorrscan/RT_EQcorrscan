@@ -12,6 +12,7 @@ import gc
 import glob
 import subprocess
 import numpy as np
+import platform
 
 # Memory tracking for debugging
 # import psutil
@@ -971,7 +972,7 @@ class RealTimeTribe(Tribe):
                     Logger.error(traceback.format_exc())
 
                     message = f"""\
-                    Uncaught error: {e}
+                    Uncaught error on {platform.node()}: {e}
                     
                     Traceback:
                     {traceback.format_exc()}
@@ -1239,8 +1240,10 @@ class RealTimeTribe(Tribe):
                 if os.path.isdir(backfiller_name):
                     shutil.rmtree(backfiller_name)
         if write_stopfile:
+            Logger.info("Writing stopfile")
             with open(".stopfile", "a") as f:
                 f.write(f"{self.name}\n")
+            Logger.info("Written stopfile")
 
 
 def reshape_templates(
