@@ -1215,7 +1215,7 @@ class RealTimeTribe(Tribe):
         Logger.info("Backfill process started, returning")
         return
 
-    def stop(self, write_stopfile: bool = False) -> None:
+    def stop(self, write_stopfile: bool = True) -> None:
         """
         Stop the real-time system.
        
@@ -1225,6 +1225,7 @@ class RealTimeTribe(Tribe):
             Used to write a one-line file telling listening systems that
             this has stopped. Used by the Reactor.
         """
+        self.notifier.notify("Stopping run")
         if self.plotter is not None:  # pragma: no cover
             self.plotter.background_stop()
         self.rt_client.background_stop()
