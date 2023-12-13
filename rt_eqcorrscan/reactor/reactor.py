@@ -6,6 +6,7 @@ import time
 import os
 import signal
 import subprocess
+import platform
 
 from copy import deepcopy
 from typing import Callable, Union, List
@@ -233,6 +234,7 @@ class Reactor(object):
             working_dir = _get_triggered_working_dir(
                 trigger_event_id, exist_ok=True)
             if os.path.isfile(f"{working_dir}/.stopfile"):
+                Logger.info(f"Found stopfile for {trigger_event_id}")
                 self.stop_tribe(trigger_event_id)
 
     def process_new_events(self, new_events: Union[Catalog, List[Event]]) -> None:
@@ -305,7 +307,8 @@ class Reactor(object):
                 "Listener triggered by event {0}".format(trigger_event))
             # Send this as an email
             self.notifier.notify(
-                content=f"Listener triggered by event {trigger_event}")
+                content=f"Listener triggered on {platform.node()} "
+                        f"by event {trigger_event}")
             if len(self._running_regions) >= self.available_cores:
                 Logger.error("No more available processors")
                 continue
@@ -384,7 +387,8 @@ class Reactor(object):
     def _handle_interupt(self, signum, frame) -> None:
         Logger.critical(f"Received signal: {signum}")
         self.notifier.notify(
-            content=f"CRITICAL: Stopping reactor after interupt: {signum}")
+            content=f"CRITICAL: Stopping reactor on {platform.node()} "
+                    f"after interrupt: {signum}")
         self.stop()
 
     def stop(self, raise_exit: bool=True) -> None:

@@ -1,6 +1,7 @@
 [run]
 branch = True
 source = rt_eqcorrscan
+concurrency = multiprocessing,thread
 omit =
   rt_eqcorrscan/examples/*.py
   rt_eqcorrscan/plotting/plot_buffer.py
