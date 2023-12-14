@@ -679,6 +679,12 @@ class RealTimeTribe(Tribe):
         The party created - will not contain detections expired by
         `keep_detections` threshold.
         """
+        # First: start collecting data NOW
+        # Get this locally before streaming starts
+        buffer_capacity = self.rt_client.buffer_capacity
+        # Start the streamer
+        self._start_streaming()
+        
         # Update backfill start time
         self._last_backfill_start = UTCDateTime.now()
         restart_interval = 600.0
@@ -720,10 +726,6 @@ class RealTimeTribe(Tribe):
         detect_directory = detect_directory.format(name=self.name)
         if not os.path.isdir(detect_directory):
             os.makedirs(detect_directory)
-        # Get this locally before streaming starts
-        buffer_capacity = self.rt_client.buffer_capacity  
-        # Start the streamer
-        self._start_streaming()
 
         Logger.info("Detection will use the following data: {0}".format(
             self.expected_seed_ids))
