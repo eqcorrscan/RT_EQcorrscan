@@ -684,7 +684,7 @@ class RealTimeTribe(Tribe):
         buffer_capacity = self.rt_client.buffer_capacity
         # Start the streamer
         self._start_streaming()
-        
+
         # Update backfill start time
         self._last_backfill_start = UTCDateTime.now()
         restart_interval = 600.0
@@ -885,7 +885,7 @@ class RealTimeTribe(Tribe):
                             process_cores=self.process_cores,
                             parallel_process=self._parallel_processing,
                             ignore_bad_data=True, copy_data=False,
-                            concurrent_processing=False,
+                            concurrent_processing=False, overlap=0,
                             **kwargs)
                         Logger.info("Completed detection")
                     except Exception as e:  # pragma: no cover
