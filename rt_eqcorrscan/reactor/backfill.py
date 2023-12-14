@@ -113,7 +113,7 @@ def backfill(
         # st_chunk = read(st_filename, starttime=_starttime, endtime=_endtime).merge()
         Logger.info(f"Read in {st_chunk}")
         try:
-            new_party += new_tribe.detect(
+            _party = new_tribe.detect(
                 stream=st_chunk, plot=False, threshold=threshold,
                 threshold_type=threshold_type, trig_int=trig_int,
                 xcorr_func="numpy",
@@ -125,7 +125,9 @@ def backfill(
                 ignore_bad_data=True,
                 overlap=None,
                 **kwargs)
-            Logger.info(f"Backfiller made {len(new_party)} detections between {_starttime} and {_endtime}")
+            Logger.info(f"Backfiller made {len(_party)} detections between {_starttime} and {_endtime}")
+            if len(_party):
+                new_party += _party
         except Exception as e:
             Logger.critical(f"Uncaught error: {e}")
             Logger.error(traceback.format_exc())
