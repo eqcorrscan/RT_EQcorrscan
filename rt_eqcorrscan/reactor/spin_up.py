@@ -57,7 +57,7 @@ def run(
         tribe = pickle.load(f)
     # tribe = Tribe().read("tribe.tgz")
     # Remove file to avoid re-reading it
-    os.remove("tribe.tgz")
+    os.remove("tribe.pkl")
 
     Logger.info("Read in {0} templates".format(len(tribe)))
     if len(tribe) == 0:
