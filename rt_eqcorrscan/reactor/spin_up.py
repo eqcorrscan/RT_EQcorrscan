@@ -5,6 +5,7 @@ Functions for spinning up and running a real-time tribe based on trigger-events
 
 import os
 import logging
+import pickle
 
 from collections import Counter
 from typing import List, Union
@@ -13,8 +14,6 @@ from obspy import read_events, Inventory, UTCDateTime, Stream
 from obspy.core.event import Event
 from obspy.clients.fdsn.client import FDSNNoDataException
 from obspy.geodetics import locations2degrees, kilometer2degrees
-
-from obsplus import WaveBank
 
 from eqcorrscan import Tribe
 
@@ -54,7 +53,9 @@ def run(
     Logger.debug(f"Triggered by {triggering_event}")
     min_stations = config.rt_match_filter.get("min_stations", None)
     Logger.info("Reading the Tribe")
-    tribe = Tribe().read("tribe.tgz")
+    with open("tribe.pkl", "rb") as f:
+        tribe = pickle.load(f)
+    # tribe = Tribe().read("tribe.tgz")
     # Remove file to avoid re-reading it
     os.remove("tribe.tgz")
 
