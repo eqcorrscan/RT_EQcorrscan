@@ -123,7 +123,7 @@ def backfill(
                 parallel_process=parallel_processing,
                 process_cores=process_cores, copy_data=False,
                 ignore_bad_data=True,
-                overlap=0,
+                overlap=None,
                 **kwargs)
             Logger.info(f"Backfiller made {len(new_party)} detections between {_starttime} and {_endtime}")
         except Exception as e:

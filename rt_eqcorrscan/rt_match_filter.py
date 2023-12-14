@@ -885,7 +885,7 @@ class RealTimeTribe(Tribe):
                             process_cores=self.process_cores,
                             parallel_process=self._parallel_processing,
                             ignore_bad_data=True, copy_data=False,
-                            concurrent_processing=False, overlap=0,
+                            concurrent_processing=False, overlap=None,
                             **kwargs)
                         Logger.info("Completed detection")
                     except Exception as e:  # pragma: no cover
