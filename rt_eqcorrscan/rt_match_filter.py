@@ -8,6 +8,7 @@ import os
 import logging
 import copy
 import numpy
+import pickle
 import gc
 import glob
 import subprocess
@@ -1181,7 +1182,8 @@ class RealTimeTribe(Tribe):
             tribe = templates
         else:
             tribe = Tribe(templates)
-        tribe.write(f"{backfiller_name}/tribe.tgz")
+        with open(f"{backfiller_name}/tribe.pkl", "wb") as f:
+            pickle.dump(tribe, f)
 
         del st_files
         # Force garbage collection before creating new process

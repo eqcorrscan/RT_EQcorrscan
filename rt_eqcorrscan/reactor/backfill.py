@@ -6,6 +6,7 @@ Functions for spinning up and running a backfiller to detect with new templates 
 import os
 import logging
 import gc
+import pickle
 import numpy as np
 import traceback
 import matplotlib.pyplot as plt
@@ -63,7 +64,9 @@ def backfill(
                 f"log_to_screen={log_to_screen}, starttime={starttime}, endtime={endtime}")
 
     # Read in tribe
-    new_tribe = Tribe().read("tribe.tgz")
+    with open("tribe.pkl", "rb") as f:
+        new_tribe = pickle.load(f)
+    # new_tribe = Tribe().read("tribe.tgz")
     # Set up LocalClient in streams folder
     st_client = LocalClient("streams")
     # st_filename = "stream.ms"  # Avoid reading in whole stream - expensive in memory
