@@ -501,7 +501,7 @@ def _get_data_for_event(
     try:
         st = client.get_waveforms_bulk(bulk)
     except Exception as e:
-        Logger.error(e)
+        Logger.error(f"Failed to download bulk due to {e}, attempting to download individual channels")
         st = Stream()
         for channel in bulk:
             Logger.debug("Downloading individual channel {0}".format(channel))
@@ -511,7 +511,8 @@ def _get_data_for_event(
                     location=channel[2], channel=channel[3],
                     starttime=channel[4], endtime=channel[5])
             except Exception as e:
-                Logger.error(e)
+                Logger.error(f"Could not download {channel} due to {e}")
+                Logger.error(f"Client base url is {client.base_url}")
     # Trim to expected length
     try:
         st.merge()
