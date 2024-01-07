@@ -8,6 +8,7 @@ import os
 import logging
 import copy
 import numpy
+import pickle
 import gc
 import glob
 import subprocess
@@ -678,6 +679,12 @@ class RealTimeTribe(Tribe):
         The party created - will not contain detections expired by
         `keep_detections` threshold.
         """
+        # First: start collecting data NOW
+        # Get this locally before streaming starts
+        buffer_capacity = self.rt_client.buffer_capacity
+        # Start the streamer
+        self._start_streaming()
+
         # Update backfill start time
         self._last_backfill_start = UTCDateTime.now()
         restart_interval = 600.0
@@ -719,10 +726,6 @@ class RealTimeTribe(Tribe):
         detect_directory = detect_directory.format(name=self.name)
         if not os.path.isdir(detect_directory):
             os.makedirs(detect_directory)
-        # Get this locally before streaming starts
-        buffer_capacity = self.rt_client.buffer_capacity  
-        # Start the streamer
-        self._start_streaming()
 
         Logger.info("Detection will use the following data: {0}".format(
             self.expected_seed_ids))
@@ -882,7 +885,7 @@ class RealTimeTribe(Tribe):
                             process_cores=self.process_cores,
                             parallel_process=self._parallel_processing,
                             ignore_bad_data=True, copy_data=False,
-                            concurrent_processing=False,
+                            concurrent_processing=False, overlap=None,
                             **kwargs)
                         Logger.info("Completed detection")
                     except Exception as e:  # pragma: no cover
@@ -1181,7 +1184,8 @@ class RealTimeTribe(Tribe):
             tribe = templates
         else:
             tribe = Tribe(templates)
-        tribe.write(f"{backfiller_name}/tribe.tgz")
+        with open(f"{backfiller_name}/tribe.pkl", "wb") as f:
+            pickle.dump(tribe, f)
 
         del st_files
         # Force garbage collection before creating new process
@@ -1215,7 +1219,7 @@ class RealTimeTribe(Tribe):
         Logger.info("Backfill process started, returning")
         return
 
-    def stop(self, write_stopfile: bool = False) -> None:
+    def stop(self, write_stopfile: bool = True) -> None:
         """
         Stop the real-time system.
        
@@ -1225,6 +1229,7 @@ class RealTimeTribe(Tribe):
             Used to write a one-line file telling listening systems that
             this has stopped. Used by the Reactor.
         """
+        self.notifier.notify("Stopping run")
         if self.plotter is not None:  # pragma: no cover
             self.plotter.background_stop()
         self.rt_client.background_stop()
@@ -1315,10 +1320,17 @@ def squash_duplicates(template: Template):
     unique_template_st = Stream()
     unique_event_picks = []
     for seed_id, repeats in seed_ids.most_common():
-        # TODO: this restricts to only picks on that seed id - but we could just have matched picks on station
+        # TODO: this restricts to only picks on that seed id - but we could
+        #  just have matched picks on station
+        pick_type = "PS"
         seed_id_picks = [p for p in template.event.picks 
                          if p.waveform_id.get_seed_string() == seed_id 
-                         and p.phase_hint[0] in "PS"]
+                         and p.phase_hint[0] in pick_type]
+        if len(seed_id_picks) == 0:
+            # Cope with potential for picks with matching seed id but without
+            # matching phase hint
+            Logger.info(f"No matched picks of {pick_type} for {seed_id}")
+            continue
         if repeats == 1:
             unique_template_st += template.st.select(id=seed_id)
             unique_event_picks.append(seed_id_picks[0])

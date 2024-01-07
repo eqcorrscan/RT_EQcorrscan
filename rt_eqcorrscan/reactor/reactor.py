@@ -7,6 +7,7 @@ import os
 import signal
 import subprocess
 import platform
+import pickle
 
 from copy import deepcopy
 from typing import Callable, Union, List
@@ -349,7 +350,9 @@ class Reactor(object):
             return
         working_dir = _get_triggered_working_dir(
             triggering_event_id, exist_ok=True)
-        tribe.write(os.path.join(working_dir, "tribe.tgz"))
+        with open(os.path.join(working_dir, "tribe.pkl"), "wb") as f:
+            pickle.dump(tribe, f)
+        # tribe.write(os.path.join(working_dir, "tribe.tgz"))
         self.config.write(
             os.path.join(working_dir, 'rt_eqcorrscan_config.yml'))
         triggering_event.write(
