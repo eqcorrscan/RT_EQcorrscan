@@ -128,9 +128,15 @@ def _summarize_template(
     return out
 
 
-def _chunksize(n_tasks: int, max_workers: int = None) -> int:
+def _chunksize(
+    n_tasks: int,
+    max_workers: int = None,
+    divisor: int = 100,  # Used to give more up-to-date progress reports
+) -> int:
     max_workers = max_workers or cpu_count()
-    return n_tasks // (max_workers - 1)
+    chunksize = n_tasks // (max_workers - 1)
+    chunksize //= divisor
+    return chunksize
 
 
 def _workers(executor) -> int:
