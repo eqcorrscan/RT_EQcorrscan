@@ -6,6 +6,7 @@ import logging
 import os
 import threading
 import pickle
+import tqdm
 
 from pathlib import Path
 from collections import Counter
@@ -194,6 +195,35 @@ class _SerialExecutor(Executor):
         """
         return map(fn, *iterables)
 
+    def imap(
+        self,
+        fn: Callable,
+        *iterables: Iterable,
+        timeout=None,
+        chunksize=1,
+    ) -> Iterable:
+        """
+        Map iterables to a function
+
+        Parameters
+        ----------
+        fn
+            callable
+        iterables
+            iterable of arguments for `fn`
+        timeout
+            Throw-away variable
+        chunksize
+            Throw-away variable
+
+        Returns
+        -------
+        The result of mapping `fn` across `*iterables`
+        """
+        return (_ for _ in self.map(
+            fn=fn, timeout=timeout, chunksize=chunksize,
+            *iterables))
+
     def submit(self, fn: Callable, *args, **kwargs) -> _Result:
         """
         Run a single function.
@@ -288,10 +318,13 @@ class TemplateBank(EventBank):
             Whether to use pickled templates on disk if available - do not
             use this option if pickled db was made on a different machine.
         """
-        paths = self._template_paths(**kwargs)
+        paths = list(self._template_paths(**kwargs))
         _tread = partial(_lazy_template_read, read_pickle=use_pickled)
-        future = self.executor.map(_tread, paths)
-        return Tribe([t for t in future if t is not None])
+        return Tribe(list(_ for _ in tqdm.tqdm(
+            (t for t in self.executor.imap(_tread, paths)),
+            total=len(paths)) if _ is not None))
+        # future = self.executor.map(_tread, paths)
+        # return Tribe([t for t in future if t is not None])
 
     def _template_paths(self, **kwargs) -> Iterable:
         """ Get the paths of templates matching kwargs criteria """
@@ -330,14 +363,18 @@ class TemplateBank(EventBank):
             template_name_structure=self.name_structure,
             bank_path=self.bank_path)
         with self.index_lock:
-            _ = [_ for _ in self.executor.map(inner_put_template, templates)]
+            _ = list(tqdm.tqdm(
+                (_ for _ in self.executor.imap(inner_put_template, templates)),
+                total=len(templates)))
 
     def pickle_templates(self, **kwargs) -> List:
         """ Pickle templates in the db for faster reading later. """
         paths = [p for p in self._template_paths(**kwargs)]
         Logger.info(f"Pickling {len(paths)} templates...")
-        future = self.executor.map(_pickle_template, paths)
-        issues = [f for f in future if f is not None]
+        future = self.executor.imap(_pickle_template, paths)
+        issues = list(_ for _ in tqdm.tqdm(
+            (f for f in future), total=len(paths))
+                      if _ is not None)
         return issues
 
     def make_templates(
