@@ -75,7 +75,7 @@ def _lazy_template_read(path, read_pickle: bool = True) -> Template:
                     template = pickle.load(f)
             except Exception as e:
                 Logger.error(f"Could not read pickled file as "
-                             f"{pickle_path} due to {e}}")
+                             f"{pickle_path} due to {e}")
             else:
                 return template
     try:
@@ -332,9 +332,9 @@ class TemplateBank(EventBank):
         with self.index_lock:
             _ = [_ for _ in self.executor.map(inner_put_template, templates)]
 
-    def pickle_templates(self) -> List:
+    def pickle_templates(self, **kwargs) -> List:
         """ Pickle templates in the db for faster reading later. """
-        paths = self._template_paths()
+        paths = self._template_paths(**kwargs)
         future = self.executor.map(_pickle_template, paths)
         issues = [f for f in future if f is not None]
         return issues
