@@ -195,35 +195,6 @@ class _SerialExecutor(Executor):
         """
         return map(fn, *iterables)
 
-    def imap(
-        self,
-        fn: Callable,
-        *iterables: Iterable,
-        timeout=None,
-        chunksize=1,
-    ) -> Iterable:
-        """
-        Map iterables to a function
-
-        Parameters
-        ----------
-        fn
-            callable
-        iterables
-            iterable of arguments for `fn`
-        timeout
-            Throw-away variable
-        chunksize
-            Throw-away variable
-
-        Returns
-        -------
-        The result of mapping `fn` across `*iterables`
-        """
-        return (_ for _ in self.map(
-            fn=fn, timeout=timeout, chunksize=chunksize,
-            *iterables))
-
     def submit(self, fn: Callable, *args, **kwargs) -> _Result:
         """
         Run a single function.
@@ -321,7 +292,7 @@ class TemplateBank(EventBank):
         paths = list(self._template_paths(**kwargs))
         _tread = partial(_lazy_template_read, read_pickle=use_pickled)
         return Tribe(list(_ for _ in tqdm.tqdm(
-            (t for t in self.executor.imap(_tread, paths)),
+            (t for t in self.executor.map(_tread, paths)),
             total=len(paths)) if _ is not None))
         # future = self.executor.map(_tread, paths)
         # return Tribe([t for t in future if t is not None])
@@ -364,14 +335,14 @@ class TemplateBank(EventBank):
             bank_path=self.bank_path)
         with self.index_lock:
             _ = list(tqdm.tqdm(
-                (_ for _ in self.executor.imap(inner_put_template, templates)),
+                (_ for _ in self.executor.map(inner_put_template, templates)),
                 total=len(templates)))
 
     def pickle_templates(self, **kwargs) -> List:
         """ Pickle templates in the db for faster reading later. """
         paths = [p for p in self._template_paths(**kwargs)]
         Logger.info(f"Pickling {len(paths)} templates...")
-        future = self.executor.imap(_pickle_template, paths)
+        future = self.executor.map(_pickle_template, paths)
         issues = list(_ for _ in tqdm.tqdm(
             (f for f in future), total=len(paths))
                       if _ is not None)
