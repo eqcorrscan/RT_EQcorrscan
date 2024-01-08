@@ -334,7 +334,8 @@ class TemplateBank(EventBank):
 
     def pickle_templates(self, **kwargs) -> List:
         """ Pickle templates in the db for faster reading later. """
-        paths = self._template_paths(**kwargs)
+        paths = [p for p in self._template_paths(**kwargs)]
+        Logger.info(f"Pickling {len(paths)} templates...")
         future = self.executor.map(_pickle_template, paths)
         issues = [f for f in future if f is not None]
         return issues
