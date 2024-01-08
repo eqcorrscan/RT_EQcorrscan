@@ -5,11 +5,12 @@ Tools for managing a database of template information.
 import logging
 import os
 import threading
+import pickle
 
 from pathlib import Path
 from collections import Counter
 
-from typing import Optional, Union, Callable, Iterable
+from typing import Optional, Union, Callable, Iterable, List
 from concurrent.futures import Executor
 from functools import partial
 
@@ -31,7 +32,26 @@ Logger = logging.getLogger(__name__)
 TEMPLATE_EXT = ".tgz"
 
 
-def _lazy_template_read(path) -> Template:
+def _pickle_template(
+    path: str,
+    template: Union[Template, None] = None,
+    skip_existing: bool = True
+) -> Union[str, None]:
+    pickle_path = os.path.splitext(path)[0] + ".pkl"
+    if os.path.isfile(pickle_path) and skip_existing:
+        return None
+    try:
+        if template is None:
+            template = read_template(path)
+        with open(pickle_path, "wb") as f:
+            pickle.dump(template, f)
+    except Exception as e:
+        return e.__str__()
+    else:
+        return None
+
+
+def _lazy_template_read(path, read_pickle: bool = True) -> Template:
     """
     Handle exceptions in template reading.
 
@@ -47,6 +67,17 @@ def _lazy_template_read(path) -> Template:
     if not os.path.isfile(path):
         Logger.debug("{0} does not exist".format(path))
         return None
+    if read_pickle:
+        pickle_path = os.path.splitext(path)[0] + ".pkl"
+        if os.path.isfile(pickle_path):
+            try:
+                with open(pickle_path, "rb") as f:
+                    template = pickle.load(f)
+            except Exception as e:
+                Logger.error(f"Could not read pickled file as "
+                             f"{pickle_path} due to {e}")
+            else:
+                return template
     try:
         return read_template(path)
     except Exception as e:
@@ -184,7 +215,9 @@ class _SerialExecutor(Executor):
 
 
 class TemplateBank(EventBank):
-    # TODO: This should probably be it's own _Bank subclass with extra columns including if template exists and template channels - would allow for faster filtering
+    # TODO: This should probably be it's own _Bank subclass with extra columns
+    #  including if template exists and template channels - would allow
+    #  for faster filtering
     """
     A database manager for templates. Based on obsplus EventBank.
 
@@ -243,7 +276,7 @@ class TemplateBank(EventBank):
         self.executor = executor or _SerialExecutor()
 
     @compose_docstring(get_events_params=get_events_parameters)
-    def get_templates(self, **kwargs) -> Tribe:
+    def get_templates(self, use_pickled: bool = True, **kwargs) -> Tribe:
         """
         Get template waveforms from the database
 
@@ -251,13 +284,21 @@ class TemplateBank(EventBank):
         keyword argument for parallel reading.
 
         {get_event_params}
+        use_pickled
+            Whether to use pickled templates on disk if available - do not
+            use this option if pickled db was made on a different machine.
         """
+        paths = self._template_paths(**kwargs)
+        _tread = partial(_lazy_template_read, read_pickle=use_pickled)
+        future = self.executor.map(_tread, paths)
+        return Tribe([t for t in future if t is not None])
+
+    def _template_paths(self, **kwargs) -> Iterable:
+        """ Get the paths of templates matching kwargs criteria """
         with self.index_lock:
             paths = str(self.bank_path) + os.sep + self.read_index(
                 columns=["path", "latitude", "longitude"], **kwargs).path
-        paths = [path.replace(self.ext, self.template_ext) for path in paths]
-        future = self.executor.map(_lazy_template_read, paths)
-        return Tribe([t for t in future if t is not None])
+        return [path.replace(self.ext, self.template_ext) for path in paths]
 
     def put_templates(
         self,
@@ -290,6 +331,14 @@ class TemplateBank(EventBank):
             bank_path=self.bank_path)
         with self.index_lock:
             _ = [_ for _ in self.executor.map(inner_put_template, templates)]
+
+    def pickle_templates(self, **kwargs) -> List:
+        """ Pickle templates in the db for faster reading later. """
+        paths = [p for p in self._template_paths(**kwargs)]
+        Logger.info(f"Pickling {len(paths)} templates...")
+        future = self.executor.map(_pickle_template, paths)
+        issues = [f for f in future if f is not None]
+        return issues
 
     def make_templates(
         self,
@@ -368,6 +417,7 @@ def _put_template(
     path_structure: str,
     template_name_structure: str,
     bank_path: str,
+    write_pickle: bool = True,
 ) -> str:
     """ Get path for template and write it. """
     path = _summarize_template(
@@ -377,6 +427,10 @@ def _put_template(
     ppath.parent.mkdir(parents=True, exist_ok=True)
     output_path = str(ppath)
     template.write(output_path)
+    if write_pickle:
+        issue = _pickle_template(output_path, template=template)
+        if issue:
+            Logger.warning(f"Could not pickle due to {issue}")
     # Issue with older EQcorrscan doubling up extension
     if os.path.isfile(output_path + TEMPLATE_EXT):
         os.rename(output_path + TEMPLATE_EXT, output_path)
@@ -501,7 +555,8 @@ def _get_data_for_event(
     try:
         st = client.get_waveforms_bulk(bulk)
     except Exception as e:
-        Logger.error(e)
+        Logger.error(f"Failed to download bulk due to {e}, "
+                     f"attempting to download individual channels")
         st = Stream()
         for channel in bulk:
             Logger.debug("Downloading individual channel {0}".format(channel))
@@ -511,7 +566,8 @@ def _get_data_for_event(
                     location=channel[2], channel=channel[3],
                     starttime=channel[4], endtime=channel[5])
             except Exception as e:
-                Logger.error(e)
+                Logger.error(f"Could not download {channel} due to {e}")
+                Logger.error(f"Client base url is {client.base_url}")
     # Trim to expected length
     try:
         st.merge()
