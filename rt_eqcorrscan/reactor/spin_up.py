@@ -112,6 +112,10 @@ def run(
     Logger.info("Created real-time tribe with inventory:\n{0}".format(
         inventory))
 
+    # Start streaming NOW!
+    real_time_tribe._start_streaming()
+    Logger.info("Started streaming real-time data")
+
     # TODO: How will this work? Currently notifiers are not implemented
     # real_time_tribe.notifier = None
 
