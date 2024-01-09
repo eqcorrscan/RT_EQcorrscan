@@ -151,6 +151,11 @@ def run(
         else:
             st = st.split()  # Cannot write masked data
             real_time_tribe.wavebank.put_waveforms(st)
+            # Add backfill traces to real-time buffer
+            for tr in st:
+                real_time_tribe.rt_client.on_data(tr)
+            Logger.info("Added traces to real-time buffer")
+
         backfill_stations = {tr.stats.station for tr in st}
         backfill_templates = [
             t for t in real_time_tribe.templates
