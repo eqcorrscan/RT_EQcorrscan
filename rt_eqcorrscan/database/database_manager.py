@@ -136,10 +136,10 @@ def _chunksize(
     max_workers = max_workers or cpu_count()
     chunksize = n_tasks // (max_workers - 1)
     chunksize //= divisor
-    return chunksize
+    return max(chunksize, 1)
 
 
-def _workers(executor) -> int:
+def _workers(executor) -> Union[int, None]:
     if hasattr(executor, '_max_workers'):
         return executor._max_workers
     return None
