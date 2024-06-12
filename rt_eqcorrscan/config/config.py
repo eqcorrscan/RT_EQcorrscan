@@ -362,7 +362,7 @@ class Config(object):
 
     def write(self, config_file: str) -> None:
         """
-        Write the configuration to a tml formatted file.
+        Write the configuration to a yml formatted file.
 
         Parameters
         ----------

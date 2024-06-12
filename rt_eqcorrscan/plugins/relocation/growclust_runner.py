@@ -20,9 +20,11 @@ import datetime as dt
 from collections import namedtuple
 from typing import Iterable
 
-from obspy import read_events, Catalog, UTCDateTime, read, Stream, read_inventory, Inventory
+from obspy import (
+    read_events, Catalog, UTCDateTime, read, Stream, read_inventory, Inventory)
 from obspy.core.event import (
-    Event, Origin, Magnitude, ResourceIdentifier, OriginUncertainty, OriginQuality)
+    Event, Origin, Magnitude, ResourceIdentifier, OriginUncertainty,
+    OriginQuality)
 
 from eqcorrscan.utils.catalog_to_dd import write_correlations, write_phase
 
@@ -96,7 +98,7 @@ class GrowClustConfig(_ConfigAttribDict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def write(self, filename: str = "growclust.inp"):
+    def write_growclust(self, filename: str = "growclust.inp"):
         """
         Write the input file for growclust.
 

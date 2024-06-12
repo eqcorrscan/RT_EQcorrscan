@@ -101,6 +101,9 @@ class RealTimeTribe(Tribe):
     wavebank_lock = Lock()
     has_wavebank = False
 
+    # Plugin management
+    plugins = []
+
     def __init__(
         self,
         name: str = None,
@@ -625,7 +628,7 @@ class RealTimeTribe(Tribe):
         max_run_length: float = None,
         minimum_rate: float = None,
         backfill_to: UTCDateTime = None,
-        backfill_client=None,
+        backfill_client = None,
         **kwargs
     ) -> Party:
         """
@@ -1267,6 +1270,10 @@ class RealTimeTribe(Tribe):
         if write_stopfile:
             with open(".stopfile", "a") as f:
                 f.write(f"{self.name}\n")
+        # Stop plugins
+        for plugin in self.plugins:
+            # TODO: Write a poison file in the input directory of the plugin
+            pass
 
 
 def reshape_templates(
