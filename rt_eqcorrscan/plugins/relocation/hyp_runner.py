@@ -19,7 +19,9 @@ from obspy.io.nordic.core import write_select, read_nordic
 
 Logger = logging.getLogger(__name__)
 
-############################## VELOCITY MODEL CLASSES #################################
+
+# ############################# VELOCITY MODEL CLASSES #########################
+
 
 class Velocity(object):
     """
@@ -57,7 +59,8 @@ class VelocityModel(object):
         self.vpvs = vpvs
 
     def __repr__(self):
-        return f"VelocityModel(<{len(self.velocities)} layers>, ..., vpvs={self.vpvs})"
+        return (f"VelocityModel(<{len(self.velocities)} "
+                f"layers>, ..., vpvs={self.vpvs})")
 
     def __str__(self, format: str = "SEISAN"):
         if format.upper() == "SEISAN":
@@ -72,7 +75,6 @@ class VelocityModel(object):
                 lines.append(
                     f"{v.top:4.1f} {v.vp:2.1f} {v.vp / self.vpvs:2.1f}")
             return "\n".join(lines)
-
 
     def write(self, filename: str, format: str = "SEISAN"):
         with open(filename, "w") as f:
@@ -103,9 +105,9 @@ class VelocityModel(object):
         return cls(velocities=velocities, vpvs=vpvs)
 
 
-###################################### END OF VELOCITY MODELS #######################
+# ##################################### END OF VELOCITY MODELS ################
 
-################################## SEISAN HYP CALLS #################################
+# ################################# SEISAN HYP CALLS ##########################
 
 def seisan_hyp(
     event: Event,
@@ -259,10 +261,10 @@ def _write_station0(
     return
 
 
-################################## END OF SEISAN HYP CALLS ##########################
+# ################################# END OF SEISAN HYP CALLS ###################
 
 
-################################## CONTROL FUNCS ####################################
+# ################################# CONTROL FUNCS #############################
 
 def _get_bulk_for_cat(cat: Catalog) -> List[tuple]:
     picks = sorted([p for ev in cat for p in ev.picks], key=lambda p: p.time)
@@ -306,7 +308,9 @@ def setup_testcase(
     inv = client.get_stations_bulk(bulk, level="channel")
 
     for event in cat:
-        event.write(f"{indir}/{event.resource_id.__str__().split('/')[-1]}.xml", format="QUAKEML")
+        event.write(
+            f"{indir}/{event.resource_id.__str__().split('/')[-1]}.xml",
+            format="QUAKEML")
 
     inv.write(stationxml, format="STATIONXML")
     Logger.info("Completed test set-up")
@@ -320,7 +324,7 @@ def main(
     velocitymodel: str,
 ):
     """
-    Read files from input directory, locate them, and write the results to outdir.
+    Read files from input directory, locate them, write the results to outdir.
     """
     infiles = glob.glob(f"{indir}/*")
     Logger.info(f"Found {len(infiles)} to locate")
@@ -353,7 +357,8 @@ def main(
 if __name__ == "__main__":
     from argparse import ArgumentParser
 
-    parser = ArgumentParser(description="Locate events using SEISAN's HYPOCENTER")
+    parser = ArgumentParser(
+        description="Locate events using SEISAN's HYPOCENTER")
 
     parser.add_argument(
         "-i", "--indir", type=str, required=True,
@@ -363,7 +368,8 @@ if __name__ == "__main__":
         help="Output directory for events")
     parser.add_argument(
         "-s", "--stationxmldir", type=str, required=True,
-        help="Location of stationxml file containing at least station locations")
+        help="Location of stationxml file containing at least "
+             "station locations")
     parser.add_argument(
         "-vm", "--velocitymodel", type=str, required=True,
         help="Location of velocity model file")
@@ -371,7 +377,8 @@ if __name__ == "__main__":
         "--test", action="store_true",
         help="Run a test that will download events and stationxml for you")
     parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Increase verbosity")
+        "-v", "--verbose", action="store_true",
+        help="Increase verbosity")
 
     args = parser.parse_args()
 
