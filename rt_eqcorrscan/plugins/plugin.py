@@ -66,6 +66,9 @@ class Watcher:
         self.history = history  # Container for old, processed events
         self.new = set()  # Container for new, unprocessed events
 
+    def __repr__(self):
+        return f"Watcher(watch_pattern={self.watch_pattern}, history={self.history}, new={self.new}"
+
     def __len__(self):
         return len(self.new)
 

@@ -6,17 +6,53 @@ import os
 import shutil
 import unittest
 import pickle
+import time
+import logging
+
+from multiprocessing import Process
+
+from obspy import Catalog
+from obspy.clients.fdsn import Client
+
+from obsplus.bank import WaveBank
 
 from eqcorrscan import Party
 
-from rt_eqcorrscan.plugins.lag_calc import events_to_party
+from rt_eqcorrscan.plugins.lag_calc import (
+    events_to_party, get_stream, LagCalcConfig)
+from rt_eqcorrscan.plugins.lag_calc import main as lag_calc_runner
+
+
+Logger = logging.getLogger(__name__)
+
+
+def _write_detections_for_sim(
+    catalog: Catalog,
+    outdir: str,
+    sleep_step: float = 20.0,
+):
+    slices = [slice(0, 1), slice(1, 5), slice(5, -1)]
+    for _slice in slices:
+        events = catalog[_slice]
+        Logger.info(events)
+        for event in events:
+            Logger.debug(f"Writing event {event.resource_id.id}")
+            event.write(f"{outdir}/{event.resource_id.id}.xml",
+                        format="QUAKEML")
+        time.sleep(sleep_step)
+    Logger.info("Writing poison file")
+    with open(f"{outdir}/poison", "w") as f:
+        f.write("Poisoned at end of detection writing")
+    return
 
 
 class TestLagCalcPlugin(unittest.TestCase):
     clean_up = []
     @classmethod
     def setUpClass(cls):
-        cls.party = Party().read("test_data/lag_calc_test_party.tgz")
+        test_dir = os.path.join(
+            os.path.abspath(os.path.dirname(__file__)), "test_data")
+        cls.party = Party().read(f"{test_dir}/lag_calc_test_party.tgz")
 
     def test_party_construction(self):
         party = self.party.copy()
@@ -50,13 +86,77 @@ class TestLagCalcPlugin(unittest.TestCase):
                     value_back = db.__dict__[key]
                     self.assertEqual(value, value_back)
 
+    def test_get_waveforms(self):
+        stream = get_stream(party=self.party, wavebank=Client("GEONET"),
+                            length=20.0, pre_pick=2.0)
+        picked_channels = {p.waveform_id.get_seed_string()
+                           for f in self.party for d in f
+                           for p in d.event.picks}
+        self.assertEqual(len(stream), len(picked_channels))
+
+    def test_lag_calc_runner(self):
+        config = LagCalcConfig()
+        config_file = "test_lagcalc_config.yml"
+        detect_dir = ".lag_calc_test_detections"
+        template_dir = ".lag_calc_test_templates"
+        wavebank_dir = ".lag_calc_test_wavebank"
+        outdir = ".lag_calc_test_outdir"
+        config.sleep_interval = 20.0
+        config.write(config_file)
+        self.clean_up.extend(
+            [config_file, detect_dir, template_dir, wavebank_dir, outdir])
+        for _dir in [detect_dir, template_dir, wavebank_dir, outdir]:
+            os.makedirs(_dir, exist_ok=True)
+
+        # Hack process lengths for this test
+        party = self.party.copy()
+        for f in party:
+            f.template.process_length = 300.0
+
+        # Populate directories
+        for f in party:
+            with open(f"{template_dir}/{f.template.name}.pkl", "wb") as fp:
+                pickle.dump(f.template, fp)
+
+        # Get a useful stream
+        stream = get_stream(party=party, wavebank=Client("GEONET"),
+                            length=450., pre_pick=20.)
+        bank = WaveBank(wavebank_dir)
+        bank.put_waveforms(stream)
+
+        # We need to set up a process to periodically write detections to
+        # the detect_dir
+        catalog = self.party.get_catalog()
+        assert len(catalog)
+        detection_writer = Process(
+            target=_write_detections_for_sim,
+            args=(catalog, detect_dir, 120.),
+            name="DetectionWriter")
+
+        # Run the process in the background
+        Logger.info("Starting detection writer")
+        detection_writer.start()
+
+        Logger.info("Starting lag-calc runner")
+        lag_calc_runner(
+            config_file=config_file,
+            detection_dir=detect_dir,
+            template_dir=template_dir,
+            wavebank_dir=wavebank_dir,
+            outdir=outdir)
+
+        detection_writer.kill()
+
+        raise NotImplementedError("Not finished checking yet!")
+
     @classmethod
-    def tearDownClass(cls):
-        for thing in cls.clean_up:
-            if os.path.isdir(thing):
-                shutil.rmtree(thing)
-            else:
-                os.remove(thing)
+    def tearDownClass(cls, clean=False):
+        if clean:
+            for thing in cls.clean_up:
+                if os.path.isdir(thing):
+                    shutil.rmtree(thing)
+                else:
+                    os.remove(thing)
 
 
 if __name__ == "__main__":

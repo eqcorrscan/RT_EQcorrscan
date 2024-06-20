@@ -16,7 +16,10 @@ import logging
 import os
 import pickle
 
+from typing import Union
+
 from obspy import read_events, Catalog, Stream, UTCDateTime
+from obspy.clients.fdsn import Client
 from obspy.core.event import Event
 from obsplus import WaveBank
 
@@ -88,7 +91,7 @@ def _make_detection_from_event(event: Event) -> Detection:
     for thing in [t_name, threshold, detect_val, channels]:
         if thing is None:
             raise NotImplementedError(
-                "Event is not an EQcorrscan detected event")
+                f"Event is not an EQcorrscan detected event:\n{event}")
 
     # Get the detection ID from the event resource id
     rid = event.resource_id.id
@@ -154,21 +157,43 @@ def events_to_party(events: Catalog, template_dir: str) -> Party:
     return party
 
 
-def get_stream(party: Party, wavebank_dir: str) -> Stream:
+def get_stream(
+    party: Party,
+    wavebank: Union[WaveBank, Client],
+    length: float,
+    pre_pick: float,
+) -> Stream:
     """
 
     Parameters
     ----------
     party
-    wavebank_dir
+    wavebank
+    length
+    pre_pick
 
     Returns
     -------
 
     """
-    # TODO: This should geta a gappy stream covering all the detections
-    bank = WaveBank(wavebank_dir)
-    raise NotImplementedError()
+    stream = Stream()
+    for f in party:
+        for d in f:
+            ev = d.event or d._calculate_event(template=f.template)
+            bulk = []
+            for p in ev.picks:
+                bulk.append((
+                    p.waveform_id.network_code or "*",
+                    p.waveform_id.station_code,
+                    p.waveform_id.location_code or "*",
+                    p.waveform_id.channel_code,
+                    p.time - pre_pick,
+                    p.time + (length - pre_pick)))
+            Logger.info(
+                f"Getting {len(bulk)} channels of data for detection: {d.id}")
+            stream += wavebank.get_waveforms_bulk(bulk)
+    stream.merge()
+    return stream
 
 
 def main(
@@ -196,7 +221,8 @@ def main(
     # Initialise watcher
     watcher = Watcher(watch_pattern=f"{detection_dir}/*.xml", history=None)
     # Watch for a poison file.
-    kill_watcher = Watcher(watch_pattern=f"{detection_dir}/poison", history=None)
+    kill_watcher = Watcher(watch_pattern=f"{detection_dir}/poison",
+                           history=None)
 
     # Loop!
     while True:
@@ -204,25 +230,41 @@ def main(
         kill_watcher.check_for_updates()
         if len(kill_watcher):
             Logger.error("Lag-calc plugin killed")
+            Logger.error(f"Found files: {kill_watcher}")
+            break
 
         watcher.check_for_updates()
         if not len(watcher):
+            Logger.debug(
+                f"No new events found, sleeping for {config.sleep_interval}")
             time.sleep(config.sleep_interval)
             continue
 
         # We have some events to process!
         new_files = watcher.new.copy()
-        new_events = Catalog([read_events(f) for f in new_files])
-        # Link event id to input filename so that we can reuse the filename
-        # for output
-        event_files = {ev.resource_id.id: fname
-                       for ev, fname in zip(new_events, new_files)}
+        new_events, event_files = Catalog(), dict()
+        for f in new_files:
+            event = read_events(f)
+            if len(event) != 0:
+                Logger.warning(f"Found {len(event)} events in {f}, "
+                               f"using zeroth")
+            new_events += event[0]
+            event_files.update({event[0].resource_id.id: f})
+            # Link event id to input filename so that we can reuse the filename
+            # for output
+
         # Convert to party
         party = events_to_party(events=new_events, template_dir=template_dir)
+        max_len_party_template = max(f.template.process_length for f in party)
         # Get streams for party
-        stream = get_stream(party=party, wavebank_dir=wavebank_dir)
+        stream = get_stream(
+            party=party, wavebank=WaveBank(wavebank_dir),
+            length=max_len_party_template,
+            pre_pick=config.shift_len * 2,
+        )
         # Run lag-calc
-        lag_calced = party.lag_calc(st=stream, **config.__dict__())
+        lag_calced = party.lag_calc(stream=stream, pre_processed=False,
+                                    **config.__dict__)
         # Write out
         for ev in lag_calced:
             fname = os.path.split(event_files[ev.resource_id.id])[-1]
@@ -242,6 +284,7 @@ def main(
         if elapsed < config.sleep_interval:
             time.sleep(config.sleep_interval - elapsed)
         continue
+    return
 
 
 if __name__ == "__main__":
