@@ -16,7 +16,8 @@ import logging
 import os
 import pickle
 
-from obpsy import read_events, Catalog, Stream
+from obspy import read_events, Catalog, Stream, UTCDateTime
+from obspy.core.event import Event
 from obsplus import WaveBank
 
 from eqcorrscan import Party, Family, Detection
@@ -53,6 +54,66 @@ class LagCalcConfig(_PluginConfig):
         super().__init__(*args, **kwargs)
 
 
+def _make_detection_from_event(event: Event) -> Detection:
+    """
+    Make an EQcorrscan Detection object for an Event
+
+    Parameters
+    ----------
+    event
+
+    Returns
+    -------
+
+    """
+    # Info in comments is template name, threshold, detect_val and channels
+    t_name, threshold, detect_val, channels = None, None, None, None
+    for comment in event.comments:
+        if comment.text.lower().startswith("template: "):
+            t_name = comment.text.split(": ")[-1]
+        elif comment.text.lower().startswith("threshold"):
+            threshold = float(comment.text.split("=")[-1])
+        elif comment.text.lower().startswith("detect_val"):
+            detect_val = float(comment.text.split("=")[-1])
+        elif comment.text.lower().startswith("channels used:"):
+            channel_string = comment.text.lstrip("channels used: ")
+            channel_string = channel_string.lstrip("(")
+            channel_string = channel_string.rstrip(")")
+            channel_string = channel_string.split(") (")
+            # Remove quotation marks
+            channel_string = [cs.replace("'", "") for cs in channel_string]
+            # Make into list of tuples
+            channels = [tuple(cs.split(", ")) for cs in channel_string]
+
+    for thing in [t_name, threshold, detect_val, channels]:
+        if thing is None:
+            raise NotImplementedError(
+                "Event is not an EQcorrscan detected event")
+
+    # Get the detection ID from the event resource id
+    rid = event.resource_id.id
+    # Get the detect time from the rid
+    d_time_str = rid.split(f"{t_name}_")[-1]
+    assert len(d_time_str) == 21 # YYYYmmdd_HHMMSSssssss
+    d_time = UTCDateTime.strptime(d_time_str, "%Y%m%d_%H%M%S%f")
+
+    d = Detection(
+        template_name=t_name,
+        detect_time=d_time,
+        no_chans=len(channels),
+        detect_val=detect_val,
+        threshold=threshold,
+        typeofdet="corr",
+        threshold_type="Unknown",
+        threshold_input=None,
+        chans=channels,
+        event=event,
+        id=rid,
+        strict=False,
+    )
+    return d
+
+
 def events_to_party(events: Catalog, template_dir: str) -> Party:
     """
 
@@ -66,8 +127,9 @@ def events_to_party(events: Catalog, template_dir: str) -> Party:
 
     """
     # TODO: This should build a Party from a set of Events detected by rteqc
-    template_names = {c.split(": ")[-1] for ev in events for c in ev.comments
-                      if c.startswith("Template:")}
+    template_names = {
+        c.text.split(": ")[-1] for ev in events for c in ev.comments
+        if c.text.startswith("Template:")}
     # Find the relevant template files
     templates = []
     for tname in template_names:
@@ -79,11 +141,16 @@ def events_to_party(events: Catalog, template_dir: str) -> Party:
             t = pickle.load(f)
         templates.append(t)
 
+    # Make detections
+    detections = [_make_detection_from_event(event) for event in events]
+
     # Make families
     party = Party()
     for template in templates:
         fam = Family(template=template)
-        fam.detections =
+        fam.detections = [d for d in detections
+                          if d.template_name == template.name]
+        party += fam
     return party
 
 
