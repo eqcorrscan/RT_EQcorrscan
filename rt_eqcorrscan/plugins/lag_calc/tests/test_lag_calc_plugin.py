@@ -120,7 +120,7 @@ class TestLagCalcPlugin(unittest.TestCase):
 
         # Get a useful stream
         stream = get_stream(party=party, wavebank=Client("GEONET"),
-                            length=450., pre_pick=20.)
+                            length=600., pre_pick=120.)
         bank = WaveBank(wavebank_dir)
         bank.put_waveforms(stream)
 
@@ -150,7 +150,7 @@ class TestLagCalcPlugin(unittest.TestCase):
         raise NotImplementedError("Not finished checking yet!")
 
     @classmethod
-    def tearDownClass(cls, clean=False):
+    def tearDownClass(cls, clean=True):
         if clean:
             for thing in cls.clean_up:
                 if os.path.isdir(thing):

@@ -255,16 +255,27 @@ def main(
 
         # Convert to party
         party = events_to_party(events=new_events, template_dir=template_dir)
-        max_len_party_template = max(f.template.process_length for f in party)
-        # Get streams for party
-        stream = get_stream(
-            party=party, wavebank=WaveBank(wavebank_dir),
-            length=max_len_party_template,
-            pre_pick=config.shift_len * 2,
-        )
-        # Run lag-calc
-        lag_calced = party.lag_calc(stream=stream, pre_processed=False,
-                                    **config.__dict__)
+
+        # Loop over detections - party.lag-calc works okay for longer
+        # process-lengths, but not so well for these short ones
+        lag_calced = Catalog()
+        for family in party:
+            for detection in family:
+                d_party = Party(
+                    [Family(family.template, [detection])])
+                stream = get_stream(
+                    d_party, wavebank=WaveBank(wavebank_dir),
+                    length=family.template.process_length + (config.shift_len * 5),
+                    pre_pick=config.shift_len * 5)
+                Logger.debug(f"Have stream: \n{stream}")
+                # Run lag-calc
+                try:
+                    lag_calced += party.lag_calc(
+                        stream=stream, pre_processed=False, ignore_length=True,
+                        **config.__dict__)
+                except Exception as e:
+                    Logger.error(
+                        f"Could not run lag-calc for {detection} due to {e}")
         # Write out
         for ev in lag_calced:
             fname = os.path.split(event_files[ev.resource_id.id])[-1]
