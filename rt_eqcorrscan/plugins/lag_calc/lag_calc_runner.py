@@ -260,7 +260,9 @@ def main(
         # process-lengths, but not so well for these short ones
         lag_calced = Catalog()
         for family in party:
+            Logger.info(f"Setting up lag-calc for {family.template.name}")
             for detection in family:
+                Logger.info(f"Setting up lag-calc for {detection.id}")
                 d_party = Party(
                     [Family(family.template, [detection])])
                 stream = get_stream(
@@ -269,17 +271,25 @@ def main(
                     pre_pick=config.shift_len * 5)
                 Logger.debug(f"Have stream: \n{stream}")
                 # Run lag-calc
+                event_back = None
                 try:
-                    lag_calced += party.lag_calc(
+                    event_back = d_party.lag_calc(
                         stream=stream, pre_processed=False, ignore_length=True,
                         **config.__dict__)
                 except Exception as e:
                     Logger.error(
                         f"Could not run lag-calc for {detection} due to {e}")
+                if event_back:
+                    # Merge the event info
+                    event = detection.event
+                    assert len(event_back) == 1, f"Multiple events: {event_back}"
+                    event.picks = event_back[0].picks
+                    lag_calced += event
         # Write out
         for ev in lag_calced:
             fname = os.path.split(event_files[ev.resource_id.id])[-1]
-            ev.write(f"{outdir}/{fname}", format="QUAKEML")
+            Logger.info(f"Writing out to {outdir}/{fname}.xml")
+            ev.write(f"{outdir}/{fname}.xml", format="QUAKEML")
 
         # Mark files as processed
         watcher.processed(new_files)
