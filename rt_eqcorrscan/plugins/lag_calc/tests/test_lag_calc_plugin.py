@@ -11,7 +11,7 @@ import logging
 
 from multiprocessing import Process
 
-from obspy import Catalog
+from obspy import Catalog, read_events
 from obspy.clients.fdsn import Client
 
 from obsplus.bank import WaveBank
@@ -31,7 +31,7 @@ def _write_detections_for_sim(
     outdir: str,
     sleep_step: float = 20.0,
 ):
-    slices = [slice(0, 1), slice(1, 5), slice(5, -1)]
+    slices = [slice(0, 1), slice(1, 5), slice(5, None)]
     for _slice in slices:
         events = catalog[_slice]
         Logger.info(events)
@@ -101,7 +101,7 @@ class TestLagCalcPlugin(unittest.TestCase):
         template_dir = ".lag_calc_test_templates"
         wavebank_dir = ".lag_calc_test_wavebank"
         outdir = ".lag_calc_test_outdir"
-        config.sleep_interval = 20.0
+        config.sleep_interval = 2.0
         config.write(config_file)
         self.clean_up.extend(
             [config_file, detect_dir, template_dir, wavebank_dir, outdir])
@@ -126,11 +126,11 @@ class TestLagCalcPlugin(unittest.TestCase):
 
         # We need to set up a process to periodically write detections to
         # the detect_dir
-        catalog = self.party.get_catalog()
+        catalog = party.get_catalog()
         assert len(catalog)
         detection_writer = Process(
             target=_write_detections_for_sim,
-            args=(catalog, detect_dir, 120.),
+            args=(catalog, detect_dir, 20.),
             name="DetectionWriter")
 
         # Run the process in the background
@@ -138,16 +138,24 @@ class TestLagCalcPlugin(unittest.TestCase):
         detection_writer.start()
 
         Logger.info("Starting lag-calc runner")
-        lag_calc_runner(
-            config_file=config_file,
-            detection_dir=detect_dir,
-            template_dir=template_dir,
-            wavebank_dir=wavebank_dir,
-            outdir=outdir)
+        failed = False
+        try:
+            lag_calc_runner(
+                config_file=config_file,
+                detection_dir=detect_dir,
+                template_dir=template_dir,
+                wavebank_dir=wavebank_dir,
+                outdir=outdir)
+        except Exception as e:
+            Logger.error(f"Failed due to {e}")
+            failed = True
+        finally:
+            detection_writer.kill()
 
-        detection_writer.kill()
-
-        raise NotImplementedError("Not finished checking yet!")
+        self.assertFalse(failed)
+        # Get the detections back
+        cat_back = read_events(f"{outdir}/*.xml")
+        self.assertEqual(len(cat_back), len(catalog))
 
     @classmethod
     def tearDownClass(cls, clean=True):
