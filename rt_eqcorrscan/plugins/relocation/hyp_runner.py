@@ -159,9 +159,9 @@ def seisan_hyp(
             p.waveform_id.channel_code[-1] == pick.waveform_id.channel_code[-1] and
             abs(p.time - pick.time) < 0.1]
         assert len(matched_pick) > 0, "No picks matched"
-        assert (len(set(p.waveform_id.get_seed_string()
-                        for p in matched_pick)) == 0,
-                "Multiple seed ids for matched picks")
+        assert len(set(p.waveform_id.get_seed_string()
+                       for p in matched_pick)) == 0,\
+            "Multiple seed ids for matched picks"
         print(f"Matched {pick.waveform_id.get_seed_string()} to "
               f"{matched_pick[0].waveform_id.get_seed_string()}")
         pick.waveform_id.network_code = matched_pick[0].waveform_id.network_code

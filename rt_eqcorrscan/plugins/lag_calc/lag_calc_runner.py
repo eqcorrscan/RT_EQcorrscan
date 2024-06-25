@@ -25,7 +25,9 @@ from obsplus import WaveBank
 
 from eqcorrscan import Party, Family, Detection
 
-from rt_eqcorrscan.plugins.plugin import Watcher, _PluginConfig
+from rt_eqcorrscan.config.config import _PluginConfig
+from rt_eqcorrscan.plugins.plugin import (
+    Watcher, PLUGIN_CONFIG_MAPPER)
 
 
 Logger = logging.getLogger(__name__)
@@ -57,6 +59,9 @@ class LagCalcConfig(_PluginConfig):
         super().__init__(*args, **kwargs)
 
 
+PLUGIN_CONFIG_MAPPER.update({"lag_calc": LagCalcConfig})
+
+
 def _make_detection_from_event(event: Event) -> Detection:
     """
     Make an EQcorrscan Detection object for an Event
@@ -64,10 +69,11 @@ def _make_detection_from_event(event: Event) -> Detection:
     Parameters
     ----------
     event
+        Event (detected by EQcorrscan) to make a Detection for
 
     Returns
     -------
-
+    Detection for the event provided.
     """
     # Info in comments is template name, threshold, detect_val and channels
     t_name, threshold, detect_val, channels = None, None, None, None
@@ -123,13 +129,14 @@ def events_to_party(events: Catalog, template_dir: str) -> Party:
     Parameters
     ----------
     events
+        Catalog of events to convert to Detections
     template_dir
+        Directory of pickled templates used for detections.
 
     Returns
     -------
-
+    Party for the Catalog provided
     """
-    # TODO: This should build a Party from a set of Events detected by rteqc
     template_names = {
         c.text.split(": ")[-1] for ev in events for c in ev.comments
         if c.text.startswith("Template:")}
@@ -168,13 +175,17 @@ def get_stream(
     Parameters
     ----------
     party
+        Party of detections to get streams for
     wavebank
+        Wavebank or Client to get waveforms from
     length
+        Length in seconds to get data for each event
     pre_pick
+        Time in seconds to get data for before the expected pick-time
 
     Returns
     -------
-
+    Single gappy-stream for all events in Party.
     """
     stream = Stream()
     for f in party:
@@ -202,20 +213,21 @@ def main(
     template_dir: str,
     wavebank_dir: str,
     outdir: str,
-):
+) -> None:
     """
 
     Parameters
     ----------
     config_file
+        Path to configuration file for lag-calc runner.
     detection_dir
+        Directory to watch for new detections to process
     template_dir
+        Directory containing pickled templates used for detections
     wavebank_dir
+        Wavebank directory to get raw waveforms from
     outdir
-
-    Returns
-    -------
-
+        Location to put lag-calcled events into.
     """
     config = LagCalcConfig.read(config_file=config_file)
     # Initialise watcher

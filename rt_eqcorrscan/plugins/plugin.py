@@ -7,15 +7,12 @@ import subprocess
 import os
 import glob
 
-from yaml import load, dump
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
 except ImportError:  # pragma: no cover
     from yaml import Loader, Dumper
 
 from typing import List, Set, Iterable
-
-from rt_eqcorrscan.config.config import _ConfigAttribDict
 
 # Dict of registered plugins - no other plugins will be callable
 # entry point must point to script to run the plugin. Plugin should run as a
@@ -29,31 +26,9 @@ REGISTERED_PLUGINS = {
     "mag-calc": "magnitudes/local_magnitudes.py",
     "lag-calc": "lag-calc/lag_calc_runner.py",
 }
+PLUGIN_CONFIG_MAPPER = dict()
 
 Logger = logging.getLogger(__name__)
-
-
-class _PluginConfig(_ConfigAttribDict):
-    """ Base configuration for plugins. """
-    defaults = dict()
-    readonly = []
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def write(self, config_file: str) -> None:
-        """ Write to a yaml formatted file. """
-        with open(config_file, "w") as f:
-            f.write(dump(self.to_yaml_dict(), Dumper=Dumper))
-
-    @classmethod
-    def read(cls, config_file: str):
-        with open(config_file, "rb") as f:
-            config = load(f, Loader=Loader)
-            # Convert spaces to underscores
-            config = {key.replace(" ", "_"): value
-                      for key, value in config.items()}
-        return cls(**config)
 
 
 # TODO: This could have a threaded watch method, but it seems like more effort

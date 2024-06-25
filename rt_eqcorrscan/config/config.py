@@ -13,7 +13,9 @@ try:
 except ImportError:  # pragma: no cover
     from yaml import Loader, Dumper
 from logging.handlers import RotatingFileHandler
+
 from rt_eqcorrscan.config.mailer import Notifier
+from rt_eqcorrscan.plugins.plugin import PLUGIN_CONFIG_MAPPER
 
 from obspy.core.util import AttribDict
 
@@ -215,6 +217,55 @@ class PlotConfig(_ConfigAttribDict):
         super().__init__(*args, **kwargs)
 
 
+class _PluginConfig(_ConfigAttribDict):
+    """ Base configuration for plugins. """
+    defaults = dict()
+    readonly = []
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def write(self, config_file: str) -> None:
+        """ Write to a yaml formatted file. """
+        with open(config_file, "w") as f:
+            f.write(dump(self.to_yaml_dict(), Dumper=Dumper))
+
+    @classmethod
+    def read(cls, config_file: str):
+        with open(config_file, "rb") as f:
+            config = load(f, Loader=Loader)
+            # Convert spaces to underscores
+            config = {key.replace(" ", "_"): value
+                      for key, value in config.items()}
+        return cls(**config)
+
+
+class PluginConfigs(_ConfigAttribDict):
+    """
+    A holder for Plugin configurations
+    """
+    defaults = {
+        "lag_calc": None,
+        "mag_calc": None,
+    }
+    readonly = []
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+
+    def to_yaml_dict(self):
+        """ Overload. """
+        yaml_dict = dict()
+        for key, value in self.__dict__.items():
+            if hasattr(value, "to_yaml_dict"):
+                yaml_dict.update({
+                    key.replace("_", " "): value.to_yaml_dict()})
+            else:
+                yaml_dict.update({key.replace("_", " "): value})
+        return yaml_dict
+
+
 class DatabaseManagerConfig(_ConfigAttribDict):
     """
     A holder for configuration values for database management.
@@ -286,6 +337,7 @@ KEY_MAPPER = {
     "template": TemplateConfig,
     "streaming": StreamingConfig,
     "notifier": NotifierConfig,
+    "plugins": PluginConfigs,
 }
 
 
@@ -313,6 +365,8 @@ class Config(object):
         Config values for real-time streaming
     notifier
         Config values to notification services
+    plugins
+        Configurations for any plugins expected to be run
     """
     def __init__(
         self,
@@ -327,6 +381,7 @@ class Config(object):
         self.template = TemplateConfig()
         self.streaming = StreamingConfig()
         self.notifier = NotifierConfig()
+        self.plugins = PluginConfigs()
         self.log_level = log_level
         self.log_formatter = log_formatter
 
@@ -437,12 +492,22 @@ def read_config(config_file=None) -> Config:
     for key, value in configuration.items():
         if key.replace(" ", "_") in KEY_MAPPER.keys():
             config_dict.update(
-                {key.replace(" ", "_"):
-                     {_key.replace(" ", "_"): _value
-                      for _key, _value in value.items()}})
+                _recursive_replace_space_underscore({key: value}))
+                # {key.replace(" ", "_"):
+                #      {_key.replace(" ", "_"): _value
+                #       for _key, _value in value.items()}})
         else:
             config_dict.update({key: value})
     return Config(**config_dict)
+
+
+def _recursive_replace_space_underscore(in_dict: dict) -> dict:
+    out_dict = dict()
+    for key, value in in_dict.items():
+        if isinstance(value, dict):
+            value = _recursive_replace_space_underscore(value)
+        out_dict.update({key.replace(" ", "_"): value})
+    return out_dict
 
 
 if __name__ == "__main__":

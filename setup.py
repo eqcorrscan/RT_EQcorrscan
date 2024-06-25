@@ -32,6 +32,19 @@ console_entry_points = [
     f"rteqcorrscan-{name}=rt_eqcorrscan.console_scripts."
     f"{name.replace('-', '_')}:main" for name in scriptnames]
 
+# Plugin entry points
+plugin_scriptfiles = [
+    f for f in glob.glob(os.path.join(
+        "rt_eqcorrscan", "plugins", "console_scripts", "*"))
+    if os.path.isfile(f) and os.path.split(f)[-1] != "__init__.py"]
+plugin_scriptnames = [
+    os.path.split(f)[-1].rstrip(".py").replace("_", "-")
+    for f in plugin_scriptfiles]
+console_entry_points.extend([
+    f"rteqcorrscan-plugin-{name}=rt_eqcorrscan.console_scripts."
+    f"{name.replace('-', '_')}:main"
+    for name in plugin_scriptnames])
+
 
 def setup_package():
 
