@@ -94,7 +94,8 @@ def run(
         backfill_interval=config.rt_match_filter.backfill_interval,
         name=triggering_event.resource_id.id.split('/')[-1],
         wavebank=config.rt_match_filter.local_wave_bank,
-        notifier=config.notifier)
+        notifier=config.notifier, plugin_config=config.plugins,
+    )
 
     real_time_tribe._speed_up = speed_up
     if speed_up > 1:
