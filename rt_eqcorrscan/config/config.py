@@ -249,14 +249,24 @@ class PluginConfigs(_ConfigAttribDict):
     """
     A holder for Plugin configurations
     """
+    from rt_eqcorrscan.plugins.lag_calc import LagCalcConfig
+
     defaults = {
         "lag_calc": None,
-        "mag_calc": None,
     }
     readonly = []
+    __subclasses = {
+        "lag_calc": LagCalcConfig
+    }
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        attribs = dict()
+        for key, value in kwargs.items():
+            if key in self.__subclasses.keys():
+                if isinstance(value, dict):
+                    value = self.__subclasses[key](**value)
+            attribs.update({key: value})
+        super().__init__(*args, **attribs)
 
 
     def to_yaml_dict(self):
@@ -395,7 +405,7 @@ class Config(object):
                 raise NotImplementedError("Unsupported argument "
                                           "type: {0}".format(key))
             if isinstance(value, dict):
-                self.__dict__[key] = KEY_MAPPER[key](value)
+                self.__dict__[key] = KEY_MAPPER[key](**value)
             else:
                 assert isinstance(value, type(self.__dict__[key]))
                 self.__dict__[key] = value
