@@ -603,6 +603,7 @@ class RealTimeTribe(Tribe):
                 Logger.error(f"Plugin {key} is not known to RT-EQcorrscan")
                 continue
             config_name = f"{key}-config-{self.name}.yml"
+            Logger.info(f"Writing config file for {key} to {config_name}")
             value.write(config_name)
             plugin_proc = run_plugin(key, ["-c", config_name])
             self._plugins.update({key: plugin_proc})
