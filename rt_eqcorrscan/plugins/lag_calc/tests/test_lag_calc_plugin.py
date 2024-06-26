@@ -102,6 +102,9 @@ class TestLagCalcPlugin(unittest.TestCase):
         wavebank_dir = ".lag_calc_test_wavebank"
         outdir = ".lag_calc_test_outdir"
         config.sleep_interval = 2.0
+        config.in_dir, config.template_dir, config.wavebank_dir = (
+            detect_dir, template_dir, wavebank_dir)
+        config.out_dir = outdir
         config.write(config_file)
         self.clean_up.extend(
             [config_file, detect_dir, template_dir, wavebank_dir, outdir])
@@ -140,12 +143,7 @@ class TestLagCalcPlugin(unittest.TestCase):
         Logger.info("Starting lag-calc runner")
         failed = False
         try:
-            lag_calc_runner(
-                config_file=config_file,
-                detection_dir=detect_dir,
-                template_dir=template_dir,
-                wavebank_dir=wavebank_dir,
-                outdir=outdir)
+            lag_calc_runner(config_file=config_file)
         except Exception as e:
             Logger.error(f"Failed due to {e}")
             failed = True

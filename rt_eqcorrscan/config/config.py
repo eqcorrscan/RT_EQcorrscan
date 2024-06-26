@@ -219,7 +219,12 @@ class PlotConfig(_ConfigAttribDict):
 
 class _PluginConfig(_ConfigAttribDict):
     """ Base configuration for plugins. """
-    defaults = dict()
+    defaults = {
+        "in_dir": None,
+        "template_dir": None,
+        "wavebank_dir": None,
+        "out_dir": None,
+    }
     readonly = []
 
     def __init__(self, *args, **kwargs):
@@ -445,27 +450,40 @@ class Config(object):
         **kwargs
     ):
         """Set up logging using the logging parameters."""
-        handlers = []
-        if file:
-            file_log_args = dict(filename=filename, mode='a',
-                                 maxBytes=20*1024*1024, backupCount=10,
-                                 encoding=None, delay=0)
-            file_log_args.update(kwargs)
-            rotating_handler = RotatingFileHandler(**file_log_args)
-            rotating_handler.setFormatter(
-                logging.Formatter(self.log_formatter))
-            rotating_handler.setLevel(self.log_level)
-            handlers.append(rotating_handler)
-        if screen:
-            # Console handler
-            console_handler = logging.StreamHandler(stream=sys.stdout)
-            console_handler.setLevel(self.log_level)
-            console_handler.setFormatter(
-                logging.Formatter(self.log_formatter))
-            handlers.append(console_handler)
-        logging.basicConfig(
-            level=self.log_level, format=self.log_formatter,
-            handlers=handlers)
+        _setup_logging(
+            log_level=self.log_level, log_formatter=self.log_formatter,
+            screen=screen, file=file, filename=filename, **kwargs)
+
+
+def _setup_logging(
+    log_level: str,
+    log_formatter: str,
+    screen: bool = True,
+    file: bool = True,
+    filename: str = "rt_eqcorrscan.log",
+    **kwargs
+):
+    """Set up logging using the logging parameters."""
+    handlers = []
+    if file:
+        file_log_args = dict(filename=filename, mode='a',
+                             maxBytes=20*1024*1024, backupCount=10,
+                             encoding=None, delay=0)
+        file_log_args.update(kwargs)
+        rotating_handler = RotatingFileHandler(**file_log_args)
+        rotating_handler.setFormatter(
+            logging.Formatter(log_formatter))
+        rotating_handler.setLevel(log_level)
+        handlers.append(rotating_handler)
+    if screen:
+        # Console handler
+        console_handler = logging.StreamHandler(stream=sys.stdout)
+        console_handler.setLevel(log_level)
+        console_handler.setFormatter(
+            logging.Formatter(log_formatter))
+        handlers.append(console_handler)
+    logging.basicConfig(
+        level=log_level, format=log_formatter, handlers=handlers)
 
 
 def read_config(config_file=None) -> Config:

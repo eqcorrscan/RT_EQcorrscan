@@ -2,10 +2,12 @@
 Default handling of rt_eqcorrscan plugins.
 """
 
+import fnmatch
 import logging
 import subprocess
 import os
 import glob
+import shutil
 
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
@@ -18,15 +20,13 @@ from typing import List, Set, Iterable
 # entry point must point to script to run the plugin. Plugin should run as a
 # continuously running while loop until killed.
 
-# Plugin death is communicated by a kill_file
-
+# Entry point defined by script name in plugins.console_scripts and looked up in setup.py
 REGISTERED_PLUGINS = {
-    "reloc": "relocation/relocator.py",
-    "hyp": "relocation/hyp_runner.py",
-    "mag-calc": "magnitudes/local_magnitudes.py",
-    "lag-calc": "lag-calc/lag_calc_runner.py",
+    "lag_calc": "rteqcorrscan-plugin-lag-calc",
 }
 PLUGIN_CONFIG_MAPPER = dict()
+# Control order of plugins, outdir of previous plugin is input to plugin
+ORDERED_PLUGINS = ["lag_calc", "hyp", "growclust", "mag_calc"]
 
 Logger = logging.getLogger(__name__)
 
@@ -34,15 +34,17 @@ Logger = logging.getLogger(__name__)
 # TODO: This could have a threaded watch method, but it seems like more effort
 #  than needed
 class Watcher:
-    def __init__(self, watch_pattern: str, history: set = None):
+    def __init__(self, top_directory: str, watch_pattern: str, history: set = None):
         if history is None:
             history = set()
+        self.top_directory = top_directory
         self.watch_pattern = watch_pattern  # Pattern to glob for
         self.history = history  # Container for old, processed events
         self.new = set()  # Container for new, unprocessed events
 
     def __repr__(self):
-        return f"Watcher(watch_pattern={self.watch_pattern}, history={self.history}, new={self.new}"
+        return (f"Watcher(watch_pattern={self.watch_pattern}, "
+                f"history={self.history}, new={self.new}")
 
     def __len__(self):
         return len(self.new)
@@ -58,9 +60,16 @@ class Watcher:
             self.history.add(event)
 
     def check_for_updates(self):
-        files = glob.glob(self.watch_pattern)
+        files = []
+        for head, dirs, _files in os.walk(self.top_directory):
+            if len(_files):
+                Logger.debug(f"Files: {_files}")
+            _files = fnmatch.filter(_files, self.watch_pattern)
+            if len(_files):
+                files.extend([os.path.join(head, f) for f in _files])
         new = {f for f in files if f not in self.history}
-        Logger.info(f"Found {len(new)} new events to process")
+        Logger.debug(f"Found {len(new)} new events to process in "
+                    f"{self.top_directory}[...]{self.watch_pattern}")
         self.new = new
 
 
@@ -69,14 +78,13 @@ def run_plugin(
     plugin_args: list,
 ):
     plugin_path = REGISTERED_PLUGINS.get(plugin)
-    if plugin_path is None:
+    executable_path = shutil.which(plugin_path)
+    if executable_path is None:
         raise FileNotFoundError(f"plugin: {plugin} is not registered")
+    else:
+        Logger.info(f"Running {plugin} at {executable_path}")
     # Start plugin subprocess
-    plugin_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), plugin_path)
-    _call = [
-        "python", plugin_path,
-    ]
+    _call = [plugin_path]
     _call.extend(plugin_args)
 
     Logger.info("Running `{call}`".format(call=" ".join(_call)))

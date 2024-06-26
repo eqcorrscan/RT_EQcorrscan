@@ -113,7 +113,9 @@ def run_real_time_matched_filter(**kwargs):
         detect_interval=config.rt_match_filter.detect_interval,
         plot=config.rt_match_filter.plot, name=tribe_name,
         plot_options=config.plot,
-        wavebank=config.rt_match_filter.local_wave_bank)
+        wavebank=config.rt_match_filter.local_wave_bank,
+        plugin_config=config.plugins,
+        notifier=config.notifier)
     try:
         real_time_tribe._speed_up = config.streaming.speed_up
     except AttributeError:

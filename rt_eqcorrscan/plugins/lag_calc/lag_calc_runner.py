@@ -103,8 +103,13 @@ def _make_detection_from_event(event: Event) -> Detection:
     rid = event.resource_id.id
     # Get the detect time from the rid
     d_time_str = rid.split(f"{t_name}_")[-1]
-    assert len(d_time_str) == 21 # YYYYmmdd_HHMMSSssssss
-    d_time = UTCDateTime.strptime(d_time_str, "%Y%m%d_%H%M%S%f")
+    if len(d_time_str) == 21:
+        time_format = "%Y%m%d_%H%M%S%f"
+    elif len(d_time_str) == 22:
+        time_format = "%Y%m%dT%H%M%S.%f"
+    else:
+        raise NotImplementedError(f"Unknown time format for {d_time_str}")
+    d_time = UTCDateTime.strptime(d_time_str, time_format)
 
     d = Detection(
         template_name=t_name,
@@ -200,8 +205,9 @@ def get_stream(
                     p.waveform_id.channel_code,
                     p.time - pre_pick,
                     p.time + (length - pre_pick)))
-            Logger.info(
+            Logger.debug(
                 f"Getting {len(bulk)} channels of data for detection: {d.id}")
+            Logger.debug(bulk)
             stream += wavebank.get_waveforms_bulk(bulk)
     stream.merge()
     return stream
@@ -209,10 +215,6 @@ def get_stream(
 
 def main(
     config_file: str,
-    detection_dir: str,
-    template_dir: str,
-    wavebank_dir: str,
-    outdir: str,
 ) -> None:
     """
 
@@ -220,29 +222,28 @@ def main(
     ----------
     config_file
         Path to configuration file for lag-calc runner.
-    detection_dir
-        Directory to watch for new detections to process
-    template_dir
-        Directory containing pickled templates used for detections
-    wavebank_dir
-        Wavebank directory to get raw waveforms from
-    outdir
-        Location to put lag-calcled events into.
     """
     config = LagCalcConfig.read(config_file=config_file)
+    detection_dir = config.pop("in_dir")
+    template_dir = config.pop("template_dir")
+    wavebank_dir = config.pop("wavebank_dir")
+    outdir = config.pop("out_dir")
     # Initialise watcher
-    watcher = Watcher(watch_pattern=f"{detection_dir}/*.xml", history=None)
+    watcher = Watcher(
+        top_directory=detection_dir, watch_pattern="*.xml", history=None)
     # Watch for a poison file.
-    kill_watcher = Watcher(watch_pattern=f"{detection_dir}/poison",
-                           history=None)
+    kill_watcher = Watcher(
+        top_directory=outdir, watch_pattern="poison", history=None)
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir)
 
     # Loop!
     while True:
         tic = time.time()
         kill_watcher.check_for_updates()
         if len(kill_watcher):
-            Logger.error("Lag-calc plugin killed")
-            Logger.error(f"Found files: {kill_watcher}")
+            Logger.critical("Lag-calc plugin killed")
+            Logger.critical(f"Found files: {kill_watcher}")
             break
 
         watcher.check_for_updates()
@@ -253,13 +254,17 @@ def main(
             continue
 
         # We have some events to process!
-        new_files = watcher.new.copy()
+        new_files, processed_files = watcher.new.copy(), []
         new_events, event_files = Catalog(), dict()
         for f in new_files:
             event = read_events(f)
-            if len(event) != 0:
+            if len(event) > 1:
                 Logger.warning(f"Found {len(event)} events in {f}, "
                                f"using zeroth")
+            elif len(event) == 0:
+                Logger.warning(f"Found no events in {f}, skipping")
+                processed_files.append(f)
+                continue
             new_events += event[0]
             event_files.update({event[0].resource_id.id: f})
             # Link event id to input filename so that we can reuse the filename
@@ -268,21 +273,54 @@ def main(
         # Convert to party
         party = events_to_party(events=new_events, template_dir=template_dir)
 
+        # Access the wavebank (read in the table) once at the start of the
+        # loop over events - we need to re-access the bank every time loop to
+        # get the new data. We also have to cope with other python processes
+        # potentially writing to the table when we try to open it.
+        _retrires = 0
+        while True:
+            try:
+                # We start a new access to the wavebank every time
+                # incase it has updated
+                wavebank = WaveBank(wavebank_dir)
+            except Exception as e:
+                Logger.warning(
+                    f"Could not access the wavebank due to {e}. "
+                    f"Retrying in 1s")
+                time.sleep(1)
+                _retrires += 1
+            else:
+                # We got the wavebank!
+                break
+
         # Loop over detections - party.lag-calc works okay for longer
         # process-lengths, but not so well for these short ones
         lag_calced = Catalog()
         for family in party:
             Logger.info(f"Setting up lag-calc for {family.template.name}")
             for detection in family:
-                Logger.info(f"Setting up lag-calc for {detection.id}")
+                Logger.debug(f"Setting up lag-calc for {detection.id}")
                 d_party = Party(
                     [Family(family.template, [detection])])
                 stream = get_stream(
-                    d_party, wavebank=WaveBank(wavebank_dir),
-                    length=family.template.process_length + (config.shift_len * 5),
-                    pre_pick=config.shift_len * 5)
+                    d_party, wavebank=wavebank,
+                    length=family.template.process_length * 2.1,
+                    pre_pick=min(config.shift_len * 2,
+                                 family.template.process_length))
+                # Get an excess of data to cope with missing "future" data
                 Logger.debug(f"Have stream: \n{stream}")
+                if len(stream):
+                    min_len = min([
+                        tr.stats.endtime - tr.stats.starttime
+                        for tr in stream])
+                else:
+                    min_len = 0.0
+                if min_len < family.template.process_length:
+                    Logger.debug(
+                        f"Insufficient data for {detection.id}, waiting.")
+                    continue
                 # Run lag-calc
+                Logger.info(f"Running lag-calc for {detection.id}")
                 event_back = None
                 try:
                     event_back = d_party.lag_calc(
@@ -291,20 +329,34 @@ def main(
                 except Exception as e:
                     Logger.error(
                         f"Could not run lag-calc for {detection} due to {e}")
-                if event_back:
+                if event_back and len(event_back):
                     # Merge the event info
                     event = detection.event
                     assert len(event_back) == 1, f"Multiple events: {event_back}"
                     event.picks = event_back[0].picks
                     lag_calced += event
+                    processed_files.append(
+                        event_files[detection.event.resource_id.id])
+                else:  # Keep all the events even if we don't re-pick them
+                    Logger.info(
+                        f"Unsuccessful lag-calc for "
+                        f"{event_files[detection.event.resource_id.id]}, will "
+                        f"retry")
+                    # event = detection.event
+                    # event.picks = []
+                    # lag_calced += event
         # Write out
         for ev in lag_calced:
-            fname = os.path.split(event_files[ev.resource_id.id])[-1]
-            Logger.info(f"Writing out to {outdir}/{fname}.xml")
-            ev.write(f"{outdir}/{fname}.xml", format="QUAKEML")
+            fname = event_files[ev.resource_id.id].split(detection_dir)[-1]
+            fname = fname.lstrip(os.path.sep)  # Strip pathsep if it is there
+            outpath = os.path.join(outdir, fname)
+            Logger.info(f"Writing out to {outpath}")
+            if not os.path.isdir(os.path.dirname(outpath)):
+                os.makedirs(os.path.dirname(outpath))
+            ev.write(f"{outpath}", format="QUAKEML")
 
         # Mark files as processed
-        watcher.processed(new_files)
+        watcher.processed(processed_files)
 
         # Check for poison again before sleeping
         kill_watcher.check_for_updates()

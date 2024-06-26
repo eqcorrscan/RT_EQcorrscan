@@ -6,6 +6,7 @@ import unittest
 import os
 import shutil
 import glob
+import logging
 
 from eqcorrscan import Tribe, Party
 from eqcorrscan.utils import catalog_utils
@@ -15,6 +16,10 @@ from obspy.clients.fdsn import Client
 from rt_eqcorrscan.rt_match_filter import RealTimeTribe
 from rt_eqcorrscan.streaming.clients.seedlink import RealTimeClient
 from rt_eqcorrscan.reactor import get_inventory
+from rt_eqcorrscan.plugins.lag_calc import LagCalcConfig
+
+
+Logger = logging.getLogger(__name__)
 
 
 class RealTimeTribeTest(unittest.TestCase):
@@ -61,23 +66,32 @@ class RealTimeTribeTest(unittest.TestCase):
         rt_client = RealTimeClient(
             server_url="link.geonet.org.nz", buffer_capacity=90,)
         rt_tribe = RealTimeTribe(
-            tribe=tribe, rt_client=rt_client, detect_interval=5, plot=False)
+            tribe=tribe, rt_client=rt_client, detect_interval=5, plot=False,
+            name="test_run_tribe")
         party = rt_tribe.run(
             threshold=6, threshold_type="MAD", trig_int=3, max_run_length=100,
             detect_directory=self.detect_dir)
+        if os.path.isdir(rt_tribe.running_template_dir):
+            shutil.rmtree(rt_tribe.running_template_dir)
         self.assertTrue(isinstance(party, Party))
+        Logger.critical("RESTARTING")
         # Test re-starting
         party += rt_tribe.run(
             threshold=6, threshold_type="MAD", trig_int=3,
             max_run_length=20, detect_directory=self.detect_dir)
+        if os.path.isdir(rt_tribe.running_template_dir):
+            shutil.rmtree(rt_tribe.running_template_dir)
 
     def test_station_overlap(self):
         rt_client = RealTimeClient(
             server_url="link.geonet.org.nz", buffer_capacity=1200)
         rt_tribe = RealTimeTribe(
-            tribe=self.tribe, rt_client=rt_client, inventory=self.inventory)
+            tribe=self.tribe, rt_client=rt_client, inventory=self.inventory,
+            name="test_station_overlap_tribe")
         self.assertGreaterEqual(
             len(rt_tribe.used_stations), len(self.inventory))
+        if os.path.isdir(rt_tribe.running_template_dir):
+            shutil.rmtree(rt_tribe.running_template_dir)
 
     def test_run_zero_threshold(self):
         """ Test to ensure some detections are made an handled correctly."""
@@ -87,7 +101,8 @@ class RealTimeTribeTest(unittest.TestCase):
         rt_client = RealTimeClient(
             server_url="link.geonet.org.nz", buffer_capacity=90)
         rt_tribe = RealTimeTribe(
-            tribe=tribe, rt_client=rt_client, detect_interval=5, plot=False)
+            tribe=tribe, rt_client=rt_client, detect_interval=5, plot=False,
+            name="test_run_zero_threshold_tribe")
         party = rt_tribe.run(
             threshold=0.9, threshold_type="MAD", trig_int=3,
             max_run_length=100, detect_directory=self.detect_dir)
@@ -96,6 +111,28 @@ class RealTimeTribeTest(unittest.TestCase):
         detect_files = glob.glob(os.path.join(
             self.detect_dir, "????", "???", "*.xml"))
         self.assertGreater(len(detect_files), 0)
+        if os.path.isdir(rt_tribe.running_template_dir):
+            shutil.rmtree(rt_tribe.running_template_dir)
+
+    def test_run_lag_calc(self):
+        tribe = self.tribe.copy()
+        for template in tribe:
+            template.process_length = 60
+        rt_client = RealTimeClient(
+            server_url="link.geonet.org.nz", buffer_capacity=90,)
+
+        rt_tribe = RealTimeTribe(
+            tribe=tribe, rt_client=rt_client, detect_interval=5, plot=False,
+            name="test_run_tribe", plugin_config={'lag_calc': LagCalcConfig(
+                sleep_interval=20
+            )})
+        party = rt_tribe.run(
+            threshold=1, threshold_type="MAD", trig_int=3, max_run_length=600,
+            detect_directory="test_run_tribe/detections")
+        if os.path.isdir(rt_tribe.running_template_dir):
+            shutil.rmtree(rt_tribe.running_template_dir)
+        self.assertTrue(isinstance(party, Party))
+        # TODO: This doesn't actually test that lag-calc was running properly
 
     # No tear downs with parallel testing :(
     # @classmethod
