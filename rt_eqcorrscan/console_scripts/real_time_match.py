@@ -90,6 +90,11 @@ def run_real_time_matched_filter(**kwargs):
         location=region, starttime=_detection_starttime,
         max_distance=1000, n_stations=10)
 
+    if config.plugins.hyp:
+        # We need to handle the stationxml file and velocity file here
+        inventory.write("stations.xml", format="STATIONXML")
+        config.plugins.hyp.station_file = "stations.xml"
+
     used_channels = {
         "{net}.{sta}.{loc}.{chan}".format(
             net=net.code, sta=sta.code, loc=chan.location_code, chan=chan.code)
@@ -113,7 +118,9 @@ def run_real_time_matched_filter(**kwargs):
         detect_interval=config.rt_match_filter.detect_interval,
         plot=config.rt_match_filter.plot, name=tribe_name,
         plot_options=config.plot,
-        wavebank=config.rt_match_filter.local_wave_bank)
+        wavebank=config.rt_match_filter.local_wave_bank,
+        plugin_config=config.plugins,
+        notifier=config.notifier)
     try:
         real_time_tribe._speed_up = config.streaming.speed_up
     except AttributeError:

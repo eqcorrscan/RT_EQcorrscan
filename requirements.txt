@@ -9,6 +9,8 @@ h5py
 pyyaml
 pyproj>2.1
 codecov
+psutil
+geographiclib
 EQcorrscan>=0.4.2
 urllib3>=1.24.3
 obsplus>=0.1.1

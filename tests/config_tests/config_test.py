@@ -8,6 +8,8 @@ import os
 from obspy.clients.fdsn import Client
 
 from rt_eqcorrscan.config.config import Config, read_config, PlotConfig
+from rt_eqcorrscan.plugins.lag_calc import LagCalcConfig
+from rt_eqcorrscan.plugins.relocation import HypConfig
 
 
 class TestConfig(unittest.TestCase):
@@ -113,6 +115,24 @@ class TestConfig(unittest.TestCase):
         plot = PlotConfig()
         plot_extras = PlotConfig(animal="albatross")
         self.assertNotEqual(plot, plot_extras)
+
+    def test_config_lag_calc_plugin(self):
+        config = Config()
+        config.plugins.lag_calc = LagCalcConfig()
+        test_file = "test_lag_calc_plugin.yml"
+        config.write(test_file)
+        self.files_to_remove.append(test_file)
+        config_back = read_config(test_file)
+        self.assertEqual(config.plugins.lag_calc, config_back.plugins.lag_calc)
+
+    def test_config_hyp(self):
+        config = Config()
+        config.plugins.hyp = HypConfig()
+        test_file = "test_hyp_config.yml"
+        config.write(test_file)
+        self.files_to_remove.append(test_file)
+        config_back = read_config(test_file)
+        self.assertEqual(config.plugins.hyp, config_back.plugins.hyp)
 
     @classmethod
     def tearDownClass(cls):

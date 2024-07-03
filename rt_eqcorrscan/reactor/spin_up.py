@@ -84,6 +84,10 @@ def run(
             f"km of the trigger matching your templates, not running")
         return None, None
     inventory.write("inventory.xml", format="STATIONXML")
+    if config.plugins.hyp:
+        # We need to handle the stationxml file and velocity file here
+        config.plugins.hyp.station_file = os.path.join(
+            working_dir, "inventory.xml")
     detect_interval = config.rt_match_filter.get(
         "detect_interval", 60)
     plot = config.rt_match_filter.get("plot", False)
@@ -94,7 +98,8 @@ def run(
         backfill_interval=config.rt_match_filter.backfill_interval,
         name=triggering_event.resource_id.id.split('/')[-1],
         wavebank=config.rt_match_filter.local_wave_bank,
-        notifer=config.notifier)
+        notifier=config.notifier, plugin_config=config.plugins,
+    )
 
     real_time_tribe._speed_up = speed_up
     if speed_up > 1:

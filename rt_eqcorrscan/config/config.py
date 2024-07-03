@@ -13,7 +13,9 @@ try:
 except ImportError:  # pragma: no cover
     from yaml import Loader, Dumper
 from logging.handlers import RotatingFileHandler
+
 from rt_eqcorrscan.config.mailer import Notifier
+from rt_eqcorrscan.plugins.plugin import PLUGIN_CONFIG_MAPPER
 
 from obspy.core.util import AttribDict
 
@@ -215,6 +217,72 @@ class PlotConfig(_ConfigAttribDict):
         super().__init__(*args, **kwargs)
 
 
+class _PluginConfig(_ConfigAttribDict):
+    """ Base configuration for plugins. """
+    defaults = {
+        "in_dir": None,
+        "template_dir": None,
+        "wavebank_dir": None,
+        "out_dir": None,
+    }
+    readonly = []
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def write(self, config_file: str) -> None:
+        """ Write to a yaml formatted file. """
+        with open(config_file, "w") as f:
+            f.write(dump(self.to_yaml_dict(), Dumper=Dumper))
+
+    @classmethod
+    def read(cls, config_file: str):
+        with open(config_file, "rb") as f:
+            config = load(f, Loader=Loader)
+            # Convert spaces to underscores
+            config = {key.replace(" ", "_"): value
+                      for key, value in config.items()}
+        return cls(**config)
+
+
+class PluginConfigs(_ConfigAttribDict):
+    """
+    A holder for Plugin configurations
+    """
+    from rt_eqcorrscan.plugins.lag_calc import LagCalcConfig
+    from rt_eqcorrscan.plugins.relocation.hyp_runner import HypConfig
+
+    defaults = {
+        "lag_calc": None,
+        "hyp": None
+    }
+    readonly = []
+    __subclasses = {
+        "lag_calc": LagCalcConfig,
+        "hyp": HypConfig,
+    }
+
+    def __init__(self, *args, **kwargs):
+        attribs = dict()
+        for key, value in kwargs.items():
+            if key in self.__subclasses.keys():
+                if isinstance(value, dict):
+                    value = self.__subclasses[key](**value)
+            attribs.update({key: value})
+        super().__init__(*args, **attribs)
+
+    def to_yaml_dict(self):
+        """ Overload. """
+        yaml_dict = dict()
+        for key, value in self.__dict__.items():
+            if hasattr(value, "to_yaml_dict"):
+                yaml_dict.update({
+                    key.replace("_", " "): value.to_yaml_dict()})
+            else:
+                yaml_dict.update({key.replace("_", " "): value})
+        return yaml_dict
+
+
 class DatabaseManagerConfig(_ConfigAttribDict):
     """
     A holder for configuration values for database management.
@@ -286,6 +354,7 @@ KEY_MAPPER = {
     "template": TemplateConfig,
     "streaming": StreamingConfig,
     "notifier": NotifierConfig,
+    "plugins": PluginConfigs,
 }
 
 
@@ -313,6 +382,8 @@ class Config(object):
         Config values for real-time streaming
     notifier
         Config values to notification services
+    plugins
+        Configurations for any plugins expected to be run
     """
     def __init__(
         self,
@@ -327,6 +398,7 @@ class Config(object):
         self.template = TemplateConfig()
         self.streaming = StreamingConfig()
         self.notifier = NotifierConfig()
+        self.plugins = PluginConfigs()
         self.log_level = log_level
         self.log_formatter = log_formatter
 
@@ -335,7 +407,7 @@ class Config(object):
                 raise NotImplementedError("Unsupported argument "
                                           "type: {0}".format(key))
             if isinstance(value, dict):
-                self.__dict__[key] = KEY_MAPPER[key](value)
+                self.__dict__[key] = KEY_MAPPER[key](**value)
             else:
                 assert isinstance(value, type(self.__dict__[key]))
                 self.__dict__[key] = value
@@ -390,27 +462,40 @@ class Config(object):
         **kwargs
     ):
         """Set up logging using the logging parameters."""
-        handlers = []
-        if file:
-            file_log_args = dict(filename=filename, mode='a',
-                                 maxBytes=20*1024*1024, backupCount=10,
-                                 encoding=None, delay=0)
-            file_log_args.update(kwargs)
-            rotating_handler = RotatingFileHandler(**file_log_args)
-            rotating_handler.setFormatter(
-                logging.Formatter(self.log_formatter))
-            rotating_handler.setLevel(self.log_level)
-            handlers.append(rotating_handler)
-        if screen:
-            # Console handler
-            console_handler = logging.StreamHandler(stream=sys.stdout)
-            console_handler.setLevel(self.log_level)
-            console_handler.setFormatter(
-                logging.Formatter(self.log_formatter))
-            handlers.append(console_handler)
-        logging.basicConfig(
-            level=self.log_level, format=self.log_formatter,
-            handlers=handlers)
+        _setup_logging(
+            log_level=self.log_level, log_formatter=self.log_formatter,
+            screen=screen, file=file, filename=filename, **kwargs)
+
+
+def _setup_logging(
+    log_level: str,
+    log_formatter: str,
+    screen: bool = True,
+    file: bool = True,
+    filename: str = "rt_eqcorrscan.log",
+    **kwargs
+):
+    """Set up logging using the logging parameters."""
+    handlers = []
+    if file:
+        file_log_args = dict(filename=filename, mode='a',
+                             maxBytes=20*1024*1024, backupCount=10,
+                             encoding=None, delay=0)
+        file_log_args.update(kwargs)
+        rotating_handler = RotatingFileHandler(**file_log_args)
+        rotating_handler.setFormatter(
+            logging.Formatter(log_formatter))
+        rotating_handler.setLevel(log_level)
+        handlers.append(rotating_handler)
+    if screen:
+        # Console handler
+        console_handler = logging.StreamHandler(stream=sys.stdout)
+        console_handler.setLevel(log_level)
+        console_handler.setFormatter(
+            logging.Formatter(log_formatter))
+        handlers.append(console_handler)
+    logging.basicConfig(
+        level=log_level, format=log_formatter, handlers=handlers)
 
 
 def read_config(config_file=None) -> Config:
@@ -437,12 +522,22 @@ def read_config(config_file=None) -> Config:
     for key, value in configuration.items():
         if key.replace(" ", "_") in KEY_MAPPER.keys():
             config_dict.update(
-                {key.replace(" ", "_"):
-                     {_key.replace(" ", "_"): _value
-                      for _key, _value in value.items()}})
+                _recursive_replace_space_underscore({key: value}))
+                # {key.replace(" ", "_"):
+                #      {_key.replace(" ", "_"): _value
+                #       for _key, _value in value.items()}})
         else:
             config_dict.update({key: value})
     return Config(**config_dict)
+
+
+def _recursive_replace_space_underscore(in_dict: dict) -> dict:
+    out_dict = dict()
+    for key, value in in_dict.items():
+        if isinstance(value, dict):
+            value = _recursive_replace_space_underscore(value)
+        out_dict.update({key.replace(" ", "_"): value})
+    return out_dict
 
 
 if __name__ == "__main__":

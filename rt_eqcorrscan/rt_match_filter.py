@@ -30,6 +30,8 @@ from eqcorrscan.utils.pre_processing import _prep_data_for_correlation
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
 from rt_eqcorrscan.event_trigger.triggers import average_rate
 from rt_eqcorrscan.config.mailer import Notifier
+from rt_eqcorrscan.plugins import (
+    REGISTERED_PLUGINS, run_plugin, ORDERED_PLUGINS)
 
 Logger = logging.getLogger(__name__)
 
@@ -82,6 +84,8 @@ class RealTimeTribe(Tribe):
     _number_of_backfillers = 0  # Book-keeping of backfiller processes.
     _clean_backfillers = True  # If false will leave temporary backfiller dirs
 
+    _plugins = dict()  # Plugin subprocesses
+
     busy = False
 
     _speed_up = 1.0  # For simulated runs - do not change for real-time!
@@ -115,7 +119,8 @@ class RealTimeTribe(Tribe):
         plot: bool = True,
         plot_options: dict = None,
         wavebank: Union[str, WaveBank] = WaveBank("Streaming_WaveBank"),
-        notifer: Notifier = Notifier()
+        notifier: Notifier = Notifier(),
+        plugin_config: dict = None,
     ) -> None:
         super().__init__(templates=tribe.templates)
         self.rt_client = rt_client
@@ -128,8 +133,9 @@ class RealTimeTribe(Tribe):
         self.detect_interval = detect_interval
         self.backfill_interval = backfill_interval
         self.plot = plot
-        self.notifier = notifer
+        self.notifier = notifier
         self.plot_options = {}
+        self.plugin_config = plugin_config
         if plot_options is not None:
             self.plot_length = plot_options.get("plot_length", 300)
             self.plot_options.update({
@@ -165,6 +171,10 @@ class RealTimeTribe(Tribe):
         """
         return 'Real-Time Tribe of {0} templates on client:\n{1}'.format(
             self.__len__(), self.rt_client)
+
+    @property
+    def running_template_dir(self) -> str:
+        return f"{self.name}_running_templates"
 
     @property
     def template_seed_ids(self) -> set:
@@ -473,7 +483,7 @@ class RealTimeTribe(Tribe):
                 if os.path.isfile(f"{detect_file_base}.xml") and skip_existing:
                     Logger.info(f"{_filename} exists, skipping")
                     continue
-                Logger.debug(f"Writing detection: {detection.detect_time}")
+                Logger.debug(f"Writing detection at {detection.detect_time}")
                 # TODO: Do not do this, let some other process work on making the waveforms.
                 if read_st:
                     max_shift = (
@@ -581,6 +591,34 @@ class RealTimeTribe(Tribe):
             elif wait_length >= wait:
                 break
             pass
+        return
+
+    def _start_plugins(self):
+        """ Start up any registered plugins. """
+
+        for key, value in self.plugin_config.items():
+            if value is None:
+                continue
+            if key not in REGISTERED_PLUGINS.keys():
+                Logger.error(f"Plugin {key} is not known to RT-EQcorrscan")
+                continue
+            config_name = f"{key}-config-{self.name}.yml"
+            Logger.info(f"Writing config file for {key} to {config_name}")
+            value.write(config_name)
+            plugin_proc = run_plugin(key, ["-c", config_name])
+            self._plugins.update({key: plugin_proc})
+        return
+
+    def _stop_plugins(self):
+        for key, proc in self._plugins.items():
+            Logger.info(f"Stopping subprocess for plugin {key}")
+            config = self.plugin_config[key]
+            outdir = config.out_dir
+            with open(f"{outdir}/poison", "w") as f:
+                f.write(f"Poisoned at {time.time()}")
+            # proc.terminate()
+            Logger.info(f"{key} poisoned")
+
         return
 
     def _start_streaming(self):
@@ -725,15 +763,32 @@ class RealTimeTribe(Tribe):
             os.makedirs(detect_directory)
 
         # dump templates to the record of templates running
-        if not os.path.isfile("running_templates"):
-            os.makedirs("running_templates")
+        if not os.path.isfile(self.running_template_dir):
+            os.makedirs(self.running_template_dir)
             for template in self.templates:
-                with open(f"running_templates/{template.name}.pkl", "wb") as f:
+                with open(f"{self.running_template_dir}/{template.name}.pkl", "wb") as f:
                     pickle.dump(template, f)
         # Get this locally before streaming starts
         buffer_capacity = self.rt_client.buffer_capacity  
         # Start the streamer
         self._start_streaming()
+
+        # Add config options for plugins as needed
+        in_dir = detect_directory
+        if self.plugin_config:
+            for plugin_name in ORDERED_PLUGINS:
+                config = self.plugin_config.get(plugin_name, None)
+                if config is None:
+                    continue
+                config.in_dir = in_dir
+                config.out_dir = f"{self.name}/{plugin_name}_out"
+                config.wavebank_dir = self.wavebank.bank_path
+                config.template_dir = self.running_template_dir
+                # Output of previous plugin as input to next
+                in_dir = config.out_dir
+
+            # Start any plugins
+            self._start_plugins()
 
         Logger.info("Detection will use the following data: {0}".format(
             self.expected_seed_ids))
@@ -811,11 +866,19 @@ class RealTimeTribe(Tribe):
                         st = st.merge()  # Re-merge after gap checking
                     if self.has_wavebank:
                         st = _check_stream_is_int(st)
-                        try:
-                            self._access_wavebank(
-                                method="put_waveforms", timeout=10.,
-                                stream=st)
-                        except Exception as e:
+                        wb_retries, wb_max_retries, e = 0, 10, None
+                        while wb_retries <= wb_max_retries:
+                            try:
+                                self._access_wavebank(
+                                    method="put_waveforms", timeout=10.,
+                                    stream=st)
+                                break
+                            except Exception as e:
+                                Logger.info(f"Retry {wb_retries}/{wb_max_retries}")
+                                wb_retries += 1
+                                # time.sleep(0.1)
+                                continue
+                        else:
                             Logger.error(
                                 f"Could not write to wavebank due to {e}")
                     last_data_received = self.rt_client.last_data
@@ -1043,10 +1106,10 @@ class RealTimeTribe(Tribe):
             Logger.info(f"Read in {len(new_tribe)} new templates from disk")
 
         # dump them to the record of templates running
-        if not os.path.isfile("running_templates"):
-            os.makedirs("running_templates")
+        if not os.path.isfile(self.running_template_dir):
+            os.makedirs(self.running_template_dir)
             for template in new_tribe:
-                with open(f"running_templates/{template.name}.pkl", "wb") as f:
+                with open(f"{self.running_template_dir}/{template.name}.pkl", "wb") as f:
                     pickle.dump(template, f)
         return new_tribe
 
@@ -1271,9 +1334,7 @@ class RealTimeTribe(Tribe):
             with open(".stopfile", "a") as f:
                 f.write(f"{self.name}\n")
         # Stop plugins
-        for plugin in self.plugins:
-            # TODO: Write a poison file in the input directory of the plugin
-            pass
+        self._stop_plugins()
 
 
 def reshape_templates(
@@ -1449,6 +1510,9 @@ def _write_detection(
         detection.event.write(f"{detect_file_base}.xml", format="QUAKEML")
     except Exception as e:
         Logger.error(f"Could not write event file due to {e}")
+    else:
+        Logger.info(f"Written detection at {detection.detect_time} to "
+                    f"{detect_file_base}")
     detection.event.picks.sort(key=lambda p: p.time)
     st = stream.slice(
         detection.event.picks[0].time - 10,

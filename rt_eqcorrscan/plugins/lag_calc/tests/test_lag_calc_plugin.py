@@ -29,6 +29,7 @@ Logger = logging.getLogger(__name__)
 def _write_detections_for_sim(
     catalog: Catalog,
     outdir: str,
+    poisondir: str,
     sleep_step: float = 20.0,
 ):
     slices = [slice(0, 1), slice(1, 5), slice(5, None)]
@@ -41,7 +42,7 @@ def _write_detections_for_sim(
                         format="QUAKEML")
         time.sleep(sleep_step)
     Logger.info("Writing poison file")
-    with open(f"{outdir}/poison", "w") as f:
+    with open(f"{poisondir}/poison", "w") as f:
         f.write("Poisoned at end of detection writing")
     return
 
@@ -102,6 +103,9 @@ class TestLagCalcPlugin(unittest.TestCase):
         wavebank_dir = ".lag_calc_test_wavebank"
         outdir = ".lag_calc_test_outdir"
         config.sleep_interval = 2.0
+        config.in_dir, config.template_dir, config.wavebank_dir = (
+            detect_dir, template_dir, wavebank_dir)
+        config.out_dir = outdir
         config.write(config_file)
         self.clean_up.extend(
             [config_file, detect_dir, template_dir, wavebank_dir, outdir])
@@ -130,7 +134,7 @@ class TestLagCalcPlugin(unittest.TestCase):
         assert len(catalog)
         detection_writer = Process(
             target=_write_detections_for_sim,
-            args=(catalog, detect_dir, 20.),
+            args=(catalog, detect_dir, outdir, 20.),
             name="DetectionWriter")
 
         # Run the process in the background
@@ -140,12 +144,7 @@ class TestLagCalcPlugin(unittest.TestCase):
         Logger.info("Starting lag-calc runner")
         failed = False
         try:
-            lag_calc_runner(
-                config_file=config_file,
-                detection_dir=detect_dir,
-                template_dir=template_dir,
-                wavebank_dir=wavebank_dir,
-                outdir=outdir)
+            lag_calc_runner(config_file=config_file)
         except Exception as e:
             Logger.error(f"Failed due to {e}")
             failed = True
