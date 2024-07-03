@@ -150,8 +150,8 @@ def seisan_hyp(
     _write_station0(inventory, velocities, vpvs)
 
     if remodel:
-        subprocess.call(['remodl'])
-        subprocess.call(['setbrn'])
+        subprocess.run(['remodl'], capture_output=True)
+        subprocess.run(['setbrn'], capture_output=True)
 
     event_out = event.copy()
     try:
@@ -164,7 +164,12 @@ def seisan_hyp(
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         event_out.write(format="NORDIC", filename="to_be_located")
-    subprocess.call(['hyp', "to_be_located"])
+    loc_proc = subprocess.run(
+        ['hyp', "to_be_located"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+    for line in loc_proc.stdout.decode().splitlines():
+        Logger.debug(">>> " + line.rstrip())
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         try:
@@ -378,6 +383,7 @@ def main(
         if elapsed < config.sleep_interval:
             time.sleep(config.sleep_interval - elapsed)
         continue
+    _cleanup()
     return
 
 

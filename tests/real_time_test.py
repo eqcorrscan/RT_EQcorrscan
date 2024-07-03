@@ -17,6 +17,7 @@ from rt_eqcorrscan.rt_match_filter import RealTimeTribe
 from rt_eqcorrscan.streaming.clients.seedlink import RealTimeClient
 from rt_eqcorrscan.reactor import get_inventory
 from rt_eqcorrscan.plugins.lag_calc import LagCalcConfig
+from rt_eqcorrscan.plugins.relocation import HypConfig
 
 
 Logger = logging.getLogger(__name__)
@@ -133,6 +134,29 @@ class RealTimeTribeTest(unittest.TestCase):
             shutil.rmtree(rt_tribe.running_template_dir)
         self.assertTrue(isinstance(party, Party))
         # TODO: This doesn't actually test that lag-calc was running properly
+
+    def test_run_hyp(self):
+        tribe = self.tribe.copy()
+        for template in tribe:
+            template.process_length = 60
+        rt_client = RealTimeClient(
+            server_url="link.geonet.org.nz", buffer_capacity=90,)
+
+        self.inventory.write("test_inv.xml", format="STATIONXML")
+
+        rt_tribe = RealTimeTribe(
+            tribe=tribe, rt_client=rt_client, detect_interval=5, plot=False,
+            name="test_run_tribe", plugin_config={
+                'lag_calc': LagCalcConfig(sleep_interval=20),
+                'hyp': HypConfig(sleep_interval=20,
+                                 station_file="test_inv.xml")
+            })
+        party = rt_tribe.run(
+            threshold=1, threshold_type="MAD", trig_int=3, max_run_length=600,
+            detect_directory="test_run_tribe/detections")
+        if os.path.isdir(rt_tribe.running_template_dir):
+            shutil.rmtree(rt_tribe.running_template_dir)
+        self.assertTrue(isinstance(party, Party))
 
     # No tear downs with parallel testing :(
     # @classmethod

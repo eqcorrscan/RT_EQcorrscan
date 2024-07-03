@@ -23,6 +23,7 @@ from typing import List, Set, Iterable
 # Entry point defined by script name in plugins.console_scripts and looked up in setup.py
 REGISTERED_PLUGINS = {
     "lag_calc": "rteqcorrscan-plugin-lag-calc",
+    "hyp": "rteqcorrscan-plugin-hyp",
 }
 PLUGIN_CONFIG_MAPPER = dict()
 # Control order of plugins, outdir of previous plugin is input to plugin

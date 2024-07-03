@@ -26,7 +26,7 @@ def main():
         default="%(asctime)s\t[%(processName)s:%(threadName)s]: " \
                 "%(name)s\t%(levelname)s\t%(message)s")
     parser.add_argument(
-        "--log-file", type=str, default="lag-calc.log")
+        "--log-file", type=str, default="hyp.log")
     parser.add_argument(
         "--log-to-screen", "-s", action="store_true")
 
