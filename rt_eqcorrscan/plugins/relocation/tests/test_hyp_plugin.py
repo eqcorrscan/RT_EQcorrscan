@@ -134,7 +134,7 @@ class TestHypPlugin(unittest.TestCase):
         self.assertEqual(len(self.cat), len(cat_back))
 
     @classmethod
-    def tearDownClass(cls, clean=False):
+    def tearDownClass(cls, clean=True):
         if clean:
             for thing in cls.clean_up:
                 if os.path.isdir(thing):
