@@ -169,13 +169,14 @@ def seisan_hyp(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT)
     for line in loc_proc.stdout.decode().splitlines():
-        Logger.debug(">>> " + line.rstrip())
+        # Logger.debug(">>> " + line.rstrip())
+        print(">>> " + line.rstrip())
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         try:
             event_back = read_nordic("hyp.out")
         except Exception as e:
-            Logger.error(e)
+            Logger.error(f"Could not read hyp.out due to {e}")
             return None
     # We lose some info in the round-trip to nordic
     event_out.origins[0] = event_back[0].origins[0]
@@ -354,21 +355,34 @@ def main(
                 Logger.error(f"Could not read {infile} due to {e}")
                 continue
             cat_out = Catalog()
+            failed = False
             for event in _cat:
-                event_located = seisan_hyp(
-                    event=event, inventory=inv, velocities=vmodel.velocities,
-                    vpvs=vmodel.vpvs, remodel=remodel, clean=False)
-                remodel = False  # Do not redo that work if we don't need to
-                cat_out += event_located
+                try:
+                    event_located = seisan_hyp(
+                        event=event, inventory=inv,
+                        velocities=vmodel.velocities,
+                        vpvs=vmodel.vpvs, remodel=remodel, clean=False)
+                except Exception as e:
+                    Logger.error(f"Could not locate {event.resource_id.id} due "
+                                 f"to {e}")
+                    failed = True
+                    continue
+                if event_located:
+                    remodel = False  # Do not redo that work if we don't need to
+                    cat_out += event_located
+                else:
+                    failed = True
             fname = infile.split(in_dir)[-1]
             fname = fname.lstrip(os.path.sep)  # Strip pathsep if it is there
             outpath = os.path.join(out_dir, fname)
             Logger.info(f"Writing located event to {outpath}")
             if not os.path.isdir(os.path.dirname(outpath)):
                 os.makedirs(os.path.dirname(outpath))
-            cat_out.write(outpath, format="QUAKEML")
+            if len(cat_out):
+                cat_out.write(outpath, format="QUAKEML")
 
-            processed_files.append(infile)
+            if not failed:
+                processed_files.append(infile)
 
         watcher.processed(processed_files)
 
