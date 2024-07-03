@@ -8,16 +8,40 @@ import glob
 import logging
 import warnings
 import subprocess
+import time
 
 from typing import List
 
-from obspy import read_events, Catalog, read_inventory, UTCDateTime
+from obspy import read_events, Catalog, read_inventory
 from obspy.core.event import Event, Origin
 from obspy.core.inventory import Inventory, Station
-from obspy.io.nordic.core import write_select, read_nordic
+from obspy.io.nordic.core import read_nordic
+
+from rt_eqcorrscan.config.config import _PluginConfig
+from rt_eqcorrscan.plugins.plugin import (
+    Watcher, PLUGIN_CONFIG_MAPPER)
 
 
 Logger = logging.getLogger(__name__)
+
+
+class HypConfig(_PluginConfig):
+    """
+    Configuration for the hyp plugin.
+    """
+    defaults = {
+        "vmodel_file": os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "vmodel.txt"),
+        "station_file": "stations.xml",
+        "sleep_interval": 600,
+    }
+    readonly = []
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+
+PLUGIN_CONFIG_MAPPER.update({"hyp": HypConfig})
 
 
 # ############################# VELOCITY MODEL CLASSES #########################
@@ -160,8 +184,8 @@ def seisan_hyp(
             abs(p.time - pick.time) < 0.1]
         assert len(matched_pick) > 0, "No picks matched"
         assert len(set(p.waveform_id.get_seed_string()
-                       for p in matched_pick)) == 0,\
-            "Multiple seed ids for matched picks"
+                       for p in matched_pick)) == 1,\
+            f"Multiple seed ids for matched picks:\n{matched_pick}"
         print(f"Matched {pick.waveform_id.get_seed_string()} to "
               f"{matched_pick[0].waveform_id.get_seed_string()}")
         pick.waveform_id.network_code = matched_pick[0].waveform_id.network_code
@@ -175,16 +199,18 @@ def seisan_hyp(
     return event_out
 
 
-def _cleanup():
-    # Clean up
-    files_to_remove = [
+_HYP_TMP_FILES = [
         "hyp.out", "to_be_located", "remodl.tbl", "remodl1.lis", "remodl2.lis",
         "print.out", "gmap.cur.kml", "hypmag.out", "hypsum.out", "remodl.hed",
         "IASP91_linux.HED", "IASP91_linux.TBL", "setbrn1.lis", "setbrn2.lis",
         "setbrn3.lis", "STATION0.HYP", "focmec.dat", "focmec.inp", "fort.17",
         "fps.out", "hash_seisan.out", "pspolar.inp", "scratch1.out",
         "scratch2.out", "scratch3.out"]
-    for f in files_to_remove:
+
+
+def _cleanup():
+    # Clean up
+    for f in _HYP_TMP_FILES:
         if os.path.isfile(f):
             os.remove(f)
 
@@ -266,136 +292,96 @@ def _write_station0(
 
 # ################################# CONTROL FUNCS #############################
 
-def _get_bulk_for_cat(cat: Catalog) -> List[tuple]:
-    picks = sorted([p for ev in cat for p in ev.picks], key=lambda p: p.time)
-    starttime = picks[0].time
-    endtime = picks[-1].time
-    bulk = {
-        (p.waveform_id.network_code or "*",
-         p.waveform_id.station_code or "*",
-         p.waveform_id.location_code or "*",
-         p.waveform_id.channel_code or "*")
-        for p in picks}
-    bulk = [(n, s, l, c, starttime, endtime) for n, s, l, c in bulk]
-    return bulk
-
-
-def setup_testcase(
-    indir: str,
-    stationxml: str,
-):
-    """
-    Download some event files and a stationxml to run.
-    """
-    from obspy.clients.fdsn import Client
-
-    client = Client("GEONET")
-
-    Logger.info("Setting up testcase")
-    # Kaikōura - Cape Campbell ~ 200 events
-    cat = client.get_events(
-        starttime=UTCDateTime(2016, 11, 13),
-        endtime=UTCDateTime(2016, 11, 14),
-        minlatitude=-41.9,
-        maxlatitude=-41.6,
-        minlongitude=174.0,
-        maxlongitude=174.4,
-        maxdepth=40
-    )
-    Logger.info(f"Downloaded {len(cat)} events")
-
-    bulk = _get_bulk_for_cat(cat=cat)
-    inv = client.get_stations_bulk(bulk, level="channel")
-
-    for event in cat:
-        event.write(
-            f"{indir}/{event.resource_id.__str__().split('/')[-1]}.xml",
-            format="QUAKEML")
-
-    inv.write(stationxml, format="STATIONXML")
-    Logger.info("Completed test set-up")
-    return
-
 
 def main(
-    indir: str,
-    outdir: str,
-    stationxmldir: str,
-    velocitymodel: str,
+    config_file: str
 ):
     """
-    Read files from input directory, locate them, write the results to outdir.
-    """
-    infiles = glob.glob(f"{indir}/*")
-    Logger.info(f"Found {len(infiles)} to locate")
+    Main hyp-plugin runner.
 
-    inv = read_inventory(f"{stationxmldir}/*.xml")
-    vmodel = VelocityModel.read(velocitymodel)
+    Parameters
+    ----------
+    config_file
+        Path to configuration file for hyp runner
+    """
+    config = HypConfig.read(config_file=config_file)
+    in_dir = config.pop("in_dir")
+    out_dir = config.pop("out_dir")
+    vmodel_file = config.pop("vmodel_file")
+    station_file = config.pop("station_file")
+
+    watcher = Watcher(
+        top_directory=in_dir, watch_pattern="*.xml", history=None)
+    kill_watcher = Watcher(
+        top_directory=out_dir, watch_pattern="poison", history=None)
+
+    if not os.path.isdir(out_dir):
+        os.makedirs(out_dir)
+
+    # TODO: Figure this out - we need to read the vmodel and station inv
+    inv = read_inventory(station_file)
+    vmodel = VelocityModel.read(vmodel_file)
 
     remodel = True  # Rebuild velocity tables first time.
-    for i, infile in enumerate(infiles):
-        Logger.info(f"Working on event-file {i} of {len(infiles)}:\t{infile}")
-        try:
-            _cat = read_events(infile)
-        except Exception as e:
-            Logger.error(f"Could not read {infile} due to {e}")
-            continue
-        cat_out = Catalog()
-        for event in _cat:
-            event_located = seisan_hyp(
-                event=event, inventory=inv, velocities=vmodel.velocities,
-                vpvs=vmodel.vpvs, remodel=remodel, clean=False)
-            remodel = False  # Do not redo that work if we don't need to
-            cat_out += event_located
-        outfile = f"{outdir}/{os.path.basename(infile)}"
-        Logger.info(f"Writing located event to {outfile}")
-        cat_out.write(outfile, format="QUAKEML")
 
+    while True:
+        tic = time.time()
+        kill_watcher.check_for_updates()
+        if len(kill_watcher):
+            Logger.critical("Hyp plugin killed")
+            Logger.critical(f"Found files {kill_watcher}")
+            break
+
+        watcher.check_for_updates()
+        if not len(watcher):
+            Logger.debug(
+                f"Found no new events, sleeping for {config.sleep_interval}")
+            time.sleep(config.sleep_interval)
+            continue
+
+        new_files, processed_files = watcher.new.copy(), []
+        for i, infile in enumerate(new_files):
+            Logger.info(
+                f"Working on event-file {i} of {len(new_files)}:\t{infile}")
+            try:
+                _cat = read_events(infile)
+            except Exception as e:
+                Logger.error(f"Could not read {infile} due to {e}")
+                continue
+            cat_out = Catalog()
+            for event in _cat:
+                event_located = seisan_hyp(
+                    event=event, inventory=inv, velocities=vmodel.velocities,
+                    vpvs=vmodel.vpvs, remodel=remodel, clean=False)
+                remodel = False  # Do not redo that work if we don't need to
+                cat_out += event_located
+            fname = infile.split(in_dir)[-1]
+            fname = fname.lstrip(os.path.sep)  # Strip pathsep if it is there
+            outpath = os.path.join(out_dir, fname)
+            Logger.info(f"Writing located event to {outpath}")
+            if not os.path.isdir(os.path.dirname(outpath)):
+                os.makedirs(os.path.dirname(outpath))
+            cat_out.write(outpath, format="QUAKEML")
+
+            processed_files.append(infile)
+
+        watcher.processed(processed_files)
+
+        # Check for poison again before sleeping
+        kill_watcher.check_for_updates()
+        if len(kill_watcher):
+            Logger.error("Hyp plugin killed")
+        # Sleep and repeat
+        toc = time.time()
+        elapsed = toc - tic
+        Logger.info(f"Hyp loop took {elapsed:.2f} s")
+        if elapsed < config.sleep_interval:
+            time.sleep(config.sleep_interval - elapsed)
+        continue
     return
 
 
 if __name__ == "__main__":
-    from argparse import ArgumentParser
+    import doctest
 
-    parser = ArgumentParser(
-        description="Locate events using SEISAN's HYPOCENTER")
-
-    parser.add_argument(
-        "-i", "--indir", type=str, required=True,
-        help="Input directory to read events from")
-    parser.add_argument(
-        "-o", "--outdir", type=str, required=True,
-        help="Output directory for events")
-    parser.add_argument(
-        "-s", "--stationxmldir", type=str, required=True,
-        help="Location of stationxml file containing at least "
-             "station locations")
-    parser.add_argument(
-        "-vm", "--velocitymodel", type=str, required=True,
-        help="Location of velocity model file")
-    parser.add_argument(
-        "--test", action="store_true",
-        help="Run a test that will download events and stationxml for you")
-    parser.add_argument(
-        "-v", "--verbose", action="store_true",
-        help="Increase verbosity")
-
-    args = parser.parse_args()
-
-    level = logging.INFO
-    if args.verbose:
-        level =  logging.DEBUG
-
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s\t%(name)s\t%(levelname)s\t%(message)s")
-
-    if args.test:
-        setup_testcase(indir=args.indir, stationxml=args.stationxml)
-
-    main(
-        indir=args.indir,
-        outdir=args.outdir,
-        stationxmldir=args.stationxmldir,
-        velocitymodel=args.velocitymodel
-    )
+    doctest.testmod()

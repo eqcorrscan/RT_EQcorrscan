@@ -29,6 +29,7 @@ Logger = logging.getLogger(__name__)
 def _write_detections_for_sim(
     catalog: Catalog,
     outdir: str,
+    poisondir: str,
     sleep_step: float = 20.0,
 ):
     slices = [slice(0, 1), slice(1, 5), slice(5, None)]
@@ -41,7 +42,7 @@ def _write_detections_for_sim(
                         format="QUAKEML")
         time.sleep(sleep_step)
     Logger.info("Writing poison file")
-    with open(f"{outdir}/poison", "w") as f:
+    with open(f"{poisondir}/poison", "w") as f:
         f.write("Poisoned at end of detection writing")
     return
 
@@ -133,7 +134,7 @@ class TestLagCalcPlugin(unittest.TestCase):
         assert len(catalog)
         detection_writer = Process(
             target=_write_detections_for_sim,
-            args=(catalog, detect_dir, 20.),
+            args=(catalog, detect_dir, outdir, 20.),
             name="DetectionWriter")
 
         # Run the process in the background
