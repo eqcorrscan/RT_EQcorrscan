@@ -90,6 +90,11 @@ def run_real_time_matched_filter(**kwargs):
         location=region, starttime=_detection_starttime,
         max_distance=1000, n_stations=10)
 
+    if config.plugins.hyp:
+        # We need to handle the stationxml file and velocity file here
+        inventory.write("stations.xml", format="STATIONXML")
+        config.plugins.hyp.station_file = "stations.xml"
+
     used_channels = {
         "{net}.{sta}.{loc}.{chan}".format(
             net=net.code, sta=sta.code, loc=chan.location_code, chan=chan.code)
