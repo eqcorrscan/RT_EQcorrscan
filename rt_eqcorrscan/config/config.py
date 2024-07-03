@@ -250,13 +250,16 @@ class PluginConfigs(_ConfigAttribDict):
     A holder for Plugin configurations
     """
     from rt_eqcorrscan.plugins.lag_calc import LagCalcConfig
+    from rt_eqcorrscan.plugins.relocation.hyp_runner import HypConfig
 
     defaults = {
         "lag_calc": None,
+        "hyp": None
     }
     readonly = []
     __subclasses = {
-        "lag_calc": LagCalcConfig
+        "lag_calc": LagCalcConfig,
+        "hyp": HypConfig,
     }
 
     def __init__(self, *args, **kwargs):
@@ -267,7 +270,6 @@ class PluginConfigs(_ConfigAttribDict):
                     value = self.__subclasses[key](**value)
             attribs.update({key: value})
         super().__init__(*args, **attribs)
-
 
     def to_yaml_dict(self):
         """ Overload. """
