@@ -171,8 +171,8 @@ def seisan_hyp(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT)
     for line in loc_proc.stdout.decode().splitlines():
-        # Logger.debug(">>> " + line.rstrip())
-        print(">>> " + line.rstrip())
+        Logger.info(">>> " + line.rstrip())
+        # print(">>> " + line.rstrip())
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         try:
