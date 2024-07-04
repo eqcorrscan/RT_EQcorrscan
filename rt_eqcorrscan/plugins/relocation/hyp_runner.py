@@ -3,8 +3,8 @@ Locate events using hyp.
 
 """
 
+import copy
 import os
-import glob
 import logging
 import warnings
 import subprocess
@@ -15,7 +15,7 @@ from typing import List
 from obspy import read_events, Catalog, read_inventory
 from obspy.core.event import Event, Origin
 from obspy.core.inventory import Inventory, Station
-from obspy.io.nordic.core import read_nordic
+from obspy.io.nordic.core import read_nordic, write_select
 
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
@@ -161,16 +161,18 @@ def seisan_hyp(
         origin = Origin(
             time=sorted(event.picks, key=lambda p: p.time)[0].time)
     event_out.origins = [origin]
+    event_out.comments = []
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        event_out.write(format="NORDIC", filename="to_be_located")
+        write_select(catalog=Catalog([event_out]), high_accuracy=False,
+                     filename="to_be_located")
     loc_proc = subprocess.run(
         ['hyp', "to_be_located"],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT)
     for line in loc_proc.stdout.decode().splitlines():
-        # Logger.debug(">>> " + line.rstrip())
-        print(">>> " + line.rstrip())
+        Logger.info(">>> " + line.rstrip())
+        # print(">>> " + line.rstrip())
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         try:
@@ -200,6 +202,7 @@ def seisan_hyp(
         pick.waveform_id.channel_code = matched_pick[0].waveform_id.channel_code
 
     event_out.picks = event_back[0].picks
+    event_out.comments = copy.deepcopy(event.comments)  # add comments back in
     if clean:
         _cleanup()
     return event_out
