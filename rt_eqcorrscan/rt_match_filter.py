@@ -776,7 +776,8 @@ class RealTimeTribe(Tribe):
         # Add config options for plugins as needed
         in_dir = detect_directory
         if self.plugin_config:
-            for plugin_name in ORDERED_PLUGINS:
+            for plugin_name in self.plugin_config.get("order", ORDERED_PLUGINS):
+                # TODO: If plugin name is plotting then out_dir should be in_dir
                 config = self.plugin_config.get(plugin_name, None)
                 if config is None:
                     continue

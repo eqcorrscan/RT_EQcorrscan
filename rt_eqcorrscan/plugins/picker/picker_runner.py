@@ -18,12 +18,15 @@ import pickle
 
 from typing import Union
 
-from obspy import read_events, Catalog, Stream, UTCDateTime
+from obspy import (
+    read_events, Catalog, Stream, UTCDateTime, read_inventory, Inventory)
 from obspy.clients.fdsn import Client
-from obspy.core.event import Event
+from obspy.geodetics import gps2dist_azimuth, kilometers2degrees
+from obspy.core.event import Event, Arrival
 from obsplus import WaveBank
 
 from eqcorrscan import Party, Family, Detection
+from eqcorrscan.utils.mag_calc import amp_pick_event
 
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
@@ -33,9 +36,9 @@ from rt_eqcorrscan.plugins.plugin import (
 Logger = logging.getLogger(__name__)
 
 
-class LagCalcConfig(_PluginConfig):
+class PickerConfig(_PluginConfig):
     """
-    Configuration holder for the lag-calc plugin
+    Configuration holder for the picker plugin
     """
     defaults = {
         "shift_len": 0.2,
@@ -52,6 +55,9 @@ class LagCalcConfig(_PluginConfig):
         "export_cc": False,
         "cc_dir": None,
         "sleep_interval": 600,
+        "winlen": 0.5,
+        "ps_multiplier": 0.15,
+        "station_file": "stations.xml",
     }
     readonly = []
 
@@ -59,7 +65,7 @@ class LagCalcConfig(_PluginConfig):
         super().__init__(*args, **kwargs)
 
 
-PLUGIN_CONFIG_MAPPER.update({"lag_calc": LagCalcConfig})
+PLUGIN_CONFIG_MAPPER.update({"lag_calc": PickerConfig})
 
 
 def _make_detection_from_event(event: Event) -> Detection:
@@ -213,6 +219,46 @@ def get_stream(
     return stream
 
 
+def _insert_arrivals(
+    event: Event,
+    inventory: Inventory,
+) -> Event:
+    """
+    Insert arrivals for picks into origin.
+
+    Parameters
+    ----------
+    event
+        Event to add arrivals to
+    inventory
+        Inventory with station locations picked
+
+    Returns
+    -------
+    Event with arrivals added
+    """
+    ev = event.copy()  # Don't work on the users event
+    try:
+        ori = ev.preferred_origin() or ev.origins[-1]
+    except IndexError:
+        Logger.debug("No origin found, cannot add arrivals")
+        return event
+    for pick in ev.picks:
+        sid = pick.waveform_id.get_seed_string()
+        n, s, l, c = sid.split('.')
+        station = inventory.select(network=n, station=s, location=l, channel=c)
+        if len(station) == 0:
+            Logger.debug(f"No inventory for {n}.{l}.{s}.{c}")
+            continue
+        lat, lon = station[0][0].latitude, station[0][0].longitude
+        dist, _, _ = gps2dist_azimuth(lat, lon, ori.latitude, ori.longitude)
+        dist /= 1000.0
+        arr = Arrival(distance=kilometers2degrees(dist))
+        arr.pick_id = pick.resource_id
+        ori.arrivals.append(arr)
+    return ev
+
+
 def main(
     config_file: str,
 ) -> None:
@@ -223,11 +269,12 @@ def main(
     config_file
         Path to configuration file for lag-calc runner.
     """
-    config = LagCalcConfig.read(config_file=config_file)
+    config = PickerConfig.read(config_file=config_file)
     detection_dir = config.pop("in_dir")
     template_dir = config.pop("template_dir")
     wavebank_dir = config.pop("wavebank_dir")
     outdir = config.pop("out_dir")
+    inv = read_inventory(config.station_file)
     # Initialise watcher
     watcher = Watcher(
         top_directory=detection_dir, watch_pattern="*.xml", history=None)
@@ -242,7 +289,7 @@ def main(
         tic = time.time()
         kill_watcher.check_for_updates()
         if len(kill_watcher):
-            Logger.critical("Lag-calc plugin killed")
+            Logger.critical("Picker plugin killed")
             Logger.critical(f"Found files: {kill_watcher}")
             break
 
@@ -297,9 +344,9 @@ def main(
         # process-lengths, but not so well for these short ones
         lag_calced = Catalog()
         for family in party:
-            Logger.info(f"Setting up lag-calc for {family.template.name}")
+            Logger.info(f"Setting up picker for {family.template.name}")
             for detection in family:
-                Logger.debug(f"Setting up lag-calc for {detection.id}")
+                Logger.debug(f"Setting up picker for {detection.id}")
                 d_party = Party(
                     [Family(family.template, [detection])])
                 stream = get_stream(
@@ -328,12 +375,27 @@ def main(
                         **config.__dict__)
                 except Exception as e:
                     Logger.error(
-                        f"Could not run lag-calc for {detection} due to {e}")
+                        f"Could not run lag-calc for {detection.id} due to {e}")
                 if event_back and len(event_back):
                     # Merge the event info
                     event = detection.event
                     assert len(event_back) == 1, f"Multiple events: {event_back}"
                     event.picks = event_back[0].picks
+                    # Now try and pick amplitudes for magnitudes
+                    # We need arrivals for this
+                    event = _insert_arrivals(event=event, inventory=inv)
+                    try:
+                        event = amp_pick_event(
+                            event=event, st=stream, inventory=inv,
+                            chans=["1", "2", "N", "E"], iaspei_standard=False,
+                            var_wintype=True, winlen=config.winlen,
+                            ps_multiplier=config.ps_multiplier, win_from_p=True)
+                        # Change here requires this PR:
+                        # https://github.com/eqcorrscan/EQcorrscan/pull/572
+                    except Exception as e:
+                        Logger.error(f"Could not pick amplitudes for "
+                                     f"{detection.id} due to {e}")
+
                     lag_calced += event
                     processed_files.append(
                         event_files[detection.event.resource_id.id])
@@ -361,11 +423,11 @@ def main(
         # Check for poison again before sleeping
         kill_watcher.check_for_updates()
         if len(kill_watcher):
-            Logger.error("Lag-calc plugin killed")
+            Logger.error("Picker plugin killed")
         # Sleep and repeat
         toc = time.time()
         elapsed = toc - tic
-        Logger.info(f"Lag-calc loop took {elapsed:.2f} s")
+        Logger.info(f"Picker loop took {elapsed:.2f} s")
         if elapsed < config.sleep_interval:
             time.sleep(config.sleep_interval - elapsed)
         continue

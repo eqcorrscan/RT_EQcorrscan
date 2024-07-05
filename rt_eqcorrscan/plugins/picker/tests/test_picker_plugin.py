@@ -18,9 +18,9 @@ from obsplus.bank import WaveBank
 
 from eqcorrscan import Party
 
-from rt_eqcorrscan.plugins.lag_calc import (
-    events_to_party, get_stream, LagCalcConfig)
-from rt_eqcorrscan.plugins.lag_calc import main as lag_calc_runner
+from rt_eqcorrscan.plugins.picker import (
+    events_to_party, get_stream, PickerConfig)
+from rt_eqcorrscan.plugins.picker import main as picker_runner
 
 
 Logger = logging.getLogger(__name__)
@@ -51,9 +51,9 @@ class TestLagCalcPlugin(unittest.TestCase):
     clean_up = []
     @classmethod
     def setUpClass(cls):
-        test_dir = os.path.join(
+        cls.test_dir = os.path.join(
             os.path.abspath(os.path.dirname(__file__)), "test_data")
-        cls.party = Party().read(f"{test_dir}/lag_calc_test_party.tgz")
+        cls.party = Party().read(f"{cls.test_dir}/lag_calc_test_party.tgz")
 
     def test_party_construction(self):
         party = self.party.copy()
@@ -96,7 +96,7 @@ class TestLagCalcPlugin(unittest.TestCase):
         self.assertEqual(len(stream), len(picked_channels))
 
     def test_lag_calc_runner(self):
-        config = LagCalcConfig()
+        config = PickerConfig()
         config_file = "test_lagcalc_config.yml"
         detect_dir = ".lag_calc_test_detections"
         template_dir = ".lag_calc_test_templates"
@@ -105,6 +105,8 @@ class TestLagCalcPlugin(unittest.TestCase):
         config.sleep_interval = 2.0
         config.in_dir, config.template_dir, config.wavebank_dir = (
             detect_dir, template_dir, wavebank_dir)
+        config.station_file = os.path.join(self.test_dir, "stations.xml")
+        config.min_cc = 0.1
         config.out_dir = outdir
         config.write(config_file)
         self.clean_up.extend(
@@ -144,7 +146,7 @@ class TestLagCalcPlugin(unittest.TestCase):
         Logger.info("Starting lag-calc runner")
         failed = False
         try:
-            lag_calc_runner(config_file=config_file)
+            picker_runner(config_file=config_file)
         except Exception as e:
             Logger.error(f"Failed due to {e}")
             failed = True
@@ -154,6 +156,12 @@ class TestLagCalcPlugin(unittest.TestCase):
         self.assertFalse(failed)
         # Get the detections back
         cat_back = read_events(f"{outdir}/*.xml")
+        picks = [p for ev in cat_back for p in ev.picks
+                 if p.phase_hint in "PS"]
+        self.assertGreater(len(picks), 0)
+        amp_picks = [p for ev in cat_back for p in ev.picks
+                     if p.phase_hint.endswith("AML")]
+        self.assertGreater(len(amp_picks), 0)
         self.assertEqual(len(cat_back), len(catalog))
 
     @classmethod

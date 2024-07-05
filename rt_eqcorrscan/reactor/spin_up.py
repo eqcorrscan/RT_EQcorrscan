@@ -193,7 +193,7 @@ def get_inventory(
         max_distance: float = 1000.,
         n_stations: int = 10,
         duration: float = 10,
-        level: str = "channel",
+        level: str = "response",
         channel_list: Union[list, tuple] = ("EH?", "HH?"),
 ) -> Inventory:
     """
