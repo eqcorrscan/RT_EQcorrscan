@@ -194,8 +194,8 @@ def seisan_hyp(
         assert len(set(p.waveform_id.get_seed_string()
                        for p in matched_pick)) == 1,\
             f"Multiple seed ids for matched picks:\n{matched_pick}"
-        print(f"Matched {pick.waveform_id.get_seed_string()} to "
-              f"{matched_pick[0].waveform_id.get_seed_string()}")
+        Logger.info(f"Matched {pick.waveform_id.get_seed_string()} to "
+                    f"{matched_pick[0].waveform_id.get_seed_string()}")
         pick.waveform_id.network_code = matched_pick[0].waveform_id.network_code
         pick.waveform_id.station_code = matched_pick[0].waveform_id.station_code
         pick.waveform_id.location_code = matched_pick[0].waveform_id.location_code

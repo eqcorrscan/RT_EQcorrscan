@@ -84,10 +84,11 @@ def run(
             f"km of the trigger matching your templates, not running")
         return None, None
     inventory.write("inventory.xml", format="STATIONXML")
-    if config.plugins.hyp:
-        # We need to handle the stationxml file and velocity file here
-        config.plugins.hyp.station_file = os.path.join(
-            working_dir, "inventory.xml")
+    for plug in ['hyp', 'picker']:
+        if config.plugins[plug]:
+            # We need to handle the stationxml file and velocity file here
+            config.plugins[plug].station_file = os.path.join(
+                working_dir, "inventory.xml")
     detect_interval = config.rt_match_filter.get(
         "detect_interval", 60)
     plot = config.rt_match_filter.get("plot", False)
@@ -193,7 +194,7 @@ def get_inventory(
         max_distance: float = 1000.,
         n_stations: int = 10,
         duration: float = 10,
-        level: str = "channel",
+        level: str = "response",
         channel_list: Union[list, tuple] = ("EH?", "HH?"),
 ) -> Inventory:
     """

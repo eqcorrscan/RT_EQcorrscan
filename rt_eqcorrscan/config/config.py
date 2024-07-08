@@ -249,16 +249,17 @@ class PluginConfigs(_ConfigAttribDict):
     """
     A holder for Plugin configurations
     """
-    from rt_eqcorrscan.plugins.lag_calc import LagCalcConfig
+    from rt_eqcorrscan.plugins.picker import PickerConfig
     from rt_eqcorrscan.plugins.relocation.hyp_runner import HypConfig
 
     defaults = {
-        "lag_calc": None,
-        "hyp": None
+        "picker": None,
+        "hyp": None,
+        "order": ["picker", "hyp"],
     }
     readonly = []
     __subclasses = {
-        "lag_calc": LagCalcConfig,
+        "picker": PickerConfig,
         "hyp": HypConfig,
     }
 

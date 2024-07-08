@@ -8,7 +8,7 @@ import os
 from obspy.clients.fdsn import Client
 
 from rt_eqcorrscan.config.config import Config, read_config, PlotConfig
-from rt_eqcorrscan.plugins.lag_calc import LagCalcConfig
+from rt_eqcorrscan.plugins.picker import PickerConfig
 from rt_eqcorrscan.plugins.relocation import HypConfig
 
 
@@ -118,7 +118,7 @@ class TestConfig(unittest.TestCase):
 
     def test_config_lag_calc_plugin(self):
         config = Config()
-        config.plugins.lag_calc = LagCalcConfig()
+        config.plugins.lag_calc = PickerConfig()
         test_file = "test_lag_calc_plugin.yml"
         config.write(test_file)
         self.files_to_remove.append(test_file)

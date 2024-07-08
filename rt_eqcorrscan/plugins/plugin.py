@@ -22,12 +22,12 @@ from typing import List, Set, Iterable
 
 # Entry point defined by script name in plugins.console_scripts and looked up in setup.py
 REGISTERED_PLUGINS = {
-    "lag_calc": "rteqcorrscan-plugin-lag-calc",
+    "picker": "rteqcorrscan-plugin-picker",
     "hyp": "rteqcorrscan-plugin-hyp",
 }
 PLUGIN_CONFIG_MAPPER = dict()
 # Control order of plugins, outdir of previous plugin is input to plugin
-ORDERED_PLUGINS = ["lag_calc", "hyp", "growclust", "mag_calc"]
+ORDERED_PLUGINS = ["picker", "hyp", "growclust", "mag_calc"]
 
 Logger = logging.getLogger(__name__)
 
