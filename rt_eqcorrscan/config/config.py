@@ -251,16 +251,19 @@ class PluginConfigs(_ConfigAttribDict):
     """
     from rt_eqcorrscan.plugins.picker import PickerConfig
     from rt_eqcorrscan.plugins.relocation.hyp_runner import HypConfig
+    from rt_eqcorrscan.plugins.plotter.plotter_runner import PlotConfig
 
     defaults = {
         "picker": None,
         "hyp": None,
-        "order": ["picker", "hyp"],
+        "plotter": None,
+        "order": ["picker", "hyp", "plotter"],
     }
     readonly = []
     __subclasses = {
         "picker": PickerConfig,
         "hyp": HypConfig,
+        "plotter": PlotConfig,
     }
 
     def __init__(self, *args, **kwargs):

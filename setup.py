@@ -108,6 +108,7 @@ def setup_package():
             'rt_eqcorrscan.plugins', 'rt_eqcorrscan.plugins.console_scripts',
             'rt_eqcorrscan.plugins.picker',
             'rt_eqcorrscan.plugins.magnitudes',
+            'rt_eqcorrscan.plugins.plotter',
             'rt_eqcorrscan.plugins.relocation',
         ]
     if os.path.isdir("build"):

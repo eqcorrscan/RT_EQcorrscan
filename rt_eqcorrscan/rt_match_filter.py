@@ -777,12 +777,15 @@ class RealTimeTribe(Tribe):
         in_dir = detect_directory
         if self.plugin_config:
             for plugin_name in self.plugin_config.get("order", ORDERED_PLUGINS):
-                # TODO: If plugin name is plotting then out_dir should be in_dir
+                # TODO: If plugin name is plot then out_dir should be in_dir
                 config = self.plugin_config.get(plugin_name, None)
                 if config is None:
                     continue
                 config.in_dir = in_dir
-                config.out_dir = f"{self.name}/{plugin_name}_out"
+                if plugin_name in ["plotter"]:
+                    config.out_dir = in_dir
+                else:
+                    config.out_dir = f"{self.name}/{plugin_name}_out"
                 config.wavebank_dir = self.wavebank.bank_path
                 config.template_dir = self.running_template_dir
                 # Output of previous plugin as input to next
