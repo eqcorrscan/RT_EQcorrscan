@@ -27,7 +27,9 @@ class PlotConfig(_PluginConfig):
     """
     Configuration for the hyp plugin.
     """
-    defaults = dict()
+    defaults = {
+        "sleep_interval": 600,
+    }
     readonly = []
 
     def __init__(self, *args, **kwargs):
