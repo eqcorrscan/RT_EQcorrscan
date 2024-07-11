@@ -2,10 +2,15 @@
 Helpers for working with catalogs for plotting
 """
 
+import logging
+
 from collections import namedtuple
 from typing import Union, Iterable, List
 
 from obspy.core.event import Event, Origin, Magnitude, Catalog
+
+
+Logger = logging.getLogger(__name__)
 
 
 def get_origin(event: Event) -> Union[Origin, None]:
@@ -60,6 +65,10 @@ class SparseEvent:
 
     @preferred_origin_index.setter
     def preferred_origin_index(self, index):
+        if not isinstance(index, int):
+            Logger.error(
+                f"Trying to set index with non-int ({index}), aborting")
+            return
         try:
             _ = self.origins[index]
         except IndexError as e:
@@ -99,7 +108,8 @@ def _sparsify_event(event: Event) -> SparseEvent:
         else:
             i = None
         pref_ind = i
-    ev.preferred_origin_index = pref_ind
+    if pref_ind is not None:
+        ev.preferred_origin_index = pref_ind
     return ev
 
 
