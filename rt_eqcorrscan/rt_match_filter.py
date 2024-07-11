@@ -776,8 +776,16 @@ class RealTimeTribe(Tribe):
         # Add config options for plugins as needed
         in_dir = detect_directory
         if self.plugin_config:
-            for plugin_name in self.plugin_config.get("order", ORDERED_PLUGINS):
-                # TODO: If plugin name is plot then out_dir should be in_dir
+            # Nuance of attribdict means that even key lookup doesn't work as
+            # expected, so need to do try/except
+            try:
+                # Need to pop this from configs so that order doesn't get
+                # run as a plugin
+                order = self.plugin_config.pop("order")
+            except KeyError:
+                order = ORDERED_PLUGINS
+            for plugin_name in order:
+                # If plugin name is plot then out_dir should be in_dir
                 config = self.plugin_config.get(plugin_name, None)
                 if config is None:
                     continue
