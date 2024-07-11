@@ -2,11 +2,14 @@
 Helpers for working with catalogs for plotting
 """
 
+import datetime as dt
 import logging
 
 from collections import namedtuple
+from dataclasses import dataclass
 from typing import Union, Iterable, List
 
+from obspy import UTCDateTime
 from obspy.core.event import Event, Origin, Magnitude, Catalog
 
 
@@ -40,9 +43,16 @@ def get_magnitude_attr(event: Event, attr: str):
     return None
 
 
-SparseOrigin = namedtuple(
-    "SparseOrigin",
-    ["latitude", "longitude", "depth", "time", "method_id"])
+@dataclass
+class SparseOrigin:
+    latitude: float = None
+    longitude: float = None,
+    depth: float = None
+    time: Union[dt.datetime, UTCDateTime] = None
+    method_id: str = None
+
+    def get(self, thing: str):
+        return self.__dict__.get(thing)
 
 
 class SparseEvent:
