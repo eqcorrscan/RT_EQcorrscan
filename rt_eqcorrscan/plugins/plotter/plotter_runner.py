@@ -90,7 +90,7 @@ def main(
             # Retain sparse events rather than full catalog
             full_catalog.extend(sparsify_catalog(_cat))
             _cat_df = events_to_df(_cat)
-            if cat_df:
+            if cat_df is not None:
                 cat_df = pd.concat([cat_df, _cat_df])
             else:
                 cat_df = _cat_df
