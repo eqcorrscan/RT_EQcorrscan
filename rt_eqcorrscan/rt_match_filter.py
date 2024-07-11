@@ -599,7 +599,7 @@ class RealTimeTribe(Tribe):
         for key, value in self.plugin_config.items():
             if value is None:
                 continue
-            if key not in REGISTERED_PLUGINS.keys():
+            if key not in REGISTERED_PLUGINS.keys() and key != "order":
                 Logger.error(f"Plugin {key} is not known to RT-EQcorrscan")
                 continue
             config_name = f"{key}-config-{self.name}.yml"
