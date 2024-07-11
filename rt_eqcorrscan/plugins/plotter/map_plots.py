@@ -30,13 +30,14 @@ def plot_map(catalog: Union[Catalog, Iterable[Event], Iterable[SparseEvent]]
     -------
 
     """
-    depths = np.array([get_origin_attr(ev, "depth")
+    depths = np.array([get_origin_attr(ev, "depth") or np.nan
                        for ev in catalog]) / 1000.0
-    latitudes = np.array([get_origin_attr(ev, "latitude")
+    latitudes = np.array([get_origin_attr(ev, "latitude") or np.nan
                           for ev in catalog])
-    longitudes = np.array([get_origin_attr(ev, "longitude")
+    longitudes = np.array([get_origin_attr(ev, "longitude") or np.nan
                            for ev in catalog])
-    magntiudes = np.array([get_magnitude_attr(ev, "mag") for ev in catalog])
+    magntiudes = np.array([get_magnitude_attr(ev, "mag") or np.nan
+                           for ev in catalog])
 
     fig = pygmt.Figure()
     pygmt.config(MAP_FRAME_TYPE='plain', FORMAT_GEO_MAP='ddd.xx')
