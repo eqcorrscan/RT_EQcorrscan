@@ -95,22 +95,25 @@ def main(
             else:
                 cat_df = _cat_df
 
-            inter_fig = inter_event_plot(catalog=full_catalog)
+        Logger.info(f"Making plots for {len(full_catalog)} events")
+        inter_fig = inter_event_plot(catalog=full_catalog)
+        Logger.info("Made time-series plot")
+        if PYGMT_INSTALLED:
+            map_fig = plot_map(catalog=full_catalog)
+            Logger.info("Made map plot")
+        time_stamp = UTCDateTime().strftime("%Y-%m-%dT%H-%M-%S")
+        for _format in ("png", "eps"):
+            inter_fig.savefig(
+                f"{out_dir}/detection_time_series_{time_stamp}.{_format}")
+            shutil.copyfile(
+                f"{out_dir}/detection_time_series_{time_stamp}.{_format}",
+                f"{out_dir}/detection_time_series_latest.{_format}")
             if PYGMT_INSTALLED:
-                map_fig = plot_map(catalog=full_catalog)
-            time_stamp = UTCDateTime().strftime("%Y-%m-%dT%H-%M-%S")
-            for _format in ("png", "eps"):
-                inter_fig.savefig(
-                    f"{out_dir}/detection_time_series_{time_stamp}.{_format}")
+                map_fig.savefig(
+                    f"{out_dir}/detection_map_{time_stamp}.{_format}")
                 shutil.copyfile(
-                    f"{out_dir}/detection_time_series_{time_stamp}.{_format}",
-                    f"{out_dir}/detection_time_series_latest.{_format}")
-                if PYGMT_INSTALLED:
-                    map_fig.savefig(
-                        f"{out_dir}/detection_map_{time_stamp}.{_format}")
-                    shutil.copyfile(
-                        f"{out_dir}/detection_map_{time_stamp}.{_format}",
-                        f"{out_dir}/detection_map_latest.{_format}")
+                    f"{out_dir}/detection_map_{time_stamp}.{_format}",
+                    f"{out_dir}/detection_map_latest.{_format}")
 
         watcher.processed(processed_files)
 
