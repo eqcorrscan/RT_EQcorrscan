@@ -51,8 +51,9 @@ class SparseOrigin:
     time: Union[dt.datetime, UTCDateTime] = None
     method_id: str = None
 
-    def get(self, thing: str):
-        return self.__dict__.get(thing)
+    def get(self, key: str, default=None):
+        # Return the default if the key actually returns None
+        return self.__dict__.get(key, default) or default
 
 
 class SparseEvent:
