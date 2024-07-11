@@ -24,10 +24,11 @@ from typing import List, Set, Iterable
 REGISTERED_PLUGINS = {
     "picker": "rteqcorrscan-plugin-picker",
     "hyp": "rteqcorrscan-plugin-hyp",
+    "plotter": "rteqcorrscan-plugin-plotter"
 }
 PLUGIN_CONFIG_MAPPER = dict()
 # Control order of plugins, outdir of previous plugin is input to plugin
-ORDERED_PLUGINS = ["picker", "hyp", "growclust", "mag_calc"]
+ORDERED_PLUGINS = ["picker", "hyp", "growclust", "mag_calc", "plotter"]
 
 Logger = logging.getLogger(__name__)
 
