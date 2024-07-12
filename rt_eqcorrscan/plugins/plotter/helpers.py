@@ -46,28 +46,46 @@ def get_magnitude_attr(event: Event, attr: str):
 @dataclass
 class SparseOrigin:
     latitude: float = None
-    longitude: float = None,
+    longitude: float = None
     depth: float = None
     time: Union[dt.datetime, UTCDateTime] = None
     method_id: str = None
 
-    def get(self, thing: str):
-        return self.__dict__.get(thing)
+    def get(self, key: str, default=None):
+        # Return the default if the key actually returns None
+        return self.__dict__.get(key, default) or default
+
+
+@dataclass
+class SparseMagnitude:
+    mag: float = None
+    method_id: str = None
+
+    def get(self, key: str, default=None):
+        return self.__dict__.get(key, default) or default
 
 
 class SparseEvent:
+    _preferred_magnitude_index = None
+    _preferred_origin_index = None
+
     def __init__(self,
                  origins: Iterable[SparseOrigin],
-                 preferred_origin_index: int = None):
+                 magnitudes: Iterable[SparseMagnitude],
+                 preferred_origin_index: int = None,
+                 preferred_magnitude_index: int = None):
         self.origins = tuple(origins)
+        self.magnitudes = tuple(magnitudes)
         if preferred_origin_index is not None:
             self.preferred_origin_index = preferred_origin_index
-        else:
-            self._preferred_origin_index = None
+
+        if preferred_magnitude_index is not None:
+            self.preferred_magnitude_index = preferred_magnitude_index
 
     def __repr__(self):
         return (f"SparseEvent(origins=[{len(self.origins)} origins], "
-                f"preferred_origin_id={self.preferred_origin_index})")
+                f"preferred_origin_index={self.preferred_origin_index},"
+                f"preferred_magnitude_index={self.preferred_magnitude_index})")
 
     @property
     def preferred_origin_index(self):
@@ -93,6 +111,30 @@ class SparseEvent:
                 return None
         return None
 
+    @property
+    def preferred_magnitude_index(self):
+        return self._preferred_magnitude_index
+
+    @preferred_magnitude_index.setter
+    def preferred_magnitude_index(self, index):
+        if not isinstance(index, int):
+            Logger.error(
+                f"Trying to set index with non-int ({index}), aborting")
+            return
+        try:
+            _ = self.magnitudes[index]
+        except IndexError as e:
+            raise e
+        self._preferred_magnitude_index = index
+
+    def preferred_magnitude(self):
+        if self.preferred_magnitude_index is not None:
+            try:
+                return self.magnitudes[self.preferred_magnitude_index]
+            except IndexError:
+                return None
+        return None
+
 
 def _sparsify_origin(origin: Origin) -> SparseOrigin:
     try:
@@ -107,9 +149,18 @@ def _sparsify_origin(origin: Origin) -> SparseOrigin:
         method_id=method_id)
 
 
+def _sparsify_magnitude(magnitude: Magnitude) -> SparseMagnitude:
+    try:
+        method_id = magnitude.method_id.id
+    except AttributeError:
+        method_id = None
+    return SparseMagnitude(mag=magnitude.mag, method_id=method_id)
+
+
 def _sparsify_event(event: Event) -> SparseEvent:
     origins = [_sparsify_origin(ori) for ori in event.origins]
-    ev = SparseEvent(origins=origins)
+    magnitudes = [_sparsify_magnitude(mag) for mag in event.magnitudes]
+    ev = SparseEvent(origins=origins, magnitudes=magnitudes)
     pref_ind = None
     if event.preferred_origin_id:
         for i, ori in enumerate(event.origins):
@@ -120,6 +171,17 @@ def _sparsify_event(event: Event) -> SparseEvent:
         pref_ind = i
     if pref_ind is not None:
         ev.preferred_origin_index = pref_ind
+
+    pref_mag_ind = None
+    if event.preferred_magnitude_id:
+        for i, mag in enumerate(event.magnitudes):
+            if mag.resource_id == event.preferred_magnitude_id:
+                break
+        else:
+            i = None
+        pref_mag_ind = i
+    if pref_mag_ind is not None:
+        ev.preferred_magnitude_index = pref_mag_ind
     return ev
 
 
