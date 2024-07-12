@@ -36,8 +36,18 @@ def plot_map(catalog: Union[Catalog, Iterable[Event], Iterable[SparseEvent]]
                           for ev in catalog])
     longitudes = np.array([get_origin_attr(ev, "longitude") or np.nan
                            for ev in catalog])
-    magntiudes = np.array([get_magnitude_attr(ev, "mag") or np.nan
+    magnitudes = np.array([get_magnitude_attr(ev, "mag") or np.nan
                            for ev in catalog])
+    np.nan_to_num(magnitudes, copy=False, nan=0.0)
+
+    # Mask out nans in lats and lons
+    nan_mask = np.logical_and(
+        np.logical_and(np.isnan(latitudes), np.isnan(longitudes)),
+        np.isnan(depths))
+    depths = depths[nan_mask]
+    latitudes = latitudes[nan_mask]
+    longitudes = longitudes[nan_mask]
+    magnitudes = magnitudes[nan_mask]
 
     fig = pygmt.Figure()
     pygmt.config(MAP_FRAME_TYPE='plain', FORMAT_GEO_MAP='ddd.xx')
@@ -52,7 +62,7 @@ def plot_map(catalog: Union[Catalog, Iterable[Event], Iterable[SparseEvent]]
               frame=['WSne', 'xa2f1', 'ya2f1'])
     fig.plot(x=longitudes,
              y=latitudes,
-             size=0.02 * (2**magntiudes),
+             size=0.02 * (2**magnitudes),
              fill=depths,
              cmap=True,
              style='cc', pen='black')
