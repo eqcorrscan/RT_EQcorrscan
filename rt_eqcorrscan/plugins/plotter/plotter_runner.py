@@ -65,6 +65,28 @@ def main(
     full_catalog, cat_df = [], None
     while True:
         tic = time.time()
+
+        # Check for changed config
+        new_config = PlotConfig.read(config_file=config_file)
+        new_in_dir = new_config.pop("in_dir")
+        new_out_dir = new_config.pop("out_dir")
+        if new_config != config:
+            Logger.info(f"Updated configuration found: {new_config}")
+            config = new_config
+        if new_in_dir != in_dir:
+            Logger.info(f"Looking for events in a new in dir: {new_in_dir}")
+            in_dir = new_in_dir
+            watcher = Watcher(
+                top_directory=in_dir, watch_pattern=watcher.watch_pattern,
+                history=watcher.history)
+        if new_out_dir != out_dir:
+            Logger.info(f"Using a new out dir: {new_out_dir}")
+            out_dir = new_out_dir
+            kill_watcher = Watcher(
+                top_directory=out_dir,
+                watch_pattern=kill_watcher.watch_pattern,
+                history=None)
+
         kill_watcher.check_for_updates()
         if len(kill_watcher):
             Logger.critical("Plotter plugin killed")
