@@ -40,7 +40,8 @@ PLUGIN_CONFIG_MAPPER.update({"plotter": PlotConfig})
 
 
 def main(
-    config_file: str
+    config_file: str,
+    loop: bool = True,
 ):
     """
     Main hyp-plugin runner.
@@ -49,6 +50,8 @@ def main(
     ----------
     config_file
         Path to configuration file for hyp runner
+    loop
+        Whether to keep watching for updates (default) or not.
     """
     config = PlotConfig.read(config_file=config_file)
     in_dir = config.pop("in_dir")
@@ -95,6 +98,9 @@ def main(
 
         watcher.check_for_updates()
         if not len(watcher):
+            if not loop:
+                Logger.error("Found no events to plot")
+                return
             Logger.debug(
                 f"Found no new events, sleeping for {config.sleep_interval}")
             time.sleep(config.sleep_interval)
@@ -147,6 +153,9 @@ def main(
         toc = time.time()
         elapsed = toc - tic
         Logger.info(f"Plotter loop took {elapsed:.2f} s")
+        if not loop:
+            # Get outahere once we have made the plots
+            break
         if elapsed < config.sleep_interval:
             time.sleep(config.sleep_interval - elapsed)
         continue
