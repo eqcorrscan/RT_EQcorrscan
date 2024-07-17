@@ -41,9 +41,8 @@ def plot_map(catalog: Union[Catalog, Iterable[Event], Iterable[SparseEvent]]
     np.nan_to_num(magnitudes, copy=False, nan=0.0)
 
     # Mask out nans in lats and lons
-    nan_mask = np.logical_and(
-        np.logical_and(np.isnan(latitudes), np.isnan(longitudes)),
-        np.isnan(depths))
+    nan_mask = np.logical_or(np.isnan(latitudes), np.isnan(longitudes))
+    nan_mask = ~np.logical_or(np.isnan(depths), nan_mask)
     depths = depths[nan_mask]
     latitudes = latitudes[nan_mask]
     longitudes = longitudes[nan_mask]
@@ -51,18 +50,57 @@ def plot_map(catalog: Union[Catalog, Iterable[Event], Iterable[SparseEvent]]
 
     fig = pygmt.Figure()
     pygmt.config(MAP_FRAME_TYPE='plain', FORMAT_GEO_MAP='ddd.xx')
-    pygmt.makecpt(cmap='lajolla', reverse=True, series=[
+    pygmt.makecpt(cmap='plasma', reverse=True, series=[
                   depths.min(), depths.max()])
 
-    fig.coast(region=[173, 179, -42, -36],
+    lat_range = latitudes.max() - latitudes.min()
+    # Cope with possible wrap-around at dateline
+    lon_range_grenwich = longitudes.max() - longitudes.min()
+    longitudes_dateline = longitudes % 360
+    lon_range_dateline = longitudes_dateline.max() - longitudes_dateline.min()
+    if lon_range_dateline < lon_range_grenwich:
+        lon_range = lon_range_dateline
+        longitudes = longitudes_dateline
+
+    lat_pad = 0.2 * lat_range
+    lon_pad = 0.2 * lon_range
+    region = [longitudes.min() - lon_pad,
+              longitudes.max() + lon_pad,
+              latitudes.min() - lat_pad,
+              latitudes.max() + lat_pad]
+
+    if 3 <= lat_range <= 10:
+        lat_major_tick = 1
+        lat_minor_tick = 0.25
+    elif lat_range < 3:
+        lat_major_tick = 0.5
+        lat_minor_tick = 0.1
+    else:
+        lat_major_tick = 5
+        lat_minor_tick = 2.5
+
+    if 3 <= lon_range <= 10:
+        lon_major_tick = 1
+        lon_minor_tick = 0.25
+    elif lon_range < 3:
+        lon_major_tick = 0.5
+        lon_minor_tick = 0.1
+    else:
+        lon_major_tick = 5
+        lon_minor_tick = 2.5
+
+    fig.coast(region=region,
               shorelines=True,
               land='grey',
               water='lightblue',
               projection='M10c',
-              frame=['WSne', 'xa2f1', 'ya2f1'])
+              frame=[
+                  'WSne',
+                  f'xa{lon_major_tick}f{lon_minor_tick}',
+                  f'ya{lat_major_tick}f{lat_minor_tick}'])
     fig.plot(x=longitudes,
              y=latitudes,
-             size=0.02 * (2**magnitudes),
+             size=0.02 * magnitudes,
              fill=depths,
              cmap=True,
              style='cc', pen='black')
