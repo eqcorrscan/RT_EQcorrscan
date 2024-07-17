@@ -61,6 +61,8 @@ def plot_map(catalog: Union[Catalog, Iterable[Event], Iterable[SparseEvent]]
     if lon_range_dateline < lon_range_grenwich:
         lon_range = lon_range_dateline
         longitudes = longitudes_dateline
+    else:
+        lon_range = lon_range_grenwich
 
     lat_pad = 0.2 * lat_range
     lon_pad = 0.2 * lon_range
