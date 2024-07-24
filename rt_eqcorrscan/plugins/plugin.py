@@ -18,8 +18,6 @@ except ImportError:  # pragma: no cover
 
 from typing import Iterable, List
 
-from rt_eqcorrscan.config.config import _PluginConfig
-
 # Dict of registered plugins - no other plugins will be callable
 # entry point must point to script to run the plugin. Plugin should run as a
 # continuously running while loop until killed.
@@ -101,7 +99,7 @@ class _Plugin(ABC):
             self.name = name
 
     @abstractmethod
-    def _read_config(self, config_file: str) -> _PluginConfig:
+    def _read_config(self, config_file: str):
         """ Us the appropriate config """
 
     @abstractmethod
