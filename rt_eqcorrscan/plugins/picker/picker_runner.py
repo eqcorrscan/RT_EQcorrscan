@@ -11,19 +11,16 @@ Steps:
 6. Output events to output directory
 7. Repeat
 """
-import time
 import logging
 import os
 import pickle
 
-from typing import Union, Iterable, List
+from typing import Iterable, List
 
 from obspy import (
     read_events, Catalog, Stream, UTCDateTime, read_inventory, Inventory)
-from obspy.clients.fdsn import Client
 from obspy.geodetics import gps2dist_azimuth, kilometers2degrees
 from obspy.core.event import Event, Arrival
-from obsplus import WaveBank
 
 from eqcorrscan import Party, Family, Detection
 from eqcorrscan.utils.mag_calc import amp_pick_event
@@ -31,6 +28,7 @@ from eqcorrscan.utils.mag_calc import amp_pick_event
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
     PLUGIN_CONFIG_MAPPER, _Plugin)
+from rt_eqcorrscan.plugins.waveform_access import InMemoryWaveBank
 
 
 Logger = logging.getLogger(__name__)
@@ -177,7 +175,7 @@ def events_to_party(events: Catalog, template_dir: str) -> Party:
 
 def get_stream(
     party: Party,
-    wavebank: Union[WaveBank, Client],
+    in_memory_wavebank: InMemoryWaveBank,
     length: float,
     pre_pick: float,
 ) -> Stream:
@@ -187,8 +185,8 @@ def get_stream(
     ----------
     party
         Party of detections to get streams for
-    wavebank
-        Wavebank or Client to get waveforms from
+    in_memory_wavebank
+        On-disk in-memory wavebank to get waveforms from
     length
         Length in seconds to get data for each event
     pre_pick
@@ -202,19 +200,8 @@ def get_stream(
     for f in party:
         for d in f:
             ev = d.event or d._calculate_event(template=f.template)
-            bulk = []
-            for p in ev.picks:
-                bulk.append((
-                    p.waveform_id.network_code or "*",
-                    p.waveform_id.station_code,
-                    p.waveform_id.location_code or "*",
-                    p.waveform_id.channel_code,
-                    p.time - pre_pick,
-                    p.time + (length - pre_pick)))
-            Logger.debug(
-                f"Getting {len(bulk)} channels of data for detection: {d.id}")
-            Logger.debug(bulk)
-            stream += wavebank.get_waveforms_bulk(bulk)
+            stream += in_memory_wavebank.get_event_waveforms(
+                event=ev, pre_pick=pre_pick, length=length)
     stream.merge()
     return stream
 
@@ -260,6 +247,11 @@ def _insert_arrivals(
 
 
 class Picker(_Plugin):
+    def __init__(self, config_file: str, name: str = "Picker"):
+        super().__init__(config_file=config_file, name=name)
+        self.in_memory_wavebank = InMemoryWaveBank(self.config.wavebank_dir)
+        self.in_memory_wavebank.get_data_availability()
+
     def _read_config(self, config_file: str):
         return PickerConfig.read(config_file=config_file)
 
@@ -290,28 +282,6 @@ class Picker(_Plugin):
         # Convert to party
         party = events_to_party(events=new_events, template_dir=template_dir)
 
-        # Access the wavebank (read in the table) once at the start of the
-        # loop over events - we need to re-access the bank every time loop to
-        # get the new data. We also have to cope with other python processes
-        # potentially writing to the table when we try to open it.
-
-        # TODO: This should use the local in-memory DB as implemented in growclust runner
-        _retrires = 0
-        while True:
-            try:
-                # We start a new access to the wavebank every time
-                # incase it has updated
-                wavebank = WaveBank(wavebank_dir)
-            except Exception as e:
-                Logger.warning(
-                    f"Could not access the wavebank due to {e}. "
-                    f"Retrying in 1s")
-                time.sleep(1)
-                _retrires += 1
-            else:
-                # We got the wavebank!
-                break
-
         # Loop over detections - party.lag-calc works okay for longer
         # process-lengths, but not so well for these short ones
         lag_calced = Catalog()
@@ -321,9 +291,8 @@ class Picker(_Plugin):
                 Logger.debug(f"Setting up picker for {detection.id}")
                 d_party = Party(
                     [Family(family.template, [detection])])
-                # TODO: Use the internals from growclust-runner
                 stream = get_stream(
-                    d_party, wavebank=wavebank,
+                    d_party, in_memory_wavebank=self.in_memory_wavebank,
                     length=family.template.process_length * 2.1,
                     pre_pick=min(internal_config.shift_len * 2,
                                  family.template.process_length))
