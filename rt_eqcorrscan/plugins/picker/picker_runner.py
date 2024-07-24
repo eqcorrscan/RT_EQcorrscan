@@ -16,7 +16,7 @@ import logging
 import os
 import pickle
 
-from typing import Union
+from typing import Union, Iterable, List
 
 from obspy import (
     read_events, Catalog, Stream, UTCDateTime, read_inventory, Inventory)
@@ -30,7 +30,7 @@ from eqcorrscan.utils.mag_calc import amp_pick_event
 
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
-    Watcher, PLUGIN_CONFIG_MAPPER)
+    PLUGIN_CONFIG_MAPPER, _Plugin)
 
 
 Logger = logging.getLogger(__name__)
@@ -259,49 +259,19 @@ def _insert_arrivals(
     return ev
 
 
-def main(
-    config_file: str,
-) -> None:
-    """
+class Picker(_Plugin):
+    def _read_config(self, config_file: str):
+        return PickerConfig.read(config_file=config_file)
 
-    Parameters
-    ----------
-    config_file
-        Path to configuration file for lag-calc runner.
-    """
-    config = PickerConfig.read(config_file=config_file)
-    detection_dir = config.pop("in_dir")
-    template_dir = config.pop("template_dir")
-    wavebank_dir = config.pop("wavebank_dir")
-    outdir = config.pop("out_dir")
-    inv = read_inventory(config.station_file)
-    # Initialise watcher
-    watcher = Watcher(
-        top_directory=detection_dir, watch_pattern="*.xml", history=None)
-    # Watch for a poison file.
-    kill_watcher = Watcher(
-        top_directory=outdir, watch_pattern="poison", history=None)
-    if not os.path.isdir(outdir):
-        os.makedirs(outdir)
+    def core(self, new_files: Iterable) -> List:
+        internal_config = self.config.copy()
+        detection_dir = internal_config.pop("in_dir")
+        template_dir = internal_config.pop("template_dir")
+        wavebank_dir = internal_config.pop("wavebank_dir")
+        outdir = internal_config.pop("out_dir")
+        inv = read_inventory(self.config.station_file)
 
-    # Loop!
-    while True:
-        tic = time.time()
-        kill_watcher.check_for_updates()
-        if len(kill_watcher):
-            Logger.critical("Picker plugin killed")
-            Logger.critical(f"Found files: {kill_watcher}")
-            break
-
-        watcher.check_for_updates()
-        if not len(watcher):
-            Logger.debug(
-                f"No new events found, sleeping for {config.sleep_interval}")
-            time.sleep(config.sleep_interval)
-            continue
-
-        # We have some events to process!
-        new_files, processed_files = watcher.new.copy(), []
+        processed_files = []
         new_events, event_files = Catalog(), dict()
         for f in new_files:
             event = read_events(f)
@@ -324,6 +294,8 @@ def main(
         # loop over events - we need to re-access the bank every time loop to
         # get the new data. We also have to cope with other python processes
         # potentially writing to the table when we try to open it.
+
+        # TODO: This should use the local in-memory DB as implemented in growclust runner
         _retrires = 0
         while True:
             try:
@@ -349,10 +321,11 @@ def main(
                 Logger.debug(f"Setting up picker for {detection.id}")
                 d_party = Party(
                     [Family(family.template, [detection])])
+                # TODO: Use the internals from growclust-runner
                 stream = get_stream(
                     d_party, wavebank=wavebank,
                     length=family.template.process_length * 2.1,
-                    pre_pick=min(config.shift_len * 2,
+                    pre_pick=min(internal_config.shift_len * 2,
                                  family.template.process_length))
                 # Get an excess of data to cope with missing "future" data
                 Logger.debug(f"Have stream: \n{stream}")
@@ -372,7 +345,7 @@ def main(
                 try:
                     event_back = d_party.lag_calc(
                         stream=stream, pre_processed=False, ignore_length=True,
-                        **config.__dict__)
+                        **internal_config.__dict__)
                 except Exception as e:
                     Logger.error(
                         f"Could not run lag-calc for {detection.id} due to {e}")
@@ -388,8 +361,9 @@ def main(
                         event = amp_pick_event(
                             event=event, st=stream, inventory=inv,
                             chans=["1", "2", "N", "E"], iaspei_standard=False,
-                            var_wintype=True, winlen=config.winlen,
-                            ps_multiplier=config.ps_multiplier, win_from_p=True)
+                            var_wintype=True, winlen=internal_config.winlen,
+                            ps_multiplier=internal_config.ps_multiplier,
+                            win_from_p=True)
                         # Change here requires this PR:
                         # https://github.com/eqcorrscan/EQcorrscan/pull/572
                     except Exception as e:
@@ -417,21 +391,7 @@ def main(
                 os.makedirs(os.path.dirname(outpath))
             ev.write(f"{outpath}", format="QUAKEML")
 
-        # Mark files as processed
-        watcher.processed(processed_files)
-
-        # Check for poison again before sleeping
-        kill_watcher.check_for_updates()
-        if len(kill_watcher):
-            Logger.error("Picker plugin killed")
-        # Sleep and repeat
-        toc = time.time()
-        elapsed = toc - tic
-        Logger.info(f"Picker loop took {elapsed:.2f} s")
-        if elapsed < config.sleep_interval:
-            time.sleep(config.sleep_interval - elapsed)
-        continue
-    return
+        return processed_files
 
 
 if __name__ == "__main__":

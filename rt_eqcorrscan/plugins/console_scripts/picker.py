@@ -5,8 +5,7 @@ Console script entry point for lag-calc plugin.
 import logging
 
 from rt_eqcorrscan.config.config import _setup_logging
-from rt_eqcorrscan.plugins.picker.picker_runner import (
-    main as picker_runner)
+from rt_eqcorrscan.plugins.picker.picker_runner import Picker
 
 
 Logger = logging.getLogger("lag-calc-plugin")
@@ -37,7 +36,8 @@ def main():
         log_level=args.log_level, log_formatter=args.log_formatter,
         screen=args.log_to_screen, file=True, filename=args.log_file)
 
-    picker_runner(config_file=args.config)
+    picker = Picker(config_file=args.config)
+    picker.run()
 
 
 if __name__ == "__main__":

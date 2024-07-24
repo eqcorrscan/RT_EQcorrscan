@@ -5,7 +5,7 @@ Console entry point for hyp runner.
 import logging
 
 from rt_eqcorrscan.config.config import _setup_logging
-from rt_eqcorrscan.plugins.relocation.hyp_runner import main as hyp_runner
+from rt_eqcorrscan.plugins.relocation.hyp_runner import Hyp
 
 
 Logger = logging.getLogger("hyp-plugin")
@@ -36,7 +36,8 @@ def main():
         log_level=args.log_level, log_formatter=args.log_formatter,
         screen=args.log_to_screen, file=True, filename=args.log_file)
 
-    hyp_runner(config_file=args.config)
+    hyp = Hyp(config_file=args.config)
+    hyp.run()
 
 
 if __name__ == "__main__":
