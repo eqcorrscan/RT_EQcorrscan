@@ -11,26 +11,24 @@ Steps:
 6. Output events to output directory
 7. Repeat
 """
-import time
 import logging
 import os
 import pickle
 
-from typing import Union
+from typing import Iterable, List
 
 from obspy import (
     read_events, Catalog, Stream, UTCDateTime, read_inventory, Inventory)
-from obspy.clients.fdsn import Client
 from obspy.geodetics import gps2dist_azimuth, kilometers2degrees
 from obspy.core.event import Event, Arrival
-from obsplus import WaveBank
 
 from eqcorrscan import Party, Family, Detection
 from eqcorrscan.utils.mag_calc import amp_pick_event
 
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
-    Watcher, PLUGIN_CONFIG_MAPPER)
+    PLUGIN_CONFIG_MAPPER, _Plugin)
+from rt_eqcorrscan.plugins.waveform_access import InMemoryWaveBank
 
 
 Logger = logging.getLogger(__name__)
@@ -177,7 +175,7 @@ def events_to_party(events: Catalog, template_dir: str) -> Party:
 
 def get_stream(
     party: Party,
-    wavebank: Union[WaveBank, Client],
+    in_memory_wavebank: InMemoryWaveBank,
     length: float,
     pre_pick: float,
 ) -> Stream:
@@ -187,8 +185,8 @@ def get_stream(
     ----------
     party
         Party of detections to get streams for
-    wavebank
-        Wavebank or Client to get waveforms from
+    in_memory_wavebank
+        On-disk in-memory wavebank to get waveforms from
     length
         Length in seconds to get data for each event
     pre_pick
@@ -202,19 +200,8 @@ def get_stream(
     for f in party:
         for d in f:
             ev = d.event or d._calculate_event(template=f.template)
-            bulk = []
-            for p in ev.picks:
-                bulk.append((
-                    p.waveform_id.network_code or "*",
-                    p.waveform_id.station_code,
-                    p.waveform_id.location_code or "*",
-                    p.waveform_id.channel_code,
-                    p.time - pre_pick,
-                    p.time + (length - pre_pick)))
-            Logger.debug(
-                f"Getting {len(bulk)} channels of data for detection: {d.id}")
-            Logger.debug(bulk)
-            stream += wavebank.get_waveforms_bulk(bulk)
+            stream += in_memory_wavebank.get_event_waveforms(
+                event=ev, pre_pick=pre_pick, length=length)
     stream.merge()
     return stream
 
@@ -259,49 +246,24 @@ def _insert_arrivals(
     return ev
 
 
-def main(
-    config_file: str,
-) -> None:
-    """
+class Picker(_Plugin):
+    def __init__(self, config_file: str, name: str = "Picker"):
+        super().__init__(config_file=config_file, name=name)
+        self.in_memory_wavebank = InMemoryWaveBank(self.config.wavebank_dir)
+        self.in_memory_wavebank.get_data_availability()
 
-    Parameters
-    ----------
-    config_file
-        Path to configuration file for lag-calc runner.
-    """
-    config = PickerConfig.read(config_file=config_file)
-    detection_dir = config.pop("in_dir")
-    template_dir = config.pop("template_dir")
-    wavebank_dir = config.pop("wavebank_dir")
-    outdir = config.pop("out_dir")
-    inv = read_inventory(config.station_file)
-    # Initialise watcher
-    watcher = Watcher(
-        top_directory=detection_dir, watch_pattern="*.xml", history=None)
-    # Watch for a poison file.
-    kill_watcher = Watcher(
-        top_directory=outdir, watch_pattern="poison", history=None)
-    if not os.path.isdir(outdir):
-        os.makedirs(outdir)
+    def _read_config(self, config_file: str):
+        return PickerConfig.read(config_file=config_file)
 
-    # Loop!
-    while True:
-        tic = time.time()
-        kill_watcher.check_for_updates()
-        if len(kill_watcher):
-            Logger.critical("Picker plugin killed")
-            Logger.critical(f"Found files: {kill_watcher}")
-            break
+    def core(self, new_files: Iterable) -> List:
+        internal_config = self.config.copy()
+        detection_dir = internal_config.pop("in_dir")
+        template_dir = internal_config.pop("template_dir")
+        wavebank_dir = internal_config.pop("wavebank_dir")
+        outdir = internal_config.pop("out_dir")
+        inv = read_inventory(self.config.station_file)
 
-        watcher.check_for_updates()
-        if not len(watcher):
-            Logger.debug(
-                f"No new events found, sleeping for {config.sleep_interval}")
-            time.sleep(config.sleep_interval)
-            continue
-
-        # We have some events to process!
-        new_files, processed_files = watcher.new.copy(), []
+        processed_files = []
         new_events, event_files = Catalog(), dict()
         for f in new_files:
             event = read_events(f)
@@ -320,26 +282,6 @@ def main(
         # Convert to party
         party = events_to_party(events=new_events, template_dir=template_dir)
 
-        # Access the wavebank (read in the table) once at the start of the
-        # loop over events - we need to re-access the bank every time loop to
-        # get the new data. We also have to cope with other python processes
-        # potentially writing to the table when we try to open it.
-        _retrires = 0
-        while True:
-            try:
-                # We start a new access to the wavebank every time
-                # incase it has updated
-                wavebank = WaveBank(wavebank_dir)
-            except Exception as e:
-                Logger.warning(
-                    f"Could not access the wavebank due to {e}. "
-                    f"Retrying in 1s")
-                time.sleep(1)
-                _retrires += 1
-            else:
-                # We got the wavebank!
-                break
-
         # Loop over detections - party.lag-calc works okay for longer
         # process-lengths, but not so well for these short ones
         lag_calced = Catalog()
@@ -350,9 +292,9 @@ def main(
                 d_party = Party(
                     [Family(family.template, [detection])])
                 stream = get_stream(
-                    d_party, wavebank=wavebank,
+                    d_party, in_memory_wavebank=self.in_memory_wavebank,
                     length=family.template.process_length * 2.1,
-                    pre_pick=min(config.shift_len * 2,
+                    pre_pick=min(internal_config.shift_len * 2,
                                  family.template.process_length))
                 # Get an excess of data to cope with missing "future" data
                 Logger.debug(f"Have stream: \n{stream}")
@@ -372,7 +314,7 @@ def main(
                 try:
                     event_back = d_party.lag_calc(
                         stream=stream, pre_processed=False, ignore_length=True,
-                        **config.__dict__)
+                        **internal_config.__dict__)
                 except Exception as e:
                     Logger.error(
                         f"Could not run lag-calc for {detection.id} due to {e}")
@@ -388,8 +330,9 @@ def main(
                         event = amp_pick_event(
                             event=event, st=stream, inventory=inv,
                             chans=["1", "2", "N", "E"], iaspei_standard=False,
-                            var_wintype=True, winlen=config.winlen,
-                            ps_multiplier=config.ps_multiplier, win_from_p=True)
+                            var_wintype=True, winlen=internal_config.winlen,
+                            ps_multiplier=internal_config.ps_multiplier,
+                            win_from_p=True)
                         # Change here requires this PR:
                         # https://github.com/eqcorrscan/EQcorrscan/pull/572
                     except Exception as e:
@@ -417,21 +360,7 @@ def main(
                 os.makedirs(os.path.dirname(outpath))
             ev.write(f"{outpath}", format="QUAKEML")
 
-        # Mark files as processed
-        watcher.processed(processed_files)
-
-        # Check for poison again before sleeping
-        kill_watcher.check_for_updates()
-        if len(kill_watcher):
-            Logger.error("Picker plugin killed")
-        # Sleep and repeat
-        toc = time.time()
-        elapsed = toc - tic
-        Logger.info(f"Picker loop took {elapsed:.2f} s")
-        if elapsed < config.sleep_interval:
-            time.sleep(config.sleep_interval - elapsed)
-        continue
-    return
+        return processed_files
 
 
 if __name__ == "__main__":

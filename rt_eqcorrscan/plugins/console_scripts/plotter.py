@@ -5,7 +5,7 @@ Console entry point for plotter runner
 import logging
 
 from rt_eqcorrscan.config.config import _setup_logging
-from rt_eqcorrscan.plugins.plotter.plotter_runner import main as plotter_runner
+from rt_eqcorrscan.plugins.plotter.plotter_runner import Plotter
 
 
 Logger = logging.getLogger("hyp-plugin")
@@ -29,6 +29,10 @@ def main():
         "--log-file", type=str, default="plotter.log")
     parser.add_argument(
         "--log-to-screen", "-s", action="store_true")
+    parser.add_argument(
+        "--now", action="store_false",
+        help="Make a plot now and stop. Do not continue watching for new events"
+    )
 
     args = parser.parse_args()
 
@@ -36,7 +40,8 @@ def main():
         log_level=args.log_level, log_formatter=args.log_formatter,
         screen=args.log_to_screen, file=True, filename=args.log_file)
 
-    plotter_runner(config_file=args.config)
+    plotter = Plotter(config_file=args.config)
+    plotter.run(loop=args.now)
 
 
 if __name__ == "__main__":

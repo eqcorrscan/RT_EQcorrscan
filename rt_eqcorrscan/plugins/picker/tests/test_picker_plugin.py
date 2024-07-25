@@ -11,7 +11,7 @@ import logging
 
 from multiprocessing import Process
 
-from obspy import Catalog, read_events
+from obspy import Catalog, read_events, Stream
 from obspy.clients.fdsn import Client
 
 from obsplus.bank import WaveBank
@@ -20,7 +20,7 @@ from eqcorrscan import Party
 
 from rt_eqcorrscan.plugins.picker import (
     events_to_party, get_stream, PickerConfig)
-from rt_eqcorrscan.plugins.picker import main as picker_runner
+from rt_eqcorrscan.plugins.picker import Picker
 
 
 Logger = logging.getLogger(__name__)
@@ -87,14 +87,6 @@ class TestLagCalcPlugin(unittest.TestCase):
                     value_back = db.__dict__[key]
                     self.assertEqual(value, value_back)
 
-    def test_get_waveforms(self):
-        stream = get_stream(party=self.party, wavebank=Client("GEONET"),
-                            length=20.0, pre_pick=2.0)
-        picked_channels = {p.waveform_id.get_seed_string()
-                           for f in self.party for d in f
-                           for p in d.event.picks}
-        self.assertEqual(len(stream), len(picked_channels))
-
     def test_lag_calc_runner(self):
         config = PickerConfig()
         config_file = "test_lagcalc_config.yml"
@@ -125,8 +117,22 @@ class TestLagCalcPlugin(unittest.TestCase):
                 pickle.dump(f.template, fp)
 
         # Get a useful stream
-        stream = get_stream(party=party, wavebank=Client("GEONET"),
-                            length=600., pre_pick=120.)
+        bulk = []
+        for family in party:
+            for detection in family:
+                for pick in detection.event.picks:
+                    bulk.append((
+                        pick.waveform_id.network_code or "*",
+                        pick.waveform_id.station_code or "*",
+                        pick.waveform_id.location_code or "*",
+                        pick.waveform_id.channel_code or "*",
+                        pick.time - 120.,
+                        pick.time + 480))
+        client = Client("GEONET")
+        Logger.debug(f"Downloading streams for bulk:\n{bulk}")
+        stream = Stream()
+        for _bulk in bulk:
+            stream += client.get_waveforms(*_bulk)
         bank = WaveBank(wavebank_dir)
         bank.put_waveforms(stream)
 
@@ -146,7 +152,8 @@ class TestLagCalcPlugin(unittest.TestCase):
         Logger.info("Starting lag-calc runner")
         failed = False
         try:
-            picker_runner(config_file=config_file)
+            picker = Picker(config_file=config_file)
+            picker.run()
         except Exception as e:
             Logger.error(f"Failed due to {e}")
             failed = True

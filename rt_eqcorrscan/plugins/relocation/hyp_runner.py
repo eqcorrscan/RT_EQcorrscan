@@ -10,7 +10,7 @@ import warnings
 import subprocess
 import time
 
-from typing import List
+from typing import List, Iterable
 
 from obspy import read_events, Catalog, read_inventory
 from obspy.core.event import Event, Origin
@@ -19,7 +19,7 @@ from obspy.io.nordic.core import read_nordic, write_select
 
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
-    Watcher, PLUGIN_CONFIG_MAPPER)
+    PLUGIN_CONFIG_MAPPER, _Plugin)
 
 
 Logger = logging.getLogger(__name__)
@@ -301,54 +301,28 @@ def _write_station0(
 
 # ################################# CONTROL FUNCS #############################
 
+class Hyp(_Plugin):
+    remodel = True
 
-def main(
-    config_file: str
-):
-    """
-    Main hyp-plugin runner.
+    def _read_config(self, config_file: str):
+        return HypConfig.read(config_file)
 
-    Parameters
-    ----------
-    config_file
-        Path to configuration file for hyp runner
-    """
-    config = HypConfig.read(config_file=config_file)
-    in_dir = config.pop("in_dir")
-    out_dir = config.pop("out_dir")
-    vmodel_file = config.pop("vmodel_file")
-    station_file = config.pop("station_file")
+    def _cleanup(self):
+        _cleanup()
 
-    watcher = Watcher(
-        top_directory=in_dir, watch_pattern="*.xml", history=None)
-    kill_watcher = Watcher(
-        top_directory=out_dir, watch_pattern="poison", history=None)
+    def core(self, new_files: Iterable) -> List:
+        internal_config = self.config.copy()
 
-    if not os.path.isdir(out_dir):
-        os.makedirs(out_dir)
+        in_dir = internal_config.pop("in_dir")
+        out_dir = internal_config.pop("out_dir")
+        vmodel_file = internal_config.pop("vmodel_file")
+        station_file = internal_config.pop("station_file")
 
-    # TODO: Figure this out - we need to read the vmodel and station inv
-    inv = read_inventory(station_file)
-    vmodel = VelocityModel.read(vmodel_file)
+        # TODO: Figure this out - we need to read the vmodel and station inv
+        inv = read_inventory(station_file)
+        vmodel = VelocityModel.read(vmodel_file)
 
-    remodel = True  # Rebuild velocity tables first time.
-
-    while True:
-        tic = time.time()
-        kill_watcher.check_for_updates()
-        if len(kill_watcher):
-            Logger.critical("Hyp plugin killed")
-            Logger.critical(f"Found files {kill_watcher}")
-            break
-
-        watcher.check_for_updates()
-        if not len(watcher):
-            Logger.debug(
-                f"Found no new events, sleeping for {config.sleep_interval}")
-            time.sleep(config.sleep_interval)
-            continue
-
-        new_files, processed_files = watcher.new.copy(), []
+        processed_files = []
         for i, infile in enumerate(new_files):
             Logger.info(
                 f"Working on event-file {i} of {len(new_files)}:\t{infile}")
@@ -364,14 +338,15 @@ def main(
                     event_located = seisan_hyp(
                         event=event, inventory=inv,
                         velocities=vmodel.velocities,
-                        vpvs=vmodel.vpvs, remodel=remodel, clean=False)
+                        vpvs=vmodel.vpvs, remodel=self.remodel, clean=False)
                 except Exception as e:
                     Logger.error(f"Could not locate {event.resource_id.id} due "
                                  f"to {e}")
                     failed = True
                     continue
                 if event_located:
-                    remodel = False  # Do not redo that work if we don't need to
+                    self.remodel = False
+                    # Do not redo that work if we don't need to
                     cat_out += event_located
                 else:
                     failed = True
@@ -386,22 +361,7 @@ def main(
 
             if not failed:
                 processed_files.append(infile)
-
-        watcher.processed(processed_files)
-
-        # Check for poison again before sleeping
-        kill_watcher.check_for_updates()
-        if len(kill_watcher):
-            Logger.error("Hyp plugin killed")
-        # Sleep and repeat
-        toc = time.time()
-        elapsed = toc - tic
-        Logger.info(f"Hyp loop took {elapsed:.2f} s")
-        if elapsed < config.sleep_interval:
-            time.sleep(config.sleep_interval - elapsed)
-        continue
-    _cleanup()
-    return
+        return processed_files
 
 
 if __name__ == "__main__":

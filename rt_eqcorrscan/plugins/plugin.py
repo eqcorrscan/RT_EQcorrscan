@@ -6,15 +6,17 @@ import fnmatch
 import logging
 import subprocess
 import os
-import glob
+import time
 import shutil
+
+from abc import ABC, abstractmethod
 
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
 except ImportError:  # pragma: no cover
     from yaml import Loader, Dumper
 
-from typing import List, Set, Iterable
+from typing import Iterable, List
 
 # Dict of registered plugins - no other plugins will be callable
 # entry point must point to script to run the plugin. Plugin should run as a
@@ -73,6 +75,120 @@ class Watcher:
         Logger.debug(f"Found {len(new)} new events to process in "
                     f"{self.top_directory}[...]{self.watch_pattern}")
         self.new = new
+
+
+class _Plugin(ABC):
+    """
+    Abstract Base Class for plugins with commonly used methods.
+    """
+    watch_pattern = "*.xml"
+    name = "Plugin"
+
+    def __init__(self, config_file: str, name: str = None):
+        self.config = self._read_config(config_file=config_file)
+        self._config_file = config_file
+        self.watcher = Watcher(
+            top_directory=self.config.in_dir,
+            watch_pattern=self.watch_pattern,
+            history=None)
+        self.kill_watcher = Watcher(
+            top_directory=self.config.out_dir,
+            watch_pattern="poison",
+            history=None)
+        if name:
+            self.name = name
+
+    @abstractmethod
+    def _read_config(self, config_file: str):
+        """ Us the appropriate config """
+
+    @abstractmethod
+    def core(self, new_files: Iterable) -> List:
+        """ The internal plugin code to actually run the plugin! """
+
+    def _cleanup(self):
+        """ Anything that needs to be done at the end of a run. """
+        pass
+
+    def run(self, loop: bool = True):
+        """
+
+        Parameters
+        ----------
+        loop
+
+        Returns
+        -------
+
+        """
+        if not os.path.isdir(self.config.out_dir):
+            os.makedirs(self.config.out_dir)
+        while True:
+            tic = time.time()
+
+            # Check for changed config
+            new_config = self._read_config(config_file=self._config_file)
+            new_in_dir = new_config.get("in_dir")
+            new_out_dir = new_config.get("out_dir")
+
+            if new_config.in_dir != self.config.in_dir:
+                Logger.info(f"Looking for events in a new in dir: "
+                            f"{new_config.in_dir}")
+                in_dir = new_in_dir
+                self.watcher = Watcher(
+                    top_directory=in_dir,
+                    watch_pattern=self.watcher.watch_pattern,
+                    history=self.watcher.history)
+            if new_config.out_dir != self.config.out_dir:
+                Logger.info(f"Using a new out dir: {new_config.out_dir}")
+                out_dir = new_out_dir
+                self.kill_watcher = Watcher(
+                    top_directory=out_dir,
+                    watch_pattern=self.kill_watcher.watch_pattern,
+                    history=None)
+            if new_config != self.config:
+                Logger.info(f"Updated configuration found: {new_config}")
+                self.config = new_config
+
+            self.kill_watcher.check_for_updates()
+            if len(self.kill_watcher):
+                Logger.critical(f"{self.name} plugin killed")
+                Logger.critical(f"Found files: {self.kill_watcher}")
+                break
+
+            self.watcher.check_for_updates()
+            if not len(self.watcher):
+                if loop:
+                    Logger.debug(
+                        f"No new events found, sleeping for "
+                        f"{self.config.sleep_interval}")
+                    time.sleep(self.config.sleep_interval)
+                    continue
+                else:
+                    Logger.info("No new events found, returning")
+                    break
+
+            # We have some events to process!
+            new_files = self.watcher.new.copy()
+            processed_files = self.core(new_files=new_files)
+
+            self.watcher.processed(processed_files)
+            if loop:
+                # Check for poison again before sleeping
+                self.kill_watcher.check_for_updates()
+                if len(self.kill_watcher):
+                    Logger.error(f"{self.name} plugin killed")
+                # Sleep and repeat
+                toc = time.time()
+                elapsed = toc - tic
+                Logger.info(f"{self.name} loop took {elapsed:.2f} s")
+                if elapsed < self.config.sleep_interval:
+                    time.sleep(self.config.sleep_interval - elapsed)
+                continue
+            else:
+                break
+        self._cleanup()
+        return
 
 
 def run_plugin(
