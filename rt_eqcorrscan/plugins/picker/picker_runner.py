@@ -287,9 +287,9 @@ class Picker(_Plugin):
         # process-lengths, but not so well for these short ones
         lag_calced = Catalog()
         for family in party:
-            Logger.info(f"Setting up picker for {family.template.name}")
+            Logger.info(f"Setting up picker for Family: {family.template.name}")
             for detection in family:
-                Logger.debug(f"Setting up picker for {detection.id}")
+                Logger.info(f"Setting up picker for Detection: {detection.id}")
                 d_party = Party(
                     [Family(family.template, [detection])])
                 stream = get_stream(
@@ -306,7 +306,7 @@ class Picker(_Plugin):
                 else:
                     min_len = 0.0
                 if min_len < family.template.process_length:
-                    Logger.debug(
+                    Logger.info(
                         f"Insufficient data for {detection.id}, waiting.")
                     continue
                 # Run lag-calc
