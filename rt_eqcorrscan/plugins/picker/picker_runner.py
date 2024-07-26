@@ -13,6 +13,7 @@ Steps:
 """
 import logging
 import os
+import traceback
 import pickle
 
 from typing import Iterable, List
@@ -318,6 +319,7 @@ class Picker(_Plugin):
                 except Exception as e:
                     Logger.error(
                         f"Could not run lag-calc for {detection.id} due to {e}")
+                    Logger.error(traceback.print_exc())
                 if event_back and len(event_back):
                     # Merge the event info
                     event = detection.event
@@ -338,6 +340,7 @@ class Picker(_Plugin):
                     except Exception as e:
                         Logger.error(f"Could not pick amplitudes for "
                                      f"{detection.id} due to {e}")
+                        Logger.error(traceback.print_exc())
 
                     lag_calced += event
                     processed_files.append(
