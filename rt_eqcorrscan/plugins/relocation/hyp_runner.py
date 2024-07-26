@@ -266,8 +266,8 @@ def iterate_over_event(
                           for p in event_located.picks})
 
 
-    Logger.info("{0} stations picked, returning None".format(n_stations))
-    return None
+    Logger.info("{0} stations picked, returning Not-located".format(n_stations))
+    return "not-located"
 
 
 
@@ -413,10 +413,14 @@ class Hyp(_Plugin):
                                  f"to {e}")
                     failed = True
                     continue
-                if event_located:
+                if isinstance(event_located, Event):
                     self.remodel = False
                     # Do not redo that work if we don't need to
                     cat_out += event_located
+                elif event_located == "not-located":
+                    # Criteria not met, but processed
+                    self.remodel = False
+                    failed = False
                 else:
                     failed = True
             fname = infile.split(in_dir)[-1]
