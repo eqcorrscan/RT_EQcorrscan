@@ -107,7 +107,7 @@ def plot_map(catalog: Union[Catalog, Iterable[Event], Iterable[SparseEvent]]
              cmap=True,
              style='cc', pen='black')
     # We add a label to our colour scale with +l
-    fig.colorbar(frame='af+l"Depth (km)""')
+    fig.colorbar(frame='af+lDepth (km)')
     return fig
 
 

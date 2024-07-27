@@ -91,6 +91,9 @@ class InMemoryWaveBank:
         scanned_files = self.scanned_files  # Cache this
         for root, dirs, files in os.walk(self.wavedir):
             for f in files:
+                if f == ".index.h5":
+                    # Skip the common wavebank index file
+                    continue
                 filepath = os.path.join(root, f)
                 if filepath in scanned_files and not scan_all:
                     Logger.debug(f"Skipping {filepath} - already scanned")
