@@ -178,7 +178,7 @@ def seisan_hyp(
         try:
             event_back = read_nordic("hyp.out")
         except Exception as e:
-            Logger.error(f"Could not read hyp.out due to {e}")
+            Logger.error(f"Could not read hyp.out due to {e}", exc_info=True)
             return None
     # We lose some info in the round-trip to nordic
     event_out.origins[0] = event_back[0].origins[0]
@@ -329,7 +329,8 @@ class Hyp(_Plugin):
             try:
                 _cat = read_events(infile)
             except Exception as e:
-                Logger.error(f"Could not read {infile} due to {e}")
+                Logger.error(f"Could not read {infile} due to {e}",
+                             exc_info=True)
                 continue
             cat_out = Catalog()
             failed = False
@@ -341,7 +342,7 @@ class Hyp(_Plugin):
                         vpvs=vmodel.vpvs, remodel=self.remodel, clean=False)
                 except Exception as e:
                     Logger.error(f"Could not locate {event.resource_id.id} due "
-                                 f"to {e}")
+                                 f"to {e}", exc_info=True)
                     failed = True
                     continue
                 if event_located:

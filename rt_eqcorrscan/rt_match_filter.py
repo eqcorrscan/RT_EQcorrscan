@@ -326,7 +326,8 @@ class RealTimeTribe(Tribe):
                     out = func(*args, **kwargs)
                     break
                 except (IOError, OSError) as e:
-                    Logger.warning(f"Call to {method} failed due to {e}")
+                    Logger.warning(f"Call to {method} failed due to {e}",
+                                   exc_info=True)
                     time.sleep(wait_step)
                 toc = time.time()
                 timer += toc - tic
@@ -826,7 +827,8 @@ class RealTimeTribe(Tribe):
                         *tr_id.split('.'), starttime=starttime,
                         endtime=endtime).merge()[0]
                 except Exception as e:
-                    Logger.error("Could not back fill due to: {0}".format(e))
+                    Logger.error("Could not back fill due to: {0}".format(e),
+                                 exc_info=True)
                     Logger.error(f"The request was: {tr_id.split('.')},"
                                  f" starttime={starttime}, endtime={endtime}")
                     continue
@@ -892,7 +894,8 @@ class RealTimeTribe(Tribe):
                                 continue
                         else:
                             Logger.error(
-                                f"Could not write to wavebank due to {e}")
+                                f"Could not write to wavebank due to {e}",
+                                exc_info=True)
                     last_data_received = self.rt_client.last_data
                     # Split to remove trailing mask
                     if len(st) == 0:
@@ -979,8 +982,7 @@ class RealTimeTribe(Tribe):
                             **kwargs)
                         Logger.info("Completed detection")
                     except Exception as e:  # pragma: no cover
-                        Logger.error(e)
-                        Logger.error(traceback.format_exc())
+                        Logger.error(e, exc_info=True)
                         if "Cannot allocate memory" in str(e):
                             Logger.error(
                                 "Out of memory, stopping this detector")
@@ -1064,8 +1066,7 @@ class RealTimeTribe(Tribe):
                     # Logger.info(f"Total memory used by {os.getpid()}: {total_memory_mb:.4f} MB")
                 except Exception as e:
                     # Error locally and mail this in!
-                    Logger.critical(f"Uncaught error: {e}")
-                    Logger.error(traceback.format_exc())
+                    Logger.critical(f"Uncaught error: {e}", exc_info=True)
 
                     message = f"""\
                     Uncaught error: {e}
@@ -1097,7 +1098,8 @@ class RealTimeTribe(Tribe):
             try:
                 template = Template().read(template_file)
             except Exception as e:
-                Logger.error(f"Could not read {template_file} due to {e}")
+                Logger.error(f"Could not read {template_file} due to {e}",
+                             exc_info=True)
                 continue
             template_endtime = max(tr.stats.endtime for tr in template.st)
             if template_endtime > self._stream_end:
@@ -1521,7 +1523,7 @@ def _write_detection(
     try:
         detection.event.write(f"{detect_file_base}.xml", format="QUAKEML")
     except Exception as e:
-        Logger.error(f"Could not write event file due to {e}")
+        Logger.error(f"Could not write event file due to {e}", exc_info=True)
     else:
         Logger.info(f"Written detection at {detection.detect_time} to "
                     f"{detect_file_base}")
@@ -1536,14 +1538,14 @@ def _write_detection(
         try:
             fig.savefig(f"{detect_file_base}.png")
         except Exception as e:
-            Logger.error(f"Could not write plot due to {e}")
+            Logger.error(f"Could not write plot due to {e}", exc_info=True)
         fig.clf()
     if save_waveform:
         st = _check_stream_is_int(st)
         try:
             st.write(f"{detect_file_base}.ms", format="MSEED")
         except Exception as e:
-            Logger.error(f"Could not write stream due to {e}")
+            Logger.error(f"Could not write stream due to {e}", exc_info=True)
     return fig
 
 
