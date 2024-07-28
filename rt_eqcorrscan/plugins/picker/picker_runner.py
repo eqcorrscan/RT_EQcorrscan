@@ -13,7 +13,6 @@ Steps:
 """
 import logging
 import os
-import traceback
 import pickle
 
 from typing import Iterable, List
@@ -318,8 +317,8 @@ class Picker(_Plugin):
                         **internal_config.__dict__)
                 except Exception as e:
                     Logger.error(
-                        f"Could not run lag-calc for {detection.id} due to {e}")
-                    Logger.error(traceback.print_exc())
+                        f"Could not run lag-calc for {detection.id} due to {e}",
+                        exc_info=True)
                 if event_back and len(event_back):
                     # Merge the event info
                     event = detection.event
@@ -339,8 +338,8 @@ class Picker(_Plugin):
                         # https://github.com/eqcorrscan/EQcorrscan/pull/572
                     except Exception as e:
                         Logger.error(f"Could not pick amplitudes for "
-                                     f"{detection.id} due to {e}")
-                        Logger.error(traceback.print_exc())
+                                     f"{detection.id} due to {e}",
+                                     exc_info=True)
 
                     lag_calced += event
                     processed_files.append(
