@@ -33,6 +33,8 @@ class HypConfig(_PluginConfig):
         "vmodel_file": os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                     "vmodel.txt"),
         "station_file": "stations.xml",
+        "min_stations": 5,
+        "max_rms": 2.0,
         "sleep_interval": 600,
     }
     readonly = []
@@ -208,6 +210,67 @@ def seisan_hyp(
     return event_out
 
 
+def iterate_over_event(
+    event: Event,
+    inventory: Inventory,
+    velocities: List[Velocity],
+    vpvs: float,
+    max_rms: float = 1.0,
+    min_stations: int = 5,
+    clean: bool = True,
+    remodel: bool = True,
+) -> Event:
+    """ Iterataivly remove picks until quality criteria are met. """
+    n_stations = len({p.waveform_id.station_code for p in event.picks})
+    if n_stations < min_stations:
+        Logger.info("{0} stations picked, returning None".format(n_stations))
+        return None
+    event_to_be_located = event.copy()  # Keep the original event safe
+    while n_stations >= min_stations:
+        event_located = seisan_hyp(
+            event=event_to_be_located, inventory=inventory,
+            velocities=velocities, vpvs=vpvs, clean=clean, remodel=remodel)
+        remodel = False
+        if event_located is None:
+            Logger.error("Issue locating event, returning None")
+            return None
+        if len(event_located.origins) == 0 or event_located.origins[0].latitude == None:
+            Logger.warning("Issue locating event, returning None")
+            return None
+        if event_located.origins[0].quality.standard_error <= max_rms:
+            Logger.info("RMS below max_RMS, good enough!")
+            event_to_be_located.origins.append(event_located.origins[0])
+            return event_to_be_located
+        # Remove least well fit pick and go again
+        worst_arrival = event_located.origins[0].arrivals[0]
+        for arr in event_located.origins[0].arrivals[1:]:
+            try:
+                if arr.time_residual > worst_arrival.time_residual:
+                    worst_arrival = arr
+            except TypeError:
+                Logger.error(arr)
+        for pick in event_located.picks:
+            if pick.resource_id == worst_arrival.pick_id:
+                worst_pick = pick
+                Logger.info("Removing pick at {0} on {1}".format(
+                    pick.time, pick.waveform_id.get_seed_string()))
+                break
+        _picks = []
+        for pick in event_to_be_located.picks:
+            if pick.waveform_id.station_code == worst_pick.waveform_id.station_code and abs(pick.time - worst_pick.time) < 0.01:
+                continue
+            _picks.append(pick)
+        assert len(_picks) < len(event_to_be_located.picks)
+        event_to_be_located.picks = _picks
+        n_stations = len({p.waveform_id.station_code
+                          for p in event_located.picks})
+
+
+    Logger.info("{0} stations picked, returning Not-located".format(n_stations))
+    return "not-located"
+
+
+
 _HYP_TMP_FILES = [
         "hyp.out", "to_be_located", "remodl.tbl", "remodl1.lis", "remodl2.lis",
         "print.out", "gmap.cur.kml", "hypmag.out", "hypsum.out", "remodl.hed",
@@ -336,19 +399,29 @@ class Hyp(_Plugin):
             failed = False
             for event in _cat:
                 try:
-                    event_located = seisan_hyp(
+                    event_located = iterate_over_event(
                         event=event, inventory=inv,
-                        velocities=vmodel.velocities,
-                        vpvs=vmodel.vpvs, remodel=self.remodel, clean=False)
+                        velocities=vmodel.velocities, vpvs=vmodel.vpvs,
+                        remodel=self.remodel, clean=False,
+                        max_rms=internal_config.max_rms,
+                        min_stations=internal_config.min_stations)
+                    # event_located = seisan_hyp(
+                    #     event=event, inventory=inv,
+                    #     velocities=vmodel.velocities,
+                    #     vpvs=vmodel.vpvs, remodel=self.remodel, clean=False)
                 except Exception as e:
                     Logger.error(f"Could not locate {event.resource_id.id} due "
                                  f"to {e}", exc_info=True)
                     failed = True
                     continue
-                if event_located:
+                if isinstance(event_located, Event):
                     self.remodel = False
                     # Do not redo that work if we don't need to
                     cat_out += event_located
+                elif event_located == "not-located":
+                    # Criteria not met, but processed
+                    self.remodel = False
+                    failed = False
                 else:
                     failed = True
             fname = infile.split(in_dir)[-1]
