@@ -51,7 +51,7 @@ def plot_map(catalog: Union[Catalog, Iterable[Event], Iterable[SparseEvent]]
     fig = pygmt.Figure()
     pygmt.config(MAP_FRAME_TYPE='plain', FORMAT_GEO_MAP='ddd.xx')
     pygmt.makecpt(cmap='plasma', reverse=True, series=[
-                  depths.min(), depths.max()])
+                  0.0, depths.max() or 100.0])
 
     lat_range = latitudes.max() - latitudes.min()
     # Cope with possible wrap-around at dateline
