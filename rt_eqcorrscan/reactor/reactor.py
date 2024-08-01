@@ -8,15 +8,13 @@ import signal
 import subprocess
 
 from copy import deepcopy
-from typing import Callable, Union, List
+from typing import Callable, Union, List, Tuple
 from multiprocessing import cpu_count
 
-from obspy import UTCDateTime, Catalog
+from obspy import UTCDateTime, Catalog, read_events
 from obspy.core.event import Event, Magnitude
 
 from obsplus.events import get_events
-
-from eqcorrscan.core.match_filter import read_tribe
 
 from rt_eqcorrscan.database.database_manager import (
     TemplateBank, check_tribe_quality)
@@ -36,6 +34,28 @@ def _get_triggered_working_dir(
         os.path.abspath(os.getcwd()), triggering_event_id)
     os.makedirs(working_dir, exist_ok=exist_ok)
     return working_dir
+
+
+def _scan_for_events(directory: str) -> Tuple[Catalog, List[str]]:
+    Logger.debug(f"Scanning {directory}")
+    out_cat, files = Catalog(), []
+    with os.scandir(directory) as it:
+        for entry in it:
+            if entry.is_dir():
+                c, f = _scan_for_events(entry.path)
+                out_cat += c
+                files.extend(f)
+            elif entry.is_file():
+                try:
+                    event = read_events(entry.path)
+                except Exception as e:
+                    Logger.debug(f"Could not read {entry.path} due to {e}")
+                    continue
+                else:
+                    out_cat += event
+                    files.append(entry.path)
+    Logger.debug(f"Found {len(out_cat)} events")
+    return out_cat, files
 
 
 class Reactor(object):
@@ -96,7 +116,6 @@ class Reactor(object):
 
     # The processes that are detecting away!
     detecting_processes = dict()
-    # TODO: Build in an AWS spin-up functionality - would need some communication...
 
     def __init__(
         self,
@@ -117,6 +136,12 @@ class Reactor(object):
             template_kwargs=config.template,
             starttime=listener_starttime)
         self.notifier = config.notifier.notifier
+        self._manual_trigger_dir = os.path.join(
+            os.path.abspath(os.curdir), f"manual_triggers_{id(self)}")
+        if not os.path.isdir(self._manual_trigger_dir):
+            os.makedirs(self._manual_trigger_dir)
+        Logger.info(f"To manually trigger this Reactor, write the trigger "
+                    f"event quakeml to {self._manual_trigger_dir}")
         # Time-keepers
         self._run_start = None
         self._running = False
@@ -163,7 +188,8 @@ class Reactor(object):
                 self._listener_kwargs["starttime"]) + 3600
             self.listener.keep = max(_keep_len, listener_keep)
             Logger.info(f"Setting listener keep to {self.listener.keep}")
-        # Try a get and put to make sure that threads have the same memory space...
+        # Try a get and put to make sure that threads have the same
+        # memory space...
         old_events = self.listener.old_events
         self.listener.old_events = old_events
         # Run the listener!
@@ -172,36 +198,44 @@ class Reactor(object):
         # Query the catalog in the listener every so often and check
         self._running = True
         first_iteration = True
-        previous_old_events , working_cat = [], Catalog()  # Initialise state
+        previous_old_events, working_cat = [], Catalog()  # Initialise state
         while self._running:
             old_events = deepcopy(self.listener.old_events)
-            Logger.info(f"Old events from the listener has {len(old_events)} events")
+            Logger.info(f"Old events from the listener has {len(old_events)} "
+                        f"events")
             # Clear out stale events from working_cat
             event_ids = [_[0] for _ in old_events]
-            working_cat.events = [ev for ev in working_cat if ev.resource_id in event_ids]
-            new_old_events = [ev for ev in old_events if ev not in previous_old_events]
+            working_cat.events = [ev for ev in working_cat
+                                  if ev.resource_id in event_ids]
+            new_old_events = [ev for ev in old_events
+                              if ev not in previous_old_events]
             # Get these locally to avoid accessing shared memory multiple times
             if len(new_old_events) > 0:
                 working_ids = [_[0] for _ in new_old_events]
-                Logger.info(f"Getting event info from database for {', '.join(working_ids)}")
+                Logger.info(f"Getting event info from database for "
+                            f"{', '.join(working_ids)}")
                 try:
                     new_working_cat = self.template_database.get_events(
                         eventid=working_ids, _allow_update=False)
                 except Exception as e:
-                    Logger.error(f"Could not get template events from database due to {e}")
+                    Logger.error(f"Could not get template events "
+                                 f"from database due to {e}")
+                    new_working_cat = []
                 if len(working_ids) and not len(new_working_cat):
-                    Logger.warning("Error getting events from database, getting individually")
+                    Logger.warning("Error getting events from database, "
+                                   "getting individually")
                     for working_id in working_ids:
                         try:
                             working_cat += self.template_database.get_events(
                                 eventid=working_id, _allow_update=False)
                         except Exception as e:
-                            Logger.error(f"Could not read {working_id} due to {e}")
+                            Logger.error(f"Could not read {working_id} "
+                                         f"due to {e}")
                             continue
                 else:
                     working_cat += new_working_cat
-                Logger.info("Currently analysing a catalog of {0} events".format(
-                    len(working_cat)))
+                Logger.info("Currently analysing a catalog of "
+                            "{0} events".format(len(working_cat)))
                 self.process_new_events(new_events=working_cat)
                 Logger.debug("Finished processing new events")
             previous_old_events = old_events  # Overload
@@ -235,7 +269,17 @@ class Reactor(object):
             if os.path.isfile(f"{working_dir}/.stopfile"):
                 self.stop_tribe(trigger_event_id)
 
-    def process_new_events(self, new_events: Union[Catalog, List[Event]]) -> None:
+    def get_manual_triggers(self) -> Catalog:
+        manual_triggers, event_files = _scan_for_events(
+            self._manual_trigger_dir)
+        # Remove events that have been read in
+        for event_file in event_files:
+            Logger.debug(f"Removing trigger file {event_file}")
+            os.remove(event_file)
+        return manual_triggers
+
+    def process_new_events(self, new_events: Union[Catalog, List[Event]]
+                           ) -> None:
         """
         Process any new events in the system.
 
@@ -285,6 +329,8 @@ class Reactor(object):
                     self._running_templates[triggering_event_id].update(
                         added_ids)
         trigger_events = self.trigger_func(new_events)
+        # Check for manually added trigger events
+        trigger_events += self.get_manual_triggers()
         # Sanitize trigger-events - make sure that multiple events that would otherwise
         # run together do not all trigger - sort by magnitude
         for trigger_event in trigger_events:
