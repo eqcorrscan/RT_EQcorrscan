@@ -143,7 +143,7 @@ class RealTimeTribe(Tribe):
                 key: value for key, value in plot_options.items()
                 if key != "plot_length"})
         self.detections = []
-        self._killfile = f"kill_{self.name}"
+        self._killfile = f"kill_{self.name}_{id(self)}"
 
         # Wavebank status to avoid accessing the underlying, lockable, wavebank
         if isinstance(wavebank, str):
@@ -623,7 +623,9 @@ class RealTimeTribe(Tribe):
 
     def _start_plugins(self):
         """ Start up any registered plugins. """
-
+        if self.plugin_config is None:
+            Logger.debug("No plugins configured")
+            return
         for key, value in self.plugin_config.items():
             if value is None:
                 continue
@@ -638,6 +640,9 @@ class RealTimeTribe(Tribe):
         return
 
     def _stop_plugins(self):
+        if self.plugin_config is None:
+            Logger.debug("No plugins configured")
+            return
         for key, proc in self._plugins.items():
             Logger.info(f"Stopping subprocess for plugin {key}")
             config = self.plugin_config[key]
@@ -1067,7 +1072,7 @@ class RealTimeTribe(Tribe):
                     _continue = self._wait(
                         wait=(self.detect_interval - run_time) / self._speed_up,  # Convert to real-time
                         detection_kwargs=detection_kwargs)
-                    _runtime_continue = self.__runtime_check(
+                    _runtime_continue = self._runtime_check(
                         run_start=run_start, max_run_length=max_run_length)
                     if not _continue or not _runtime_continue:
                         self.stop()
