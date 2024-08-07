@@ -15,6 +15,11 @@ import logging
 import glob
 import math
 import os
+import shutil
+
+import numpy as np
+
+from scipy.stats import circmean
 
 from typing import Iterable
 
@@ -25,9 +30,8 @@ from obspy.core.event import (
 
 from eqcorrscan.utils.catalog_to_dd import write_correlations, write_phase
 
-from rt_eqcorrscan.plugins.waveform_access import (
-    _get_event_waveforms, _get_data_availability)
-from rt_eqcorrscan.config.config import _ConfigAttribDict
+from rt_eqcorrscan.plugins.waveform_access import InMemoryWaveBank
+from rt_eqcorrscan.config.config import _PluginConfig
 
 WORKING_DIR = os.path.dirname(os.path.abspath(__file__))
 GROWCLUST_DEFAULTS = f"{WORKING_DIR}/growclust.inp"
@@ -51,7 +55,7 @@ XCORR_PARAMS = {
 }
 
 
-class GrowClustConfig(_ConfigAttribDict):
+class GrowClustConfig(_PluginConfig):
     """
     Configuration holder for GrowClust.
 
@@ -154,17 +158,60 @@ class GrowClustConfig(_ConfigAttribDict):
         return
 
 
-def run_growclust(workers: int = 1, control_file: str = GROWCLUST_DEFAULTS):
+def run_growclust(
+    catalog: Catalog,
+    workers: int = 1,
+    control_file: str = GROWCLUST_DEFAULTS,
+):
     """
     Requires a growclust julia runner script.
     """
     import subprocess
+    
+    # Need to edit the projection origin for the events
+    lats = np.array([(ev.preferred_origin() or ev.origins[-1]).latitude
+                     for ev in catalog])
+    lons = np.array([(ev.preferred_origin() or ev.origins[-1]).longitude
+                     for ev in catalog])
+
+    mean_lat = np.mean(lats)
+    mean_lon = np.degrees(circmean(np.radians(lons)))
+
+    with open(control_file, "r") as f:
+        control_lines = f.read().splitlines()
+
+    # Growclust uses fixed line formats - the line we need to edit is line 9
+    counter, outlines = 0, []
+    for line in control_lines:
+        if line.startswith("*"):
+            continue
+        if counter == 9:
+            parts = line.split()
+            parts[2] = str(mean_lon)
+            parts[3] = str(mean_lat)
+            _line = " ".join(parts)
+            print(parts)
+        else:
+            _line = line
+        counter += 1
+        outlines.append(_line)
+
+    with open(f"{WORKING_DIR}/.growclust_control.inp", "w") as f:
+        f.write("\n".join(outlines))
+
+    shutil.copyfile(f"{WORKING_DIR}/vzmodel.txt", "./vzmodel.txt")
+
+    # TODO: write vzmodel.txt file from standardised velocity object
+
+    # TODO: Re-write Julia code to only do ray-tracing once?
+
+    # TODO: Use a variable for working dir - we make lots of temp files
 
     subprocess.run([
         "julia",
         f"-p{workers}",
         f"{WORKING_DIR}/run_growclust.jl",
-        control_file])
+        f"{WORKING_DIR}/.growclust_control.inp"])
     return
 
 
@@ -228,14 +275,12 @@ def write_stlist(inv):
 
 def process_input_catalog(catalog: Catalog, wavedir: str, indir: str) -> dict:
     """ Compute inter-event cross-correlations for growclust. """
-    # Construct stream dict first
-    data_availability = _get_data_availability(wavedir=wavedir)
+    in_memory_wavebank = InMemoryWaveBank(wavedir=wavedir)
 
     # This could be threaded to allow parallel IO?
     stream_dict = {
-        event.resource_id.id: _get_event_waveforms(
-            event=event, data_availability=data_availability,
-            pre_pick=XCORR_PARAMS["pre_pick"] + 1,
+        event.resource_id.id: in_memory_wavebank.get_event_waveforms(
+            event=event, pre_pick=XCORR_PARAMS["pre_pick"] + 1,
             length=XCORR_PARAMS["extract_len"] + 2)
         for event in catalog
     }
@@ -250,9 +295,12 @@ def process_input_catalog(catalog: Catalog, wavedir: str, indir: str) -> dict:
     phase_to_evlist("phase.dat")
     # Write station file
     seed_ids = {tr.id for st in stream_dict.values() for tr in st}
-    starttime = min(tr.stats.starttime for st in stream_dict.values() for tr in st)
-    endtime = max(tr.stats.endtime for st in stream_dict.values() for tr in st)
-    write_stations(seed_ids=seed_ids, starttime=starttime, endtime=endtime, indir=indir)
+    starttime = min(tr.stats.starttime for st in stream_dict.values()
+                    for tr in st)
+    endtime = max(tr.stats.endtime for st in stream_dict.values()
+                  for tr in st)
+    write_stations(seed_ids=seed_ids, starttime=starttime, endtime=endtime,
+                   indir=indir)
     return event_mapper
 
 
@@ -286,7 +334,9 @@ def process_output_catalog(catalog: Catalog, event_mapper: dict) -> Catalog:
 ########## GROWCLUST READING ############################
 
 """
-2009  1 18  0 49 21.000         1 -42.23833  173.79283  19.900  2.85       1   12359       1     0     0     0  0.00  0.00  -1.000  -1.000  -1.000   -42.23833  173.79283  19.900
+2009  1 18  0 49 21.000         1 -42.23833  173.79283  19.900  2.85       \
+1   12359       1     0     0     0  0.00  0.00  -1.000  -1.000  -1.000   \
+-42.23833  173.79283  19.900
 """
 
 FORMATTER = {
@@ -345,10 +395,13 @@ def growclust_line_to_origin(line: str) -> [str, Origin]:
         depth=deserialized["depth"] * 1000, time=origin_time,
         method_id=ResourceIdentifier("GrowClust"),
         time_errors={"uncertainty": deserialized["et"]},
-        depth_errors={"uncertainty": deserialized["ez"] * 1000.0 if deserialized["ez"] else None},
+        depth_errors={
+            "uncertainty": deserialized["ez"] * 1000.0
+            if deserialized["ez"] else None},
         time_fixed=False,
         origin_uncertainty=OriginUncertainty(
-            horizontal_uncertainty=deserialized["eh"] * 1000.0 if deserialized["eh"] else None),
+            horizontal_uncertainty=deserialized["eh"] * 1000.0
+            if deserialized["eh"] else None),
         quality=OriginQuality(
             used_phase_count=deserialized["qndiffP"] + deserialized["qndiffS"],
             standard_error=(
@@ -398,9 +451,11 @@ def main(indir: str, outdir: str, wavedir: str):
         except Exception as e:
             Logger.error(f"Could not read from {event_file} due to {e}")
     Logger.info(f"Read in {len(catalog)} events to relocate")
-    event_mapper = process_input_catalog(catalog=catalog, wavedir=wavedir, indir=indir)
-    run_growclust()
-    catalog_out = process_output_catalog(catalog=catalog, event_mapper=event_mapper)
+    event_mapper = process_input_catalog(
+        catalog=catalog, wavedir=wavedir, indir=indir)
+    run_growclust(catalog=catalog)
+    catalog_out = process_output_catalog(
+        catalog=catalog, event_mapper=event_mapper)
     catalog_out.write(f"{outdir}/relocated.xml", format="QUAKEML")
 
 
@@ -419,7 +474,8 @@ if __name__ == "__main__":
         "-o", "--outdir", type=str, required=True,
         help="Output directory for events")
     parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Increase verbosity")
+        "-v", "--verbose", action="store_true",
+        help="Increase verbosity")
 
     args = parser.parse_args()
 

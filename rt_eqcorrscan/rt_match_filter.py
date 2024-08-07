@@ -100,6 +100,7 @@ class RealTimeTribe(Tribe):
     _template_dir = "new_templates"  # Where new templates should be.
     _min_run_length = 24 * 3600  # Minimum run-length in seconds.
     # Usurped by max_run_length, used to set a threshold for rate calculation.
+    __killfile = None  # Killfile pathname
 
     # WaveBank management
     wavebank_lock = Lock()
@@ -142,6 +143,7 @@ class RealTimeTribe(Tribe):
                 key: value for key, value in plot_options.items()
                 if key != "plot_length"})
         self.detections = []
+        self._killfile = f"kill_{self.name}_{id(self)}"
 
         # Wavebank status to avoid accessing the underlying, lockable, wavebank
         if isinstance(wavebank, str):
@@ -171,6 +173,16 @@ class RealTimeTribe(Tribe):
         """
         return 'Real-Time Tribe of {0} templates on client:\n{1}'.format(
             self.__len__(), self.rt_client)
+
+    @property
+    def _killfile(self):
+        return self.__killfile
+
+    @_killfile.setter
+    def _killfile(self, killfile: str):
+        self.__killfile = killfile
+        Logger.info(f"To stop this RTTribe, run: touch "
+                    f"{os.path.abspath(os.curdir)}/{killfile}")
 
     @property
     def running_template_dir(self) -> str:
@@ -541,15 +553,30 @@ class RealTimeTribe(Tribe):
             **plot_options)
         self.plotter.background_run()
 
-    def _wait(self, wait: float = None, detection_kwargs: dict = None) -> None:
+    def _check_for_killfile(self):
+        """ Check to see if the killfile for this RTTribe exists """
+        if self._killfile is None:
+            return False
+        if os.path.isfile(self._killfile):
+            Logger.info(f"Found killfile: {self._killfile}, stopping")
+            return True
+        return False
+
+    def _wait(self, wait: float = None, detection_kwargs: dict = None) -> bool:
         """ Wait for `wait` seconds, or until all channels are available. """
+        if self._check_for_killfile():
+            self.stop()
+            return False
         if wait is not None and wait <= 0:
             Logger.info(f"No fucking about - get back! (wait: {wait}")
-            return
+            return True
         Logger.info("Waiting for data.")
         max_wait = min(self._max_wait_length, self.rt_client.buffer_capacity)
         wait_length = 0.
         while True:
+            if self._check_for_killfile():
+                self.stop()
+                return False
             tic = time.time()
             if detection_kwargs:
                 # Check on backfillers
@@ -592,11 +619,13 @@ class RealTimeTribe(Tribe):
             elif wait_length >= wait:
                 break
             pass
-        return
+        return True
 
     def _start_plugins(self):
         """ Start up any registered plugins. """
-
+        if self.plugin_config is None:
+            Logger.debug("No plugins configured")
+            return
         for key, value in self.plugin_config.items():
             if value is None:
                 continue
@@ -611,6 +640,9 @@ class RealTimeTribe(Tribe):
         return
 
     def _stop_plugins(self):
+        if self.plugin_config is None:
+            Logger.debug("No plugins configured")
+            return
         for key, proc in self._plugins.items():
             Logger.info(f"Stopping subprocess for plugin {key}")
             config = self.plugin_config[key]
@@ -807,7 +839,9 @@ class RealTimeTribe(Tribe):
             self.expected_seed_ids))
         if backfill_client and backfill_to:
             backfill = Stream()
-            self._wait()
+            _continue = self._wait()
+            if not _continue:
+                return Party()
             _buffer = self.rt_client.stream
             for tr_id in self.expected_seed_ids:
                 try:
@@ -850,7 +884,9 @@ class RealTimeTribe(Tribe):
                 self.rt_client.buffer_length + 5) / self._speed_up
             Logger.info("Sleeping for {0:.2f}s while accumulating data".format(
                 sleep_step))
-            self._wait(sleep_step)
+            _continue = self._wait(sleep_step)
+            if not _continue:
+                return Party()
         first_data = min([tr.stats.starttime
                           for tr in self.rt_client.stream.merge()])
         detection_kwargs = dict(
@@ -1033,11 +1069,12 @@ class RealTimeTribe(Tribe):
                     Logger.info("Waiting {0:.2f}s until next run".format(
                         self.detect_interval - run_time))
                     detection_iteration += 1
-                    self._wait(
+                    _continue = self._wait(
                         wait=(self.detect_interval - run_time) / self._speed_up,  # Convert to real-time
                         detection_kwargs=detection_kwargs)
-                    if not self._runtime_check(
-                            run_start=run_start, max_run_length=max_run_length):
+                    _runtime_continue = self._runtime_check(
+                        run_start=run_start, max_run_length=max_run_length)
+                    if not _continue or not _runtime_continue:
                         self.stop()
                         break
                     if minimum_rate and UTCDateTime.now() > run_start + self._min_run_length:

@@ -16,7 +16,7 @@ from obspy.clients.fdsn import Client
 from rt_eqcorrscan.rt_match_filter import RealTimeTribe
 from rt_eqcorrscan.streaming.clients.seedlink import RealTimeClient
 from rt_eqcorrscan.reactor import get_inventory
-from rt_eqcorrscan.plugins.lag_calc import LagCalcConfig
+from rt_eqcorrscan.plugins.picker import PickerConfig
 from rt_eqcorrscan.plugins.relocation import HypConfig
 
 
@@ -124,7 +124,7 @@ class RealTimeTribeTest(unittest.TestCase):
 
         rt_tribe = RealTimeTribe(
             tribe=tribe, rt_client=rt_client, detect_interval=5, plot=False,
-            name="test_run_tribe", plugin_config={'lag_calc': LagCalcConfig(
+            name="test_run_tribe", plugin_config={'picker': PickerConfig(
                 sleep_interval=20
             )})
         party = rt_tribe.run(
@@ -147,7 +147,7 @@ class RealTimeTribeTest(unittest.TestCase):
         rt_tribe = RealTimeTribe(
             tribe=tribe, rt_client=rt_client, detect_interval=5, plot=False,
             name="test_run_tribe", plugin_config={
-                'lag_calc': LagCalcConfig(sleep_interval=20),
+                'picker': PickerConfig(sleep_interval=20),
                 'hyp': HypConfig(sleep_interval=20,
                                  station_file="test_inv.xml")
             })
