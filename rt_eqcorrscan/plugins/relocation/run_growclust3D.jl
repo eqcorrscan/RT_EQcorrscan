@@ -8,6 +8,7 @@ using DataFrames
 using Random
 using Dates
 using ArgParse
+using JLD
 
 # GrowClust3D
 using GrowClust3D
@@ -17,13 +18,80 @@ using GrowClust3D
 function parse_commandline()
     s = ArgParseSettings()
     @add_arg_table! s begin
-        "--no-remodl"
-            help = "Flag to not re-build the travel time tables"
+        "--cache-tt"
+            help = "Flag to cache the generated travel-time tables"
+            action = :store_true
+        "--load-tt"
+            help = "Flag to load tt-tables from cache"
             action = :store_true
         "--control-file", "-c"
             help = "Control file to read from"
             arg_type = String
             required = true
+        "--distmax"
+            help = "Maximum catalog (input) distance to join clusters (km)"
+            arg_type = Float64
+            default = 8.0
+        "--distmax2"
+            help = "Maximum relocated distance to join clusters (km)"
+            arg_type = Float64
+            default = 6.0
+        "--hshiftmax"
+            help = "Maximum permitted horizontal cluster shifts (km)"
+            arg_type = Float64
+            default = 2.0
+        "--vshiftmax"
+            help = "Maximum permitted vertical cluster shifts (km)"
+            arg_type = Float64
+            default = 2.0
+        "--rmedmax"
+            help = "Maximum median absolute tdif residual to join clusters"
+            arg_type = Float32
+            default = 0.1
+        "--maxlink"
+            help = "Use N best event pairs to relocate"
+            arg_type = Int64
+            default = 12
+        "--nbeststa"
+            help = "Use N best xcorr values per event pair"
+            arg_type = Int64
+            default = 24
+        "--nupdate"
+            help = "Update progress every nupdate pairs"
+            arg_type = Int64
+            default = 10000
+        "--boxwid"
+            help = "Initial 'shrinking-box' width (km)"
+            arg_type = Float64
+            default = 3.0
+        "--nit"
+            help = "Number of iterations"
+            arg_type = Int64
+            default = 15
+        "--irelonorm"
+            help = "Relocation norm (L1 norm=1, L2 norm=2, 3=robust L2)"
+            arg_type = Int64
+            default = 1
+        "--tdifmax"
+            help = "Maximum differential time value allowed (for error-checking on xcor data input)"
+            arg_type = Float32
+            default = 30.
+        "--torgdifmax"
+            help = "Maximum origin time adjustment (for robustness), s"
+            arg_type = Float32
+            default = 10.0
+        "--vzmodel_type"
+            help = "Velocity model type: 1 = flat earth, (Z,Vp,Vs) or 2 = radial, (R,Vp,Vs):\nnote: option 2 has not been extensively tested"
+            arg_type = Int64
+            default = 1
+        "--shallowmode"
+            help = "Option for how to treat shallow seismicity for 1D ray tracing
+                           flat treats negative depths as zero depth
+                           throw makes an error for negative depths
+                           linear does linear interpolation to negative depths
+                           reflect treats negative depths as equivalent to -depth"
+            arg_type = String
+            default = "flat"
     end
 
     return parse_args(s)
@@ -34,34 +102,28 @@ parsed_args = parse_commandline()
 ####### Define Algorithm Parameters (modify as necessary) #######
 
 # ------- GrowClust algorithm parameters -------------------------------
-const distmax = 8.0           # maximum catalog(input) distance to join clusters (km)
-const distmax2 = 6.0          # maximum relocated distance to join clusters (km)
-const hshiftmax = 2.0         # maximum permitted horizontal cluster shifts (km)
-const vshiftmax = 2.0         # maximum permitted vertical cluster shifts (km)
-const rmedmax = Float32(0.1) # maximum median absolute tdif residual to join clusters
-const maxlink = 12            # use N best event pairs to relocate
-const nbeststa = 24           # use N best xcorr values per event pair
-const nupdate = 10000         # update progress every nupdate pairs
+const distmax = parsed_args["distmax"]
+const distmax2 = parsed_args["distmax2"]
+const hshiftmax = parsed_args["hshiftmax"]
+const vshiftmax = parsed_args["vshiftmax"]
+const rmedmax = parsed_args["rmedmax"]
+const maxlink = parsed_args["maxlink"]
+const nbeststa = parsed_args["nbeststa"]
+const nupdate = parsed_args["nupdate"]
 
 # ------- Relative Relocation subroutine parameters -------------
-const boxwid = 3.                # initial "shrinking-box" width (km)
-const nit = 15                   # number of iterations
-const irelonorm = 1              # relocation norm (L1 norm=1, L2 norm=2, 3=robust L2)
-const tdifmax = Float32(30.)     # maximum differential time value allowed (for error-checking on xcor data input)
-const torgdifmax = Float32(10.0) # maximum origin time adjustment (for robustness)
+const boxwid = parsed_args["boxwid"]
+const nit = parsed_args["nit"]
+const irelonorm = parsed_args["irelonorm"]
+const tdifmax = parsed_args["tdifmax"]
+const torgdifmax = parsed_args["torgdifmax"]
 
 # -------- Bootstrap resampling parameters -------------------
 const iseed = 0 # random number seed
 
 # ------- Velocity model parameters  -------------------------
-const vzmodel_type = 1 # velocity model type: 1 = flat earth, (Z,Vp,Vs)
-                 #                        or  2 = radial, (R,Vp,Vs):
-                 #               note: option 2 has not been extensively tested
-const shallowmode = "flat" # option for how to treat shallow seismicity for 1D ray tracing
-                       # flat treats negative depths as zero depth
-                       # throw makes an error for negative depths
-                       # linear does linear interpolation to negative depths
-                       # reflect treats negative depths as equivalent to -depth
+const vzmodel_type = parsed_args["vzmodel_type"]
+const shallowmode = parsed_args["shallowmode"]
 
 # ------- Geodetic parameters -------------
 const degkm = 111.1949266 # for simple degree / km conversion
@@ -240,15 +302,20 @@ min_selev, max_selev, mean_selev = minimum(sdf.selev), maximum(sdf.selev), mean(
 ########### Compile Travel Time Tables #############
 
 # TODO: This should only redo tracing if needed
-
-if inpD["ttabsrc"] == "trace" # 1D ray tracing
-    ttLIST = make_trace1D_tables(inpD,maxSR,max_selev,usta,sta2elev,ntab,
-        erad,vzmodel_type,shallowmode)
-else  # 1D nonlinloc grids
-    ttLIST = make_nllgrid_tables(inpD,maxSR,usta,shallowmode)
+if parsed_args["load-tt"]
+    ttLIST = load(".ttLIST_cache.jld", "ttLIST")
+else
+    if inpD["ttabsrc"] == "trace" # 1D ray tracing
+        ttLIST = make_trace1D_tables(inpD,maxSR,max_selev,usta,sta2elev,ntab,
+            erad,vzmodel_type,shallowmode)
+    else  # 1D nonlinloc grids
+        ttLIST = make_nllgrid_tables(inpD,maxSR,usta,shallowmode)
+    end
 end
 
-# println(ttLIST)
+if parsed_args["cache-tt"]
+    save(".ttLIST_cache.jld", "ttLIST", ttLIST)
+end
 
 # finalize travel time tables
 const ttTABs = [deepcopy(xx) for xx in ttLIST] # static version

@@ -207,6 +207,7 @@ def run_growclust(
     vmodel.write("./vzmodel.txt", format="GROWCLUST")
 
     # TODO: Re-write Julia code to only do ray-tracing once?
+    # TODO: If caching travel-times then the lat and lon or the origin of the coord system must be preserved - global mutable variables?
 
     # TODO: Use a variable for working dir - we make lots of temp files
 
