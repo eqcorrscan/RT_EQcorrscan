@@ -1,4 +1,3 @@
-
 ### Script for Running GrowClust3D: Julia
 
 ###### Import packages ######
@@ -8,46 +7,123 @@ using Printf
 using DataFrames
 using Random
 using Dates
-using Proj: Transformation, inv
-using Distributed
-using SharedArrays
+using ArgParse
+using JLD
 
 # GrowClust3D
 using GrowClust3D
 
+####### Define arguments #################
+
+function parse_commandline()
+    s = ArgParseSettings()
+    @add_arg_table! s begin
+        "--cache-tt"
+            help = "Flag to cache the generated travel-time tables"
+            action = :store_true
+        "--load-tt"
+            help = "Flag to load tt-tables from cache"
+            action = :store_true
+        "--control-file", "-c"
+            help = "Control file to read from"
+            arg_type = String
+            required = true
+        "--distmax"
+            help = "Maximum catalog (input) distance to join clusters (km)"
+            arg_type = Float64
+            default = 8.0
+        "--distmax2"
+            help = "Maximum relocated distance to join clusters (km)"
+            arg_type = Float64
+            default = 6.0
+        "--hshiftmax"
+            help = "Maximum permitted horizontal cluster shifts (km)"
+            arg_type = Float64
+            default = 2.0
+        "--vshiftmax"
+            help = "Maximum permitted vertical cluster shifts (km)"
+            arg_type = Float64
+            default = 2.0
+        "--rmedmax"
+            help = "Maximum median absolute tdif residual to join clusters"
+            arg_type = Float32
+            default = 0.1
+        "--maxlink"
+            help = "Use N best event pairs to relocate"
+            arg_type = Int64
+            default = 12
+        "--nbeststa"
+            help = "Use N best xcorr values per event pair"
+            arg_type = Int64
+            default = 24
+        "--nupdate"
+            help = "Update progress every nupdate pairs"
+            arg_type = Int64
+            default = 10000
+        "--boxwid"
+            help = "Initial 'shrinking-box' width (km)"
+            arg_type = Float64
+            default = 3.0
+        "--nit"
+            help = "Number of iterations"
+            arg_type = Int64
+            default = 15
+        "--irelonorm"
+            help = "Relocation norm (L1 norm=1, L2 norm=2, 3=robust L2)"
+            arg_type = Int64
+            default = 1
+        "--tdifmax"
+            help = "Maximum differential time value allowed (for error-checking on xcor data input)"
+            arg_type = Float32
+            default = 30.
+        "--torgdifmax"
+            help = "Maximum origin time adjustment (for robustness), s"
+            arg_type = Float32
+            default = 10.0
+        "--vzmodel_type"
+            help = "Velocity model type: 1 = flat earth, (Z,Vp,Vs) or 2 = radial, (R,Vp,Vs):\nnote: option 2 has not been extensively tested"
+            arg_type = Int64
+            default = 1
+        "--shallowmode"
+            help = "Option for how to treat shallow seismicity for 1D ray tracing
+                           flat treats negative depths as zero depth
+                           throw makes an error for negative depths
+                           linear does linear interpolation to negative depths
+                           reflect treats negative depths as equivalent to -depth"
+            arg_type = String
+            default = "flat"
+    end
+
+    return parse_args(s)
+end
+
+parsed_args = parse_commandline()
+
 ####### Define Algorithm Parameters (modify as necessary) #######
 
 # ------- GrowClust algorithm parameters -------------------------------
-const distmax = 8.0           # maximum catalog(input) distance to join clusters (km)
-const distmax2 = 6.0          # maximum relocated distance to join clusters (km)
-const hshiftmax = 2.0         # maximum permitted horizontal cluster shifts (km)
-const vshiftmax = 2.0         # maximum permitted vertical cluster shifts (km)
-const rmedmax = Float32(0.1) # maximum median absolute tdif residual to join clusters
-const maxlink = 12            # use N best event pairs to relocate
-const nbeststa = 24           # use N best xcorr values per event pair
-const nupdate = 10000         # update progress every nupdate pairs
+const distmax = parsed_args["distmax"]
+const distmax2 = parsed_args["distmax2"]
+const hshiftmax = parsed_args["hshiftmax"]
+const vshiftmax = parsed_args["vshiftmax"]
+const rmedmax = parsed_args["rmedmax"]
+const maxlink = parsed_args["maxlink"]
+const nbeststa = parsed_args["nbeststa"]
+const nupdate = parsed_args["nupdate"]
 
 # ------- Relative Relocation subroutine parameters -------------
-const boxwid = 3.                # initial "shrinking-box" width (km)
-const nit = 15                   # number of iterations
-const irelonorm = 1              # relocation norm (L1 norm=1, L2 norm=2, 3=robust L2)
-const tdifmax = Float32(30.)     # maximum differential time value allowed (for error-checking on xcor data input)
-const torgdifmax = Float32(10.0) # maximum origin time adjustment (for robustness)
+const boxwid = parsed_args["boxwid"]
+const nit = parsed_args["nit"]
+const irelonorm = parsed_args["irelonorm"]
+const tdifmax = parsed_args["tdifmax"]
+const torgdifmax = parsed_args["torgdifmax"]
 
 # -------- Bootstrap resampling parameters -------------------
 const iseed = 0 # random number seed
-#  1: Resample each event pair independently (each pair always has the same # of picks in each resample)'
-#  2: Resample the entire data vectors at once (event pairs may have different # of picks in each resample)
 
 # ------- Velocity model parameters  -------------------------
-const vzmodel_type = 1 # velocity model type: 1 = flat earth, (Z,Vp,Vs)
-                 #                        or  2 = radial, (R,Vp,Vs):
-                 #               note: option 2 has not been extensively tested
-const shallowmode = "flat" # option for how to treat shallow seismicity for 1D ray tracing
-                       # flat treats negative depths as zero depth
-                       # throw makes an error for negative depths
-                       # linear does linear interpolation to negative depths
-                       # reflect treats negative depths as equivalent to -depth
+const vzmodel_type = parsed_args["vzmodel_type"]
+const shallowmode = parsed_args["shallowmode"]
 
 # ------- Geodetic parameters -------------
 const degkm = 111.1949266 # for simple degree / km conversion
@@ -58,8 +134,8 @@ const erad = 6371.0       # average earth radius in km, WGS-84
 ############## Read and Organize Input Files ###################
 
 # read input file
-println("\nReading input file: ",ARGS[1])
-infile_ctl = ARGS[1]
+println("\nReading input file: ", parsed_args["control-file"])
+infile_ctl = parsed_args["control-file"]
 inpD = read_gcinp(infile_ctl)
 
 ### Update fields for ray tracing
@@ -145,11 +221,9 @@ else
     plat1, plat2 = Nothing, Nothing # placeholders
 end
 if !(mlon01 < plon0 < mlon99)
-    println("PROJECTION ORIGIN NOT ALIGNED WITH SEISMICITY:")
-    exit()
+    println("Caution! Projection origin outside bounds of seismicity.")
 elseif !(mlat01 < plat0 < mlat99)
-    println("PROJECTION ORIGIN NOT ALIGNED WITH SEISMICITY:")
-    exit()
+    println("Caution! Projection origin outside bounds of seismicity.")
 end
 
 ### Read Stations
@@ -216,6 +290,9 @@ subset!(sdf, :sta => ByRow(x -> x in usta))
 minSX, maxSX = minimum(sdf.sX4), maximum(sdf.sX4)
 minSY, maxSY = minimum(sdf.sY4), maximum(sdf.sY4)
 minSR, maxSR = minimum(xdf.sdist), maximum(xdf.sdist)
+@printf("Updated station list (only stations listed in xcorr file...)\n")
+min_selev, max_selev, mean_selev = minimum(sdf.selev), maximum(sdf.selev), mean(sdf.selev)
+@printf("min and max staZ: %.3fkm %.3fkm\n", min_selev, max_selev)
 @printf("min and max staX: %.4f %.4f\n", minSX, maxSX)
 @printf("min and max staY: %.4f %.4f\n", minSY, maxSY)
 @printf("min and max staR: %.4f %.4f\n", minSR, maxSR)
@@ -224,11 +301,20 @@ minSR, maxSR = minimum(xdf.sdist), maximum(xdf.sdist)
 
 ########### Compile Travel Time Tables #############
 
-if inpD["ttabsrc"] == "trace" # 1D ray tracing
-    ttLIST = make_trace1D_tables(inpD,maxSR,max_selev,usta,sta2elev,ntab,
-        erad,vzmodel_type,shallowmode)
-else  # 1D nonlinloc grids
-    ttLIST = make_nllgrid_tables(inpD,maxSR,usta,shallowmode)
+# TODO: This should only redo tracing if needed
+if parsed_args["load-tt"]
+    ttLIST = load(".ttLIST_cache.jld", "ttLIST")
+else
+    if inpD["ttabsrc"] == "trace" # 1D ray tracing
+        ttLIST = make_trace1D_tables(inpD,maxSR,max_selev,usta,sta2elev,ntab,
+            erad,vzmodel_type,shallowmode)
+    else  # 1D nonlinloc grids
+        ttLIST = make_nllgrid_tables(inpD,maxSR,usta,shallowmode)
+    end
+end
+
+if parsed_args["cache-tt"]
+    save(".ttLIST_cache.jld", "ttLIST", ttLIST)
 end
 
 # finalize travel time tables
@@ -260,79 +346,57 @@ println("Done.")
 
 ############# Main Clustering Loop: Including Bootstrapping ##############
 
-# loading packages @everywhere
-@everywhere using Printf
-@everywhere using DataFrames
-@everywhere using Random
-@everywhere using Distributed
-@everywhere using SharedArrays
-@everywhere using GrowClust3D
-
-# shared parameters - is there a better way?
-@everywhere nboot = $(inpD["nboot"])
-@everywhere nit = $nit
-@everywhere boxwid = $boxwid
-@everywhere degkm = $degkm
-@everywhere irelonorm = $irelonorm
-@everywhere rmsmax = $(inpD["rmsmax"])
-@everywhere ngoodmin = $(inpD["ngoodmin"])
-@everywhere rmedmax = $rmedmax
-@everywhere distmax = $distmax
-@everywhere distmax2 = $distmax2
-@everywhere hshiftmax = $hshiftmax
-@everywhere vshiftmax= $vshiftmax
-@everywhere torgdifmax = $torgdifmax
-@everywhere nupdate = $nupdate
-@everywhere maxlink = $maxlink
-@everywhere rmincut = $(inpD["rmincut"])
-@everywhere nbeststa = $nbeststa
-@everywhere ttTABs = $ttTABs
-@everywhere nq = $(nrow(qdf))
-@everywhere iseed = $iseed
-@everywhere tt_ndim = $(inpD["tt_ndim"])
-
-# initial locations
-@everywhere qX = $(qdf.qlat)
-@everywhere qY = $(qdf.qlon)
-@everywhere qZ = $(qdf.qdep)
+# define event-based output arrays
+const nq = Int32(nrow(qdf))
+const rmincut, rmsmax = inpD["rmincut"], inpD["rmsmax"]
+const tt_ndim, rotANG = inpD["tt_ndim"], inpD["rotANG"]
+revids = qdf[:,:qid]
+rlats, rlons, rdeps = qdf[:,:qlat], qdf[:,:qlon], qdf[:,:qdep]
+rXs, rYs = qdf[:,:qX4], qdf[:,:qY4]
+rorgs = zeros(Float32,nq) # origin time adjust
+rcids = Vector{Int32}(1:nq) # initialize each event into one cluster
 
 # Setup bootstrapping matrices
-bXM = SharedArray(repeat(qX,1,nboot+1))
-bYM = SharedArray(repeat(qY,1,nboot+1))
-bdepM = SharedArray(repeat(qZ,1,nboot+1))
-borgM = SharedArray(zeros(Float32,(nq,nboot+1)))
-bnbM = SharedArray(zeros(Int64,(nq,nboot+1)))
-bcidM = SharedArray(repeat(Vector{Int32}(1:nq),1,nboot+1))
-bnpairM = SharedArray(zeros(Int64,nboot+1))
+if inpD["nboot"] > 0
+    blatM = repeat(qdf.qlat,1,inpD["nboot"])
+    blonM = repeat(qdf.qlon,1,inpD["nboot"])
+    bdepM = repeat(qdf.qdep,1,inpD["nboot"])
+    borgM = zeros(Float32,(nq,inpD["nboot"]))
+    bnbM = repeat(Vector{Int32}(1:nq),1,inpD["nboot"])
+else # placeholders...
+    blatM, blonM, bdepM, borgM, bnbM = Nothing, Nothing, Nothing, Nothing, Nothing
+end
 
 # base xcor dataframe to sample from
 xdf00 = select(xdf,[:qix1,:qix2,:sX4,:sY4,:tdif,:itab,:rxcor,:igood])
-@everywhere xdf00 = $(xdf00)
 
 # sampling vector
 if nrow(xdf00)<typemax(Int32)
-    @everywhere nxc = $(Int32(nrow(xdf00)))
-    @everywhere ixc = Vector{Int32}(1:nxc)
+    const nxc = Int32(nrow(xdf00))
+    const ixc = Vector{Int32}(1:nxc)
 else
-    @everywhere nxc = $(nrow(xdf00))
-    @everywhere ixc = Vector{Int64}(1:nxc)
+    const nxc = nrow(xdf00)
+    const ixc = Vector{Int64}(1:nxc)
 end
 
-
 #### loop over each bootstrapping iteration
-println("\n\nStarting relocation estimates, workers=",workers())
-@time @sync @distributed for ib in 0:nboot # need to call @sync to ensure all workers finish
+println("\n\nStarting relocation estimates, nthread=",Threads.nthreads())
+println("[Progress tracked on Thread 1 only.]\n")
+@time Threads.@threads for ib in 0:inpD["nboot"]
 
     # log thread id
-    @printf("Starting bootstrap iteration: %d/%d\n",ib,nboot)
+    @printf("Thread %d: starting bootstrap iteration: %d/%d\n",
+            Threads.threadid(),ib,inpD["nboot"])
 
     # timer for this thread
     wc = @elapsed begin
 
     # bootstrapping: resample data before run
+    if Threads.threadid()==1
+        println("Thread 1: Initializing xcorr data and event pairs...")
+    end
     Random.seed!(iseed + ib) # different for each run
     wc2 = @elapsed begin
-    println("Initializing xcorr data and event pairs.")
     if ib > 0 # sample with replacement from original xcorr array
         isamp = sort(sample(ixc,nxc,replace=true)) # sorted to keep evpairs together
         rxdf = xdf00[isamp,:]
@@ -347,20 +411,20 @@ println("\n\nStarting relocation estimates, workers=",workers())
         rxdf[!,:ixx] = Vector{Int64}(1:nxc)
     end
 
-    # calculate event pair similarity --> new version
-    bpdf = combine(groupby(rxdf[!,Not([:itab,:tdif])],[:qix1,:qix2]),
+    # calculate event pair similarity (topN version, customizable)
+    bpdf = combine(groupby(rxdf[!,Not([:sX4,:sY4,:itab,:tdif])],[:qix1,:qix2]),
          :rxcor => (x -> topNmeanpad(x,nbeststa,pad=rmincut/2.0)) => :rfactor,
          :ixx => first => :ix1,:ixx => last => :ix2,:igood => sum => :ngood)
 
     # sort pairs (note, resampled pairs may not have ngoodmin tdifs)
     if ib > 0
-        bpdf = bpdf[bpdf.ngood.>=ngoodmin-2,[:qix1,:qix2,:rfactor,:ix1,:ix2]] # for robustness
+        bpdf = bpdf[bpdf.ngood.>=inpD["ngoodmin"]-2,[:qix1,:qix2,:rfactor,:ix1,:ix2]] # for robustness
     else
         select!(bpdf,[:qix1,:qix2,:rfactor,:ix1,:ix2])
     end
     sort!(bpdf,:rfactor,rev=true) # so best pairs first
     end # ends elapsed time for setup
-    println("Done with initialization, elapsed time = $wc2")
+    println("Done, elapsed time = $wc2")
 
     # run clustering
     if tt_ndim < 3 # 2D travel time table
@@ -375,42 +439,33 @@ println("\n\nStarting relocation estimates, workers=",workers())
             rmedmax,distmax,distmax2,hshiftmax,vshiftmax,torgdifmax,nupdate,maxlink)
     end
 
-    # save output to Shared Array
+    # inverse projection back to map coordinates
+    brlons, brlats = xypos2latlon(brXs,brYs,rotANG,iproj)
+
+    # save output
     if ib > 0
-        bXM[:,ib] .= brXs
-        bYM[:,ib] .= brYs
+        blatM[:,ib] .= brlats
+        blonM[:,ib] .= brlons
         bdepM[:,ib] .= brdeps
         borgM[:,ib] .= brorgs
         bnbM[:,ib] .= bnb
-        bcidM[:,ib] .= brcids
-        bnpairM[ib] = nrow(bpdf)
     else
-        bXM[:,nboot+1] .= brXs
-        bYM[:,nboot+1] .= brYs
-        bdepM[:,nboot+1] .= brdeps
-        borgM[:,nboot+1] .= brorgs
-        bnbM[:,nboot+1] .= bnb
-        bcidM[:,nboot+1] .= brcids
-        bnpairM[nboot+1] = nrow(bpdf)
+        rXs .= brXs
+        rYs .= brYs
+        rlats .= brlats
+        rlons .= brlons
+        rdeps .= brdeps
+        rorgs .= brorgs
+        rcids .= brcids
     end
 
     # completion
     end # ends the wall clock
-    @printf("Completed bootstrap iteration: %d/%d, wall clock = %.1fs.\n",ib,nboot,wc)
+    @printf("Thread %d: completed bootstrap iteration: %d/%d, wall clock = %.1fs.",
+        Threads.threadid(),ib,inpD["nboot"],wc)
+    println()
 
 end
-
-### Invert Map Projection
-blatM, blonM = zeros(Float64,nq,nboot+1), zeros(Float64,nq,nboot+1)
-for jj=1:nboot+1
-    blonM[:,jj], blatM[:,jj] = xypos2latlon(bXM[:,jj],bYM[:,jj],inpD["rotANG"],iproj)
-end
-
-### Extract relocated event-based output arrays
-revids = qdf[:,:qid]
-rXs, rYs = bXM[:,nboot+1], bYM[:,nboot+1]
-rlats, rlons, rdeps = blatM[:,nboot+1], blonM[:,nboot+1], bdepM[:,nboot+1]
-rorgs, rcids, npair = borgM[:,nboot+1], bcidM[:,nboot+1], bnpairM[nboot+1]
 
 ################################################################
 
@@ -449,7 +504,7 @@ boot_madH, boot_madZ, boot_madT, boot_stdH, boot_stdZ, boot_stdT,
 ### Write Output File: Catalog (if requested)
 if !(inpD["fout_cat"] in ["none","None", "NONE"])
     write_cat(inpD,rdf,qnpair,qndiffP,qndiffS,
-        qrmsP,qrmsS,boot_madH,boot_madH,boot_madZ)
+        qrmsP,qrmsS,boot_madH,boot_madZ,boot_madT)
 end
 
 ### Write Output File: Cluster (if requested)
@@ -467,7 +522,7 @@ end
 
 ### Write Output File: Log / Statistics (or print to screen)
 write_log(inpD,[infile_ctl, distmax, distmax2, hshiftmax, vshiftmax, rmedmax],
-    [nq, nreloc, npair, qnpair, npp, nss, rmsP, rmsS, msresP, msresS], tnbranch)
+    [nq, nreloc, qnpair, npp, nss, rmsP, rmsS, msresP, msresS], tnbranch)
 
 ### Report completion
-@printf("\nCompleted task: run_growclust3D-MP.jl\n")
+@printf("\nCompleted task: run_growclust3D.jl\n")

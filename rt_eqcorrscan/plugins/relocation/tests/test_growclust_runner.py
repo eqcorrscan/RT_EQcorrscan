@@ -88,11 +88,11 @@ def setup_testcase(
     st = client.get_waveforms_bulk(bulk)
     st = st.merge()
 
-    inv.write(f"{eventdir}/stations.xml", format="STATIONXML")
     if not os.path.isdir(wavedir):
         os.makedirs(wavedir)
     if not os.path.isdir(eventdir):
         os.makedirs(eventdir)
+    inv.write(f"{eventdir}/stations.xml", format="STATIONXML")
 
     for ev in cat:
         ev.write(f"{eventdir}/{ev.resource_id.id.split('/')[-1]}.xml",
