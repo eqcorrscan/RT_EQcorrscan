@@ -32,9 +32,12 @@ from eqcorrscan.utils.catalog_to_dd import write_correlations, write_phase
 
 from rt_eqcorrscan.plugins.waveform_access import InMemoryWaveBank
 from rt_eqcorrscan.config.config import _PluginConfig
+from rt_eqcorrscan.plugins.relocation.hyp_runner import VelocityModel
 
 WORKING_DIR = os.path.dirname(os.path.abspath(__file__))
 GROWCLUST_DEFAULTS = f"{WORKING_DIR}/growclust.inp"
+GROWCLUST_DEFAULT_VMODEL = f"{WORKING_DIR}/vmodel.txt"
+GROWCLUST_SCRIPT = f"{WORKING_DIR}/run_growclust3D.jl"
 
 Logger = logging.getLogger(__name__)
 
@@ -160,8 +163,10 @@ class GrowClustConfig(_PluginConfig):
 
 def run_growclust(
     catalog: Catalog,
-    workers: int = 1,
+    workers: [int, str] = "auto",
     control_file: str = GROWCLUST_DEFAULTS,
+    vmodel_file: str = GROWCLUST_DEFAULT_VMODEL,
+    growclust_script: str = GROWCLUST_SCRIPT,
 ):
     """
     Requires a growclust julia runner script.
@@ -190,7 +195,6 @@ def run_growclust(
             parts[2] = str(mean_lon)
             parts[3] = str(mean_lat)
             _line = " ".join(parts)
-            print(parts)
         else:
             _line = line
         counter += 1
@@ -199,9 +203,8 @@ def run_growclust(
     with open(f"{WORKING_DIR}/.growclust_control.inp", "w") as f:
         f.write("\n".join(outlines))
 
-    shutil.copyfile(f"{WORKING_DIR}/vzmodel.txt", "./vzmodel.txt")
-
-    # TODO: write vzmodel.txt file from standardised velocity object
+    vmodel = VelocityModel.read(vmodel_file)
+    vmodel.write("./vzmodel.txt", format="GROWCLUST")
 
     # TODO: Re-write Julia code to only do ray-tracing once?
 
@@ -209,8 +212,8 @@ def run_growclust(
 
     subprocess.run([
         "julia",
-        f"-p{workers}",
-        f"{WORKING_DIR}/run_growclust.jl",
+        "--threads", workers,
+        growclust_script,
         f"{WORKING_DIR}/.growclust_control.inp"])
     return
 
