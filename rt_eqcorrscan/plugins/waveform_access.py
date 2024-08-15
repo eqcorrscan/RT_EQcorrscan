@@ -21,7 +21,7 @@ class InMemoryWaveBank:
     data_availability = dict()
 
     def __init__(self, wavedir: str):
-        self.wavedir = wavedir
+        self.wavedir = os.path.abspath(wavedir)
 
     def __repr__(self):
         return f"InMemoryWaveBank(wavedir={self.wavedir})"
