@@ -15,7 +15,7 @@ import logging
 import glob
 import math
 import os
-import shutil
+import tempfile
 
 import numpy as np
 
@@ -38,6 +38,8 @@ WORKING_DIR = os.path.dirname(os.path.abspath(__file__))
 GROWCLUST_DEFAULTS = f"{WORKING_DIR}/growclust.inp"
 GROWCLUST_DEFAULT_VMODEL = f"{WORKING_DIR}/vmodel.txt"
 GROWCLUST_SCRIPT = f"{WORKING_DIR}/run_growclust3D.jl"
+
+_GC_TMP_FILES = []  # List of temporary files to remove
 
 Logger = logging.getLogger(__name__)
 
@@ -167,7 +169,7 @@ def run_growclust(
     control_file: str = GROWCLUST_DEFAULTS,
     vmodel_file: str = GROWCLUST_DEFAULT_VMODEL,
     growclust_script: str = GROWCLUST_SCRIPT,
-):
+) -> str:
     """
     Requires a growclust julia runner script.
     """
@@ -200,6 +202,9 @@ def run_growclust(
         counter += 1
         outlines.append(_line)
 
+    # Line 16 is output file
+    outfile = outlines[16]
+
     with open(f"{WORKING_DIR}/.growclust_control.inp", "w") as f:
         f.write("\n".join(outlines))
 
@@ -211,12 +216,17 @@ def run_growclust(
 
     # TODO: Use a variable for working dir - we make lots of temp files
 
-    subprocess.run([
+    loc_proc = subprocess.run([
         "julia",
         "--threads", workers,
         growclust_script,
-        f"{WORKING_DIR}/.growclust_control.inp"])
-    return
+        "-c", f"{WORKING_DIR}/.growclust_control.inp"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+    for line in loc_proc.stdout.decode().splitlines():
+        Logger.info(">>> " + line.rstrip())
+    loc_proc.check_returncode()
+    return outfile
 
 
 def write_stations(
@@ -318,19 +328,31 @@ def phase_to_evlist(input_file: str):
     return
 
 
-def process_output_catalog(catalog: Catalog, event_mapper: dict) -> Catalog:
+def process_output_catalog(
+    catalog: Catalog,
+    event_mapper: dict,
+    outfile: str
+) -> Catalog:
     """ Add Growclust origins back into catalog. """
-    catalog_out = catalog.copy()
-    growclust_origins = read_growclust(
-        "/tmp/growclust_out/out.nboot100.cat",
-        event_mapper={val: key for key, val in event_mapper.items()})
-    for ev in catalog_out:
-        growclust_origin = growclust_origins.get(ev.resource_id.id, None)
-        if growclust_origin is None:
-            Logger.error(f"No relocation for {ev.resource_id.id}")
+    gc_origins = read_growclust(
+        outfile, event_mapper={val: key for key, val in event_mapper.items()})
+
+    catalog_dict = {ev.resource_id.id: ev for ev in catalog}
+
+    catalog_out, relocated, not_relocated = Catalog(), Catalog(), Catalog()
+    for key, ev in catalog_dict.items():
+        gc_origin = gc_origins.get(key)
+        if gc_origin is None:
+            Logger.warning(f"Event {key} did not relocate")
+            not_relocated += ev
+            catalog_out += ev
             continue
-        ev.origins.append(growclust_origin)
-        ev.preferred_origin_id = growclust_origin.resource_id
+        ev.origins.append(gc_origin)
+        ev.preferred_origin_id = ev.origins[-1].resource_id
+        relocated += ev
+        catalog_out += ev
+    Logger.info(f"Of {len(catalog_out)}, {len(relocated)} were relocated, and "
+                f"{len(not_relocated)} were not relocated")
 
     return catalog_out
 
@@ -415,7 +437,7 @@ def growclust_line_to_origin(line: str) -> [str, Origin]:
 
 
 def read_growclust(
-    fname: str = "OUT/out.growclust_cat",
+    fname: str = "OUT/growclust_out.trace1D.cat",
     event_mapper: dict = None) -> dict:
     """
     Read growclust origins from a relocated file.
@@ -455,12 +477,28 @@ def main(indir: str, outdir: str, wavedir: str):
         except Exception as e:
             Logger.error(f"Could not read from {event_file} due to {e}")
     Logger.info(f"Read in {len(catalog)} events to relocate")
+    # Do the mahi in a tempdir
+    working_dir = tempfile.TemporaryDirectory()
+    cwd = os.path.abspath(os.path.curdir)
+    indir, outdir, wavedir = map(os.path.abspath, (indir, outdir, wavedir))
+    os.chdir(working_dir.name)
     event_mapper = process_input_catalog(
         catalog=catalog, wavedir=wavedir, indir=indir)
-    run_growclust(catalog=catalog)
+    outfile = run_growclust(catalog=catalog)
     catalog_out = process_output_catalog(
-        catalog=catalog, event_mapper=event_mapper)
+        catalog=catalog, event_mapper=event_mapper, outfile=outfile)
+    os.chdir(cwd)
+    working_dir.cleanup()
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir)
     catalog_out.write(f"{outdir}/relocated.xml", format="QUAKEML")
+
+
+def _cleanup():
+    # Clean up
+    for f in _GC_TMP_FILES:
+        if os.path.isfile(f):
+            os.remove(f)
 
 
 if __name__ == "__main__":

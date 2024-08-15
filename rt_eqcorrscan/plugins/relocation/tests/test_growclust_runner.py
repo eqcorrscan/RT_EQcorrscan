@@ -10,11 +10,11 @@ import shutil
 
 from typing import List
 
-from obspy import Catalog, UTCDateTime
+from obspy import Catalog, UTCDateTime, read_events
 
 from eqcorrscan.utils.catalog_utils import filter_picks
 
-from rt_eqcorrscan.plugins.relocation.growclust_runner import main
+from rt_eqcorrscan.plugins.relocation.growclust_runner import main, _cleanup
 
 Logger = logging.getLogger(__name__)
 
@@ -111,14 +111,25 @@ class TestGrowclustPlugin(unittest.TestCase):
     def setUpClass(cls):
         cls.eventdir = "growclust_test_events"
         cls.wavedir = "growclust_test_streams"
+        cls.outdir = "growclust_test_output"
         cls.cat = setup_testcase(
             eventdir=cls.eventdir,
             wavedir=cls.wavedir
         )
-        cls.clean_up.append(cls.stations_file)
+        cls.clean_up.extend([cls.eventdir, cls.wavedir, cls.outdir])
 
     def test_runner(self):
-        self.assertTrue(False)
+        main(indir=self.eventdir, wavedir=self.wavedir, outdir=self.outdir)
+        cat_back = read_events(f"{self.outdir}/*.xml")
+        self.assertEqual(len(cat_back), len(self.cat))
+        # All events should be relocated
+        for ev in cat_back:
+            method_id = ev.origins[-1].method_id.id.split('/')[-1]
+            if method_id != "GrowClust":
+                print(f"Event: {ev.resource_id.id} not relocated")
+                cat_back.write("Growclustcat_failed.xml",
+                               format="QUAKEML")
+            self.assertTrue(method_id == "GrowClust")
 
     @classmethod
     def tearDownClass(cls, clean=True):

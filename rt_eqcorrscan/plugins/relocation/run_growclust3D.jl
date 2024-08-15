@@ -18,12 +18,12 @@ using GrowClust3D
 function parse_commandline()
     s = ArgParseSettings()
     @add_arg_table! s begin
-        "--cache-tt"
-            help = "Flag to cache the generated travel-time tables"
-            action = :store_true
-        "--load-tt"
-            help = "Flag to load tt-tables from cache"
-            action = :store_true
+#         "--cache-tt"
+#             help = "Flag to cache the generated travel-time tables"
+#             action = :store_true
+#         "--load-tt"
+#             help = "Flag to load tt-tables from cache"
+#             action = :store_true
         "--control-file", "-c"
             help = "Control file to read from"
             arg_type = String
@@ -302,20 +302,27 @@ min_selev, max_selev, mean_selev = minimum(sdf.selev), maximum(sdf.selev), mean(
 ########### Compile Travel Time Tables #############
 
 # TODO: This should only redo tracing if needed
-if parsed_args["load-tt"]
-    ttLIST = load(".ttLIST_cache.jld", "ttLIST")
-else
-    if inpD["ttabsrc"] == "trace" # 1D ray tracing
-        ttLIST = make_trace1D_tables(inpD,maxSR,max_selev,usta,sta2elev,ntab,
-            erad,vzmodel_type,shallowmode)
-    else  # 1D nonlinloc grids
-        ttLIST = make_nllgrid_tables(inpD,maxSR,usta,shallowmode)
-    end
+# if parsed_args["load-tt"]
+#     ttLIST = load(".ttLIST_cache.jld", "ttLIST")
+# else
+#     if inpD["ttabsrc"] == "trace" # 1D ray tracing
+#         ttLIST = make_trace1D_tables(inpD,maxSR,max_selev,usta,sta2elev,ntab,
+#             erad,vzmodel_type,shallowmode)
+#     else  # 1D nonlinloc grids
+#         ttLIST = make_nllgrid_tables(inpD,maxSR,usta,shallowmode)
+#     end
+# end
+
+if inpD["ttabsrc"] == "trace" # 1D ray tracing
+    ttLIST = make_trace1D_tables(inpD,maxSR,max_selev,usta,sta2elev,ntab,
+        erad,vzmodel_type,shallowmode)
+else  # 1D nonlinloc grids
+    ttLIST = make_nllgrid_tables(inpD,maxSR,usta,shallowmode)
 end
 
-if parsed_args["cache-tt"]
-    save(".ttLIST_cache.jld", "ttLIST", ttLIST)
-end
+# if parsed_args["cache-tt"]
+#     save(".ttLIST_cache.jld", "ttLIST", ttLIST)
+# end
 
 # finalize travel time tables
 const ttTABs = [deepcopy(xx) for xx in ttLIST] # static version
