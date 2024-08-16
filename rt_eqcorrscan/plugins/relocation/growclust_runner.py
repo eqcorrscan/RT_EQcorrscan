@@ -219,11 +219,15 @@ def run_growclust(
 
     # TODO: Use a variable for working dir - we make lots of temp files
 
-    loc_proc = subprocess.run([
+    arg_string = [
         "julia",
-        "--threads", workers,
+        "--threads", str(workers),
         growclust_script,
-        "-c", f"{WORKING_DIR}/.growclust_control.inp"],
+        "-c", f"{WORKING_DIR}/.growclust_control.inp"]
+    Logger.info(f"Running call: {' '.join(arg_string)}")
+
+    loc_proc = subprocess.run(
+        arg_string,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT)
     for line in loc_proc.stdout.decode().splitlines():
@@ -303,6 +307,9 @@ def process_input_catalog(
             length=XCORR_PARAMS["extract_len"] + 2)
         for event in catalog
     }
+    for key, st in stream_dict.items():
+        if len(st) == 0 or st is None:
+            Logger.warning(f"No data for {key}")
 
     event_mapper = write_correlations(
         catalog=catalog,
@@ -514,17 +521,23 @@ def main(
     vmodel_file: str = GROWCLUST_DEFAULT_VMODEL,
     growclust_script: str = GROWCLUST_SCRIPT,
 ):
-    event_files = glob.glob(f"{indir}/*")
+    _event_files, event_files = glob.glob(f"{indir}/*"), dict()
     catalog = Catalog()
-    for event_file in event_files:
+    for event_file in _event_files:
         if event_file.split('/')[-1] == "stations.xml":
             # Skip the inventory
             continue
         try:
-            catalog += read_events(event_file)
+            ev = read_events(event_file)
         except Exception as e:
             Logger.error(f"Could not read from {event_file} due to {e}")
+        else:
+            catalog += ev
+            event_files.update({ev[0].resource_id.id: event_file})
     Logger.info(f"Read in {len(catalog)} events to relocate")
+    if len(catalog) <= 1:
+        Logger.info("Need more events to relocate!")
+        return
     # Do the mahi in a tempdir
     working_dir = tempfile.TemporaryDirectory()
     cwd = os.path.abspath(os.path.curdir)
@@ -543,7 +556,15 @@ def main(
     working_dir.cleanup()
     if not os.path.isdir(outdir):
         os.makedirs(outdir)
-    catalog_out.write(f"{outdir}/relocated.xml", format="QUAKEML")
+    for ev in catalog_out:
+        fname = os.path.split(event_files[ev.resource_id.id])[-1]
+        fname = fname.lstrip(os.path.sep)  # Strip pathsep if it is there
+        outpath = os.path.join(outdir, fname)
+        Logger.info(f"Writing out to {outpath}")
+        if not os.path.isdir(os.path.dirname(outpath)):
+            os.makedirs(os.path.dirname(outpath))
+        ev.write(f"{outpath}", format="QUAKEML")
+    # catalog_out.write(f"{outdir}/relocated.xml", format="QUAKEML")
     return
 
 
