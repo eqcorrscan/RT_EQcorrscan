@@ -259,7 +259,6 @@ class Picker(_Plugin):
         internal_config = self.config.copy()
         detection_dir = internal_config.pop("in_dir")
         template_dir = internal_config.pop("template_dir")
-        wavebank_dir = internal_config.pop("wavebank_dir")
         outdir = internal_config.pop("out_dir")
         inv = read_inventory(self.config.station_file)
 

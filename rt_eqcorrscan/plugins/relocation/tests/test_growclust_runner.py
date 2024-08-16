@@ -14,6 +14,7 @@ from obspy import Catalog, UTCDateTime, read_events
 
 from eqcorrscan.utils.catalog_utils import filter_picks
 
+from rt_eqcorrscan.plugins.waveform_access import InMemoryWaveBank
 from rt_eqcorrscan.plugins.relocation.growclust_runner import main, _cleanup
 
 Logger = logging.getLogger(__name__)
@@ -119,7 +120,9 @@ class TestGrowclustPlugin(unittest.TestCase):
         cls.clean_up.extend([cls.eventdir, cls.wavedir, cls.outdir])
 
     def test_runner(self):
-        main(indir=self.eventdir, wavedir=self.wavedir, outdir=self.outdir)
+        main(indir=self.eventdir,
+             in_memory_wavebank=InMemoryWaveBank(self.wavedir),
+             outdir=self.outdir, station_file=f"{self.eventdir}/stations.xml")
         cat_back = read_events(f"{self.outdir}/*.xml")
         self.assertEqual(len(cat_back), len(self.cat))
         # All events should be relocated
