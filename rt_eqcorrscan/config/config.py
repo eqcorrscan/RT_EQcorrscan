@@ -252,17 +252,21 @@ class PluginConfigs(_ConfigAttribDict):
     from rt_eqcorrscan.plugins.picker import PickerConfig
     from rt_eqcorrscan.plugins.relocation.hyp_runner import HypConfig
     from rt_eqcorrscan.plugins.plotter.plotter_runner import PlotConfig
+    from rt_eqcorrscan.plugins.relocation.growclust_runner import \
+        GrowClustConfig
 
     defaults = {
         "picker": None,
         "hyp": None,
         "plotter": None,
-        "order": ["picker", "hyp", "plotter"],
+        "growclust": None,
+        "order": ["picker", "hyp", "growclust", "plotter"],
     }
     readonly = []
     __subclasses = {
         "picker": PickerConfig,
         "hyp": HypConfig,
+        "growclust": GrowClustConfig,
         "plotter": PlotConfig,
     }
 
