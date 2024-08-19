@@ -35,7 +35,7 @@ trace
 * fin_vzmdl (model name)
 vzmodel.txt
 * fdir_ttab (directory for travel time tables/grids or NONE)
-tt
+TT/
 * projection (proj, ellps, lon0, lat0, rotANG, [latP1, latP2])
 tmerc WGS84 0.0 0.0 0.0
 ******************************************

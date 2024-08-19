@@ -15,13 +15,15 @@ import logging
 import glob
 import math
 import os
-import shutil
+import tempfile
+
+from dataclasses import dataclass
 
 import numpy as np
 
 from scipy.stats import circmean
 
-from typing import Iterable
+from typing import Iterable, List
 
 from obspy import (
     read_events, Catalog, UTCDateTime, read_inventory, Inventory)
@@ -33,11 +35,14 @@ from eqcorrscan.utils.catalog_to_dd import write_correlations, write_phase
 from rt_eqcorrscan.plugins.waveform_access import InMemoryWaveBank
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.relocation.hyp_runner import VelocityModel
+from rt_eqcorrscan.plugins.plugin import _Plugin
 
 WORKING_DIR = os.path.dirname(os.path.abspath(__file__))
 GROWCLUST_DEFAULTS = f"{WORKING_DIR}/growclust.inp"
 GROWCLUST_DEFAULT_VMODEL = f"{WORKING_DIR}/vmodel.txt"
 GROWCLUST_SCRIPT = f"{WORKING_DIR}/run_growclust3D.jl"
+
+_GC_TMP_FILES = []  # List of temporary files to remove
 
 Logger = logging.getLogger(__name__)
 
@@ -58,6 +63,24 @@ XCORR_PARAMS = {
 }
 
 
+@dataclass
+class _GrowClustProj:
+    proj: str = "tmerc"
+    ellps: str = "WGS84"
+    lon0: float = 0.0
+    lat0: float = 0.0
+    rotANG: float = 0.0
+    latP1: float = None
+    latP2: float = None
+
+    def __str__(self):
+        _str = f"{self.proj} {self.ellps} {self.lon0} {self.lat0} {self.rotANG}"
+        if not self.latP1 is None and not self.latP2 is None:
+            _str += f" {self.latP1} {self.latP2}"
+        return _str
+
+
+
 class GrowClustConfig(_PluginConfig):
     """
     Configuration holder for GrowClust.
@@ -74,9 +97,9 @@ class GrowClustConfig(_PluginConfig):
         "xcordat_fmt": "1 12",
         "fin_xcordat": "dt.cc",
         "ttabsrc": "trace",
-        "fin_vzmld": "vzmodel.txt",
+        "fin_vzmdl": "vzmodel.txt",
         "fdir_ttab": "tt",
-        "projection": "tmerc WGS84 0.0 0.0 0.0",
+        "projection": _GrowClustProj(),
         "vpvs_factor": 1.732,
         "rayparam_min": 0.0,
         "tt_zmin": -4.0,
@@ -123,7 +146,7 @@ class GrowClustConfig(_PluginConfig):
             self.fin_stlist,
             "*"
             "* xcordat_fmt (1 = text), tdif_fmt (21 = tt2-tt1, 12 = tt1-tt2)",
-            self.scordat_fmt,
+            self.xcordat_fmt,
             "* fin_xcordat",
             self.fin_xcordat,
             "*",
@@ -132,9 +155,9 @@ class GrowClustConfig(_PluginConfig):
             "* fin_vzmdl (model name)",
             self.fin_vzmdl,
             "* fdir_ttab (directory for travel time tables/grids or NONE)",
-            self.fdit_ttab,
+            self.fdir_ttab,
             "* projection (proj, ellps, lon0, lat0, rotANG, [latP1, latP2])",
-            self.projection,
+            str(self.projection),
             "* vpvs_factor  rayparam_min",
             f"{self.vpvs_factor}         {self.rayparam_min}",
             "* tt_zmin  tt_zmax  tt_zstep",
@@ -164,10 +187,10 @@ class GrowClustConfig(_PluginConfig):
 def run_growclust(
     catalog: Catalog,
     workers: [int, str] = "auto",
-    control_file: str = GROWCLUST_DEFAULTS,
+    config: GrowClustConfig = GrowClustConfig(),
     vmodel_file: str = GROWCLUST_DEFAULT_VMODEL,
     growclust_script: str = GROWCLUST_SCRIPT,
-):
+) -> str:
     """
     Requires a growclust julia runner script.
     """
@@ -182,52 +205,46 @@ def run_growclust(
     mean_lat = np.mean(lats)
     mean_lon = np.degrees(circmean(np.radians(lons)))
 
-    with open(control_file, "r") as f:
-        control_lines = f.read().splitlines()
+    internal_config = config.copy()
+    internal_config.projection.lat0 = mean_lat
+    internal_config.projection.lon0 = mean_lon
 
-    # Growclust uses fixed line formats - the line we need to edit is line 9
-    counter, outlines = 0, []
-    for line in control_lines:
-        if line.startswith("*"):
-            continue
-        if counter == 9:
-            parts = line.split()
-            parts[2] = str(mean_lon)
-            parts[3] = str(mean_lat)
-            _line = " ".join(parts)
-        else:
-            _line = line
-        counter += 1
-        outlines.append(_line)
-
-    with open(f"{WORKING_DIR}/.growclust_control.inp", "w") as f:
-        f.write("\n".join(outlines))
+    internal_config.write_growclust(f"{WORKING_DIR}/.growclust_control.inp")
 
     vmodel = VelocityModel.read(vmodel_file)
-    vmodel.write("./vzmodel.txt", format="GROWCLUST")
+    vmodel.write(internal_config.fin_vzmdl, format="GROWCLUST")
 
     # TODO: Re-write Julia code to only do ray-tracing once?
     # TODO: If caching travel-times then the lat and lon or the origin of the coord system must be preserved - global mutable variables?
 
     # TODO: Use a variable for working dir - we make lots of temp files
 
-    subprocess.run([
+    arg_string = [
         "julia",
-        "--threads", workers,
+        "--threads", str(workers),
         growclust_script,
-        f"{WORKING_DIR}/.growclust_control.inp"])
-    return
+        "-c", f"{WORKING_DIR}/.growclust_control.inp"]
+    Logger.info(f"Running call: {' '.join(arg_string)}")
+
+    loc_proc = subprocess.run(
+        arg_string,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+    for line in loc_proc.stdout.decode().splitlines():
+        Logger.info(">>> " + line.rstrip())
+    loc_proc.check_returncode()
+    return internal_config.fout_cat
 
 
 def write_stations(
     seed_ids: Iterable,
     starttime: UTCDateTime,
     endtime: UTCDateTime,
-    indir: str,
+    station_file: str,
 ):
     import fnmatch
 
-    inv = read_inventory(f"{indir}/stations.xml")
+    inv = read_inventory(station_file)
     inv = inv.select(starttime=starttime, endtime=endtime)
     # Select based on station
     used_inv = Inventory()
@@ -277,10 +294,12 @@ def write_stlist(inv):
         f.write("\n".join(lines))
 
 
-def process_input_catalog(catalog: Catalog, wavedir: str, indir: str) -> dict:
+def process_input_catalog(
+    catalog: Catalog,
+    in_memory_wavebank: InMemoryWaveBank,
+    station_file: str
+) -> dict:
     """ Compute inter-event cross-correlations for growclust. """
-    in_memory_wavebank = InMemoryWaveBank(wavedir=wavedir)
-
     # This could be threaded to allow parallel IO?
     stream_dict = {
         event.resource_id.id: in_memory_wavebank.get_event_waveforms(
@@ -288,6 +307,9 @@ def process_input_catalog(catalog: Catalog, wavedir: str, indir: str) -> dict:
             length=XCORR_PARAMS["extract_len"] + 2)
         for event in catalog
     }
+    for key, st in stream_dict.items():
+        if len(st) == 0 or st is None:
+            Logger.warning(f"No data for {key}")
 
     event_mapper = write_correlations(
         catalog=catalog,
@@ -304,7 +326,7 @@ def process_input_catalog(catalog: Catalog, wavedir: str, indir: str) -> dict:
     endtime = max(tr.stats.endtime for st in stream_dict.values()
                   for tr in st)
     write_stations(seed_ids=seed_ids, starttime=starttime, endtime=endtime,
-                   indir=indir)
+                   station_file=station_file)
     return event_mapper
 
 
@@ -318,19 +340,31 @@ def phase_to_evlist(input_file: str):
     return
 
 
-def process_output_catalog(catalog: Catalog, event_mapper: dict) -> Catalog:
+def process_output_catalog(
+    catalog: Catalog,
+    event_mapper: dict,
+    outfile: str
+) -> Catalog:
     """ Add Growclust origins back into catalog. """
-    catalog_out = catalog.copy()
-    growclust_origins = read_growclust(
-        "/tmp/growclust_out/out.nboot100.cat",
-        event_mapper={val: key for key, val in event_mapper.items()})
-    for ev in catalog_out:
-        growclust_origin = growclust_origins.get(ev.resource_id.id, None)
-        if growclust_origin is None:
-            Logger.error(f"No relocation for {ev.resource_id.id}")
+    gc_origins = read_growclust(
+        outfile, event_mapper={val: key for key, val in event_mapper.items()})
+
+    catalog_dict = {ev.resource_id.id: ev for ev in catalog}
+
+    catalog_out, relocated, not_relocated = Catalog(), Catalog(), Catalog()
+    for key, ev in catalog_dict.items():
+        gc_origin = gc_origins.get(key)
+        if gc_origin is None:
+            Logger.warning(f"Event {key} did not relocate")
+            not_relocated += ev
+            catalog_out += ev
             continue
-        ev.origins.append(growclust_origin)
-        ev.preferred_origin_id = growclust_origin.resource_id
+        ev.origins.append(gc_origin)
+        ev.preferred_origin_id = ev.origins[-1].resource_id
+        relocated += ev
+        catalog_out += ev
+    Logger.info(f"Of {len(catalog_out)}, {len(relocated)} were relocated, and "
+                f"{len(not_relocated)} were not relocated")
 
     return catalog_out
 
@@ -415,7 +449,7 @@ def growclust_line_to_origin(line: str) -> [str, Origin]:
 
 
 def read_growclust(
-    fname: str = "OUT/out.growclust_cat",
+    fname: str = "OUT/growclust_out.trace1D.cat",
     event_mapper: dict = None) -> dict:
     """
     Read growclust origins from a relocated file.
@@ -443,24 +477,102 @@ def read_growclust(
     return origins
 
 
-def main(indir: str, outdir: str, wavedir: str):
-    event_files = glob.glob(f"{indir}/*")
+# Core Growclust runner funcs and class
+
+class GrowClust(_Plugin):
+    def __init__(self, config_file: str, name: str = "GrowClustRunner"):
+        super().__init__(config_file=config_file, name=name)
+        self.in_memory_wavebank = InMemoryWaveBank(self.config.wavebank_dir)
+        self.in_memory_wavebank.get_data_availability()
+
+    def _read_config(self, config_file: str):
+        return GrowClustConfig.read(config_file)
+
+    def _cleanup(self):
+        _cleanup()
+
+    def core(self, new_files: Iterable, workers: int = None) -> List:
+        internal_config = self.config.copy()
+        indir = internal_config.pop("in_dir")
+        outdir = internal_config.pop("out_dir")
+        station_file = internal_config.pop("station_file")
+        growclust_script = internal_config.pop(
+            "growclust_script", GROWCLUST_SCRIPT)
+        vmodel_file = internal_config.pop(
+            "vmodel_file", GROWCLUST_DEFAULT_VMODEL)
+
+        # TODO: There should be some way to *not* redo all the correlations every time!
+        workers = workers or 1
+        main(indir=indir, outdir=outdir,
+             in_memory_wavebank=self.in_memory_wavebank,
+             station_file=station_file, config=internal_config,
+             workers=workers, vmodel_file=vmodel_file,
+             growclust_script=growclust_script)
+
+        return list(new_files)
+
+def main(
+    indir: str,
+    outdir: str,
+    in_memory_wavebank: InMemoryWaveBank,
+    station_file: str,
+    workers: [int, str] = "auto",
+    config: GrowClustConfig = GrowClustConfig(),
+    vmodel_file: str = GROWCLUST_DEFAULT_VMODEL,
+    growclust_script: str = GROWCLUST_SCRIPT,
+):
+    _event_files, event_files = glob.glob(f"{indir}/*"), dict()
     catalog = Catalog()
-    for event_file in event_files:
+    for event_file in _event_files:
         if event_file.split('/')[-1] == "stations.xml":
             # Skip the inventory
             continue
         try:
-            catalog += read_events(event_file)
+            ev = read_events(event_file)
         except Exception as e:
             Logger.error(f"Could not read from {event_file} due to {e}")
+        else:
+            catalog += ev
+            event_files.update({ev[0].resource_id.id: event_file})
     Logger.info(f"Read in {len(catalog)} events to relocate")
+    if len(catalog) <= 1:
+        Logger.info("Need more events to relocate!")
+        return
+    # Do the mahi in a tempdir
+    working_dir = tempfile.TemporaryDirectory()
+    cwd = os.path.abspath(os.path.curdir)
+    indir, outdir, station_file = map(
+        os.path.abspath, (indir, outdir, station_file))
+    os.chdir(working_dir.name)
     event_mapper = process_input_catalog(
-        catalog=catalog, wavedir=wavedir, indir=indir)
-    run_growclust(catalog=catalog)
+        catalog=catalog, in_memory_wavebank=in_memory_wavebank,
+        station_file=station_file)
+    outfile = run_growclust(
+        catalog=catalog, config=config, workers=workers,
+        vmodel_file=vmodel_file, growclust_script=growclust_script)
     catalog_out = process_output_catalog(
-        catalog=catalog, event_mapper=event_mapper)
-    catalog_out.write(f"{outdir}/relocated.xml", format="QUAKEML")
+        catalog=catalog, event_mapper=event_mapper, outfile=outfile)
+    os.chdir(cwd)
+    working_dir.cleanup()
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir)
+    for ev in catalog_out:
+        fname = os.path.split(event_files[ev.resource_id.id])[-1]
+        fname = fname.lstrip(os.path.sep)  # Strip pathsep if it is there
+        outpath = os.path.join(outdir, fname)
+        Logger.info(f"Writing out to {outpath}")
+        if not os.path.isdir(os.path.dirname(outpath)):
+            os.makedirs(os.path.dirname(outpath))
+        ev.write(f"{outpath}", format="QUAKEML")
+    # catalog_out.write(f"{outdir}/relocated.xml", format="QUAKEML")
+    return
+
+
+def _cleanup():
+    # Clean up
+    for f in _GC_TMP_FILES:
+        if os.path.isfile(f):
+            os.remove(f)
 
 
 if __name__ == "__main__":
@@ -478,6 +590,10 @@ if __name__ == "__main__":
         "-o", "--outdir", type=str, required=True,
         help="Output directory for events")
     parser.add_argument(
+        "-s", "--station-file", type=str, required=True,
+        help="File containing obspy readable inventory of stations for location"
+    )
+    parser.add_argument(
         "-v", "--verbose", action="store_true",
         help="Increase verbosity")
 
@@ -491,4 +607,6 @@ if __name__ == "__main__":
         level=level, format="%(asctime)s\t%(name)s\t%(levelname)s\t%(message)s"
     )
 
-    main(indir=args.indir, outdir=args.outdir, wavedir=args.wavedir)
+    main(indir=args.indir, outdir=args.outdir,
+         in_memory_wavebank=InMemoryWaveBank(args.wavedir),
+         station_file=args.station_file)
