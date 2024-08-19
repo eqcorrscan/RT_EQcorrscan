@@ -35,10 +35,9 @@ from eqcorrscan.utils.catalog_to_dd import write_correlations, write_phase
 from rt_eqcorrscan.plugins.waveform_access import InMemoryWaveBank
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.relocation.hyp_runner import VelocityModel
-from rt_eqcorrscan.plugins.plugin import _Plugin
+from rt_eqcorrscan.plugins.plugin import _Plugin, PLUGIN_CONFIG_MAPPER
 
 WORKING_DIR = os.path.dirname(os.path.abspath(__file__))
-GROWCLUST_DEFAULTS = f"{WORKING_DIR}/growclust.inp"
 GROWCLUST_DEFAULT_VMODEL = f"{WORKING_DIR}/vmodel.txt"
 GROWCLUST_SCRIPT = f"{WORKING_DIR}/run_growclust3D.jl"
 
@@ -63,22 +62,21 @@ XCORR_PARAMS = {
 }
 
 
-@dataclass
-class _GrowClustProj:
-    proj: str = "tmerc"
-    ellps: str = "WGS84"
-    lon0: float = 0.0
-    lat0: float = 0.0
-    rotANG: float = 0.0
-    latP1: float = None
-    latP2: float = None
+class _GrowClustProj(_PluginConfig):
+    defaults = {
+        "proj": "tmerc",
+        "ellps": "WGS84",
+        "lon0": 0.0,
+        "lat0": 0.0,
+        "rotANG": 0.0,
+        "latP1": None,
+        "latP2": None}
 
     def __str__(self):
         _str = f"{self.proj} {self.ellps} {self.lon0} {self.lat0} {self.rotANG}"
         if not self.latP1 is None and not self.latP2 is None:
             _str += f" {self.latP1} {self.latP2}"
         return _str
-
 
 
 class GrowClustConfig(_PluginConfig):
@@ -121,11 +119,34 @@ class GrowClustConfig(_PluginConfig):
         "fout_clust": "growclust_out.clust",
         "fout_log": "growclust_out.log",
         "fout_boot": "NONE",
+        "station_file": "stations.xml",
+        "vmodel_file": GROWCLUST_DEFAULT_VMODEL,
+        "growclust_script": GROWCLUST_SCRIPT,
     }
     readonly = []
+    __subclasses = {
+        "projection": _GrowClustProj,
+    }
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        attribs = dict()
+        for key, value in kwargs.items():
+            if key in self.__subclasses.keys():
+                if isinstance(value, dict):
+                    value = self.__subclasses[key](**value)
+            attribs.update({key: value})
+        super().__init__(*args, **attribs)
+
+    def to_yaml_dict(self):
+        """ Overload. """
+        yaml_dict = dict()
+        for key, value in self.__dict__.items():
+            if hasattr(value, "to_yaml_dict"):
+                yaml_dict.update({
+                    key.replace("_", " "): value.to_yaml_dict()})
+            else:
+                yaml_dict.update({key.replace("_", " "): value})
+        return yaml_dict
 
     def write_growclust(self, filename: str = "growclust.inp"):
         """
@@ -182,6 +203,13 @@ class GrowClustConfig(_PluginConfig):
         with open(filename, "w") as f:
             f.write("\n".join(lines))
         return
+
+
+PLUGIN_CONFIG_MAPPER.update({"growclust": GrowClustConfig})
+
+#############################################################################
+#                    Runners
+#############################################################################
 
 
 def run_growclust(
@@ -476,42 +504,12 @@ def read_growclust(
         origins.update({event_id: growclust_origin})
     return origins
 
+#############################################################################
+#               Core Growclust runner funcs and class
+#############################################################################
 
-# Core Growclust runner funcs and class
 
-class GrowClust(_Plugin):
-    def __init__(self, config_file: str, name: str = "GrowClustRunner"):
-        super().__init__(config_file=config_file, name=name)
-        self.in_memory_wavebank = InMemoryWaveBank(self.config.wavebank_dir)
-        self.in_memory_wavebank.get_data_availability()
-
-    def _read_config(self, config_file: str):
-        return GrowClustConfig.read(config_file)
-
-    def _cleanup(self):
-        _cleanup()
-
-    def core(self, new_files: Iterable, workers: int = None) -> List:
-        internal_config = self.config.copy()
-        indir = internal_config.pop("in_dir")
-        outdir = internal_config.pop("out_dir")
-        station_file = internal_config.pop("station_file")
-        growclust_script = internal_config.pop(
-            "growclust_script", GROWCLUST_SCRIPT)
-        vmodel_file = internal_config.pop(
-            "vmodel_file", GROWCLUST_DEFAULT_VMODEL)
-
-        # TODO: There should be some way to *not* redo all the correlations every time!
-        workers = workers or 1
-        main(indir=indir, outdir=outdir,
-             in_memory_wavebank=self.in_memory_wavebank,
-             station_file=station_file, config=internal_config,
-             workers=workers, vmodel_file=vmodel_file,
-             growclust_script=growclust_script)
-
-        return list(new_files)
-
-def main(
+def run_growclust_for_files(
     indir: str,
     outdir: str,
     in_memory_wavebank: InMemoryWaveBank,
@@ -575,38 +573,77 @@ def _cleanup():
             os.remove(f)
 
 
+class GrowClust(_Plugin):
+    def __init__(self, config_file: str, name: str = "GrowClustRunner"):
+        super().__init__(config_file=config_file, name=name)
+        self.in_memory_wavebank = InMemoryWaveBank(self.config.wavebank_dir)
+        self.in_memory_wavebank.get_data_availability()
+
+    def _read_config(self, config_file: str):
+        return GrowClustConfig.read(config_file)
+
+    def _cleanup(self):
+        _cleanup()
+
+    def core(self, new_files: Iterable, workers: int = None) -> List:
+        internal_config = self.config.copy()
+        indir = internal_config.pop("in_dir")
+        outdir = internal_config.pop("out_dir")
+        station_file = internal_config.pop("station_file")
+        growclust_script = internal_config.pop(
+            "growclust_script", GROWCLUST_SCRIPT)
+        vmodel_file = internal_config.pop(
+            "vmodel_file", GROWCLUST_DEFAULT_VMODEL)
+
+        # TODO: There should be some way to *not* redo all the correlations every time!
+        workers = workers or 1
+        run_growclust_for_file(indir=indir, outdir=outdir,
+             in_memory_wavebank=self.in_memory_wavebank,
+             station_file=station_file, config=internal_config,
+             workers=workers, vmodel_file=vmodel_file,
+             growclust_script=growclust_script)
+
+        return list(new_files)
+
+
+# if __name__ == "__main__":
+#     from argparse import ArgumentParser
+#
+#     parser = ArgumentParser(description="Relocate events using GrowClust")
+#
+#     parser.add_argument(
+#         "-i", "--indir", type=str, required=True,
+#         help="Input directory to read events from")
+#     parser.add_argument(
+#         "-w", "--wavedir", type=str, required=True,
+#         help="Input directory for waveforms.")
+#     parser.add_argument(
+#         "-o", "--outdir", type=str, required=True,
+#         help="Output directory for events")
+#     parser.add_argument(
+#         "-s", "--station-file", type=str, required=True,
+#         help="File containing obspy readable inventory of stations for location"
+#     )
+#     parser.add_argument(
+#         "-v", "--verbose", action="store_true",
+#         help="Increase verbosity")
+#
+#     args = parser.parse_args()
+#
+#     level = logging.INFO
+#     if args.verbose:
+#         level = logging.DEBUG
+#
+#     logging.basicConfig(
+#         level=level, format="%(asctime)s\t%(name)s\t%(levelname)s\t%(message)s"
+#     )
+#
+#     main(indir=args.indir, outdir=args.outdir,
+#          in_memory_wavebank=InMemoryWaveBank(args.wavedir),
+#          station_file=args.station_file)
+
+
 if __name__ == "__main__":
-    from argparse import ArgumentParser
+    import doctest
 
-    parser = ArgumentParser(description="Relocate events using GrowClust")
-
-    parser.add_argument(
-        "-i", "--indir", type=str, required=True,
-        help="Input directory to read events from")
-    parser.add_argument(
-        "-w", "--wavedir", type=str, required=True,
-        help="Input directory for waveforms.")
-    parser.add_argument(
-        "-o", "--outdir", type=str, required=True,
-        help="Output directory for events")
-    parser.add_argument(
-        "-s", "--station-file", type=str, required=True,
-        help="File containing obspy readable inventory of stations for location"
-    )
-    parser.add_argument(
-        "-v", "--verbose", action="store_true",
-        help="Increase verbosity")
-
-    args = parser.parse_args()
-
-    level = logging.INFO
-    if args.verbose:
-        level = logging.DEBUG
-
-    logging.basicConfig(
-        level=level, format="%(asctime)s\t%(name)s\t%(levelname)s\t%(message)s"
-    )
-
-    main(indir=args.indir, outdir=args.outdir,
-         in_memory_wavebank=InMemoryWaveBank(args.wavedir),
-         station_file=args.station_file)
+    doctest.testmod()
