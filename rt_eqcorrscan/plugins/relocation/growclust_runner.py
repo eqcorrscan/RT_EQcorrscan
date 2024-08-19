@@ -17,13 +17,11 @@ import math
 import os
 import tempfile
 
-from dataclasses import dataclass
-
 import numpy as np
 
 from scipy.stats import circmean
 
-from typing import Iterable, List
+from typing import Iterable, List, Set
 
 from obspy import (
     read_events, Catalog, UTCDateTime, read_inventory, Inventory)
@@ -511,18 +509,18 @@ def read_growclust(
 
 
 def run_growclust_for_files(
-    indir: str,
     outdir: str,
     in_memory_wavebank: InMemoryWaveBank,
     station_file: str,
+    input_files: Set[str],
     workers: [int, str] = "auto",
     config: GrowClustConfig = GrowClustConfig(),
     vmodel_file: str = GROWCLUST_DEFAULT_VMODEL,
     growclust_script: str = GROWCLUST_SCRIPT,
 ):
-    _event_files, event_files = glob.glob(f"{indir}/*"), dict()
+    event_files = dict()
     catalog = Catalog()
-    for event_file in _event_files:
+    for event_file in input_files:
         if event_file.split('/')[-1] == "stations.xml":
             # Skip the inventory
             continue
@@ -540,8 +538,7 @@ def run_growclust_for_files(
     # Do the mahi in a tempdir
     working_dir = tempfile.TemporaryDirectory()
     cwd = os.path.abspath(os.path.curdir)
-    indir, outdir, station_file = map(
-        os.path.abspath, (indir, outdir, station_file))
+    outdir, station_file = map(os.path.abspath, (outdir, station_file))
     os.chdir(working_dir.name)
     event_mapper = process_input_catalog(
         catalog=catalog, in_memory_wavebank=in_memory_wavebank,
@@ -575,6 +572,8 @@ def _cleanup():
 
 
 class GrowClust(_Plugin):
+    _all_event_files = set()  # Keep record of all event files
+
     def __init__(self, config_file: str, name: str = "GrowClustRunner"):
         super().__init__(config_file=config_file, name=name)
         self.in_memory_wavebank = InMemoryWaveBank(self.config.wavebank_dir)
@@ -588,7 +587,7 @@ class GrowClust(_Plugin):
 
     def core(self, new_files: Iterable, workers: int = None) -> List:
         internal_config = self.config.copy()
-        indir = internal_config.pop("in_dir")
+        # indir = internal_config.pop("in_dir")
         outdir = internal_config.pop("out_dir")
         station_file = internal_config.pop("station_file")
         growclust_script = internal_config.pop(
@@ -598,11 +597,17 @@ class GrowClust(_Plugin):
 
         # TODO: There should be some way to *not* redo all the correlations every time!
         workers = workers or 1
-        run_growclust_for_files(indir=indir, outdir=outdir,
-             in_memory_wavebank=self.in_memory_wavebank,
-             station_file=station_file, config=internal_config,
-             workers=workers, vmodel_file=vmodel_file,
-             growclust_script=growclust_script)
+
+        input_files = self._all_event_files.union(set(new_files))
+
+        run_growclust_for_files(
+            outdir=outdir, input_files=input_files,
+            in_memory_wavebank=self.in_memory_wavebank,
+            station_file=station_file, config=internal_config,
+            workers=workers, vmodel_file=vmodel_file,
+            growclust_script=growclust_script)
+
+        self._all_event_files = input_files
 
         return list(new_files)
 

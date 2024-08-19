@@ -7,6 +7,7 @@ import logging
 import time
 import os
 import shutil
+import glob
 
 from typing import List
 from multiprocessing import Process, Queue
@@ -17,7 +18,7 @@ from eqcorrscan.utils.catalog_utils import filter_picks
 
 from rt_eqcorrscan.plugins.waveform_access import InMemoryWaveBank
 from rt_eqcorrscan.plugins.relocation.growclust_runner import (
-    main, _cleanup, GrowClustConfig, GrowClust)
+    run_growclust_for_files, _cleanup, GrowClustConfig, GrowClust)
 
 Logger = logging.getLogger(__name__)
 
@@ -129,9 +130,10 @@ class TestGrowclustPlugin(unittest.TestCase):
         cls.clean_up.extend([cls.eventdir, cls.wavedir, cls.outdir])
 
     def test_main(self):
-        main(indir=self.eventdir,
-             in_memory_wavebank=InMemoryWaveBank(self.wavedir),
-             outdir=self.outdir, station_file=f"{self.eventdir}/stations.xml")
+        run_growclust_for_files(
+            input_files=set(glob.glob(f"{self.eventdir}/*.xml")),
+            in_memory_wavebank=InMemoryWaveBank(self.wavedir),
+            outdir=self.outdir, station_file=f"{self.eventdir}/stations.xml")
         cat_back = read_events(f"{self.outdir}/*.xml")
         self.assertEqual(len(cat_back), len(self.cat))
         # All events should be relocated
