@@ -122,6 +122,7 @@ class GrowClustConfig(_PluginConfig):
         "station_file": "stations.xml",
         "vmodel_file": GROWCLUST_DEFAULT_VMODEL,
         "growclust_script": GROWCLUST_SCRIPT,
+        "sleep_interval": 600,
     }
     readonly = []
     __subclasses = {
