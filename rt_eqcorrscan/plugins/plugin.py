@@ -27,7 +27,7 @@ REGISTERED_PLUGINS = {
     "picker": "rteqcorrscan-plugin-picker",
     "hyp": "rteqcorrscan-plugin-hyp",
     "plotter": "rteqcorrscan-plugin-plotter",
-    "growclust": "rteqcorrscan-plugin.growclust",
+    "growclust": "rteqcorrscan-plugin-growclust",
 }
 PLUGIN_CONFIG_MAPPER = dict()
 # Control order of plugins, outdir of previous plugin is input to plugin
