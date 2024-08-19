@@ -598,7 +598,7 @@ class GrowClust(_Plugin):
 
         # TODO: There should be some way to *not* redo all the correlations every time!
         workers = workers or 1
-        run_growclust_for_file(indir=indir, outdir=outdir,
+        run_growclust_for_files(indir=indir, outdir=outdir,
              in_memory_wavebank=self.in_memory_wavebank,
              station_file=station_file, config=internal_config,
              workers=workers, vmodel_file=vmodel_file,
