@@ -42,7 +42,6 @@ PLUGIN_CONFIG_MAPPER.update({"plotter": PlotConfig})
 class Plotter(_Plugin):
     name = "Plotter"
     full_catalog = []
-    cat_df = None
 
     def _read_config(self, config_file: str):
         return PlotConfig.read(config_file=config_file)
@@ -65,11 +64,6 @@ class Plotter(_Plugin):
                 continue
             # Retain sparse events rather than full catalog
             self.full_catalog.extend(sparsify_catalog(_cat))
-            _cat_df = events_to_df(_cat)
-            if self.cat_df is not None:
-                self.cat_df = pd.concat([self.cat_df, _cat_df])
-            else:
-                self.cat_df = _cat_df
 
         Logger.info(f"Making plots for {len(self.full_catalog)} events")
         inter_fig = inter_event_plot(catalog=self.full_catalog)
