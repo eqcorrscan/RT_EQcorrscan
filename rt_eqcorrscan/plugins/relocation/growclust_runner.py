@@ -259,7 +259,10 @@ def run_growclust(
         stderr=subprocess.STDOUT)
     for line in loc_proc.stdout.decode().splitlines():
         Logger.info(">>> " + line.rstrip())
-    loc_proc.check_returncode()
+    try:
+        loc_proc.check_returncode()
+    except Exception as e:
+        Logger.exception(e)
     return internal_config.fout_cat
 
 
@@ -373,6 +376,9 @@ def process_output_catalog(
     outfile: str
 ) -> Catalog:
     """ Add Growclust origins back into catalog. """
+    if not os.path.isfile(outfile):
+        Logger.warning(f"{outfile} does not exist.")
+        return catalog
     gc_origins = read_growclust(
         outfile, event_mapper={val: key for key, val in event_mapper.items()})
 
@@ -539,6 +545,7 @@ def run_growclust_for_files(
     working_dir = tempfile.TemporaryDirectory()
     cwd = os.path.abspath(os.path.curdir)
     outdir, station_file = map(os.path.abspath, (outdir, station_file))
+    Logger.info(f"Working in {working_dir.name}")
     os.chdir(working_dir.name)
     event_mapper = process_input_catalog(
         catalog=catalog, in_memory_wavebank=in_memory_wavebank,
