@@ -38,7 +38,7 @@ def plot_map(catalog: Union[Catalog, Iterable[Event], Iterable[SparseEvent]]
                            for ev in catalog])
     magnitudes = np.array([get_magnitude_attr(ev, "mag") or np.nan
                            for ev in catalog])
-    np.nan_to_num(magnitudes, copy=False, nan=0.0)
+    np.nan_to_num(magnitudes, copy=False, nan=3.0)
 
     # Mask out nans in lats and lons
     nan_mask = np.logical_or(np.isnan(latitudes), np.isnan(longitudes))
