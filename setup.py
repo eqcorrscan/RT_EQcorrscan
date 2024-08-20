@@ -87,12 +87,13 @@ def setup_package():
         'tests_require': ['pytest>=2.0.0', 'pytest-cov', 'pytest-pep8',
                           'pytest-xdist', 'pytest-rerunfailures',
                           'obspy>=1.1.0'],
-        'package_data': {
-            'rt_eqcorrscan/plugins/relocation':
-                ['rt_eqcorrscan/plugins/relocation/run_growclust3D.jl',
-                 'rt_eqcorrscan/plugins/relocation/vmodel.txt',
-                 'rt_eqcorrscan/plugins/relocation/growclust.inp',
-                 'rt_eqcorrscan/plugins/relocation/README.md']},
+        # 'package_data': {
+        #     'rt_eqcorrscan/plugins/relocation':
+        #         ['rt_eqcorrscan/plugins/relocation/run_growclust3D.jl',
+        #          'rt_eqcorrscan/plugins/relocation/vmodel.txt',
+        #          'rt_eqcorrscan/plugins/relocation/growclust.inp',
+        #          'rt_eqcorrscan/plugins/relocation/README.md']},
+        'include_package_data': True
     }
 
     if using_setuptools:
