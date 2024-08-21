@@ -117,6 +117,7 @@ def setup_package():
             'rt_eqcorrscan.plugins.magnitudes',
             'rt_eqcorrscan.plugins.plotter',
             'rt_eqcorrscan.plugins.relocation',
+            'rt_eqcorrscan.plugins.relocation.dt_correlations',
         ]
     if os.path.isdir("build"):
         shutil.rmtree("build")
