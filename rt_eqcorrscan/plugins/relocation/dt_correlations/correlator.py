@@ -12,12 +12,17 @@ from typing import Iterable, Union
 
 from collections import namedtuple
 
-from obspy import Catalog
+from obspy import Catalog, Stream, read
+from obspy.core.event import Event
+from obspy.clients.fdsn import Client
+
+from obsplus import WaveBank
 
 from eqcorrscan.utils.catalog_to_dd import (
     _compute_dt_correlations, _make_event_pair, _make_sparse_event,
     SparseEvent, SparsePick, SeedPickID, _meta_filter_stream)
 
+from rt_eqcorrscan.plugins.waveform_access import InMemoryWaveBank
 
 Logger = logging.getLogger(__name__)
 
@@ -266,15 +271,55 @@ class Correlations:
 
 
 class Correlator:
-    _pairs_run = set()
-    _dt_cache_file = os.path.abspath("./.dt.h5")  # TODO: Use object ID to make unique names
-    _wf_cache_file = os.path.abspath(("./.dt_waveforms"))
+    _pairs_run = set()  # Cache of what work has already been done
+    _wf_cache_dir = os.path.abspath(("./.dt_waveforms"))
+    _wf_naming = "{cache_dir}/{event_id}.ms"
 
-    def __init__(self, minlink, ...):  # TODO: Set correlation params here
+    def __init__(
+        self,
+        minlink: int,
+        maxsep: float,
+        shift: float,
+        pre_pick: float,
+        length: float,
+        lowcut: float,
+        highcut: float,
+        correlation_cache: str = None
+    ):
         self.minlink = minlink
+        self.maxsep = maxsep
+        self.shift = shift
+        self.pre_pick = pre_pick
+        self.length = length
+        self.lowcut = lowcut
+        self.highcut = highcut
+        self.correlation_cache = Correlations(
+            correlation_file=correlation_cache)
 
-    def add_events(self, catalog: Union[Catalog, Iterable[SparseEvent]]):
-        # TODO: stuff
+    def _get_waveforms(
+        self,
+        event: Event,
+        client: Union[Client, WaveBank, InMemoryWaveBank]
+    ) -> Stream:
+        """
+        Get and process stream - look in database first, get from client second
+        """
+        if not os.path.isdir(self._wf_cache_dir):
+            os.makedirs(self._wf_cache_dir)
+        waveform_filename = self._wf_naming.format(
+            cache_dir=self._wf_cache_dir,
+            event_id=event.resource_id.id.split('/')[-1])
+        if os.path.isfile(waveform_filename):
+            return read(waveform_filename)
+        # Get from the client and process
+
+
+    def add_events(
+        self,
+        catalog: Union[Catalog, Iterable[SparseEvent]],
+        client: Union[Client, WaveBank, InMemoryWaveBank]
+    ):
+        # TODO: stuff - take logic from MF-defaults - only run new pairs.
 
 
 
