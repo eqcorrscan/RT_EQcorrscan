@@ -69,17 +69,15 @@ class Correlations:
             assert "ccs" in f.keys(), f"Missing ccs in {f.keys()}"
             assert "eventids" in f.keys(), f"Missing eventids in {f.keys()}"
             assert "seedids" in f.keys(), f"Missing seedids in {f.keys()}"
-            assert f["ccs"].maxshape == (None, None, None), "ccs is not expandable"
             assert f['eventids'].maxshape == (None, ), "eventids is not expandable"
             assert f['seedids'].maxshape == (None, ), "seedids is not expandable"
         return True
 
     def _make_correlation_file(self):
         with h5py.File(self.correlation_file, "w") as f:
-            # Needs to be resizeable, and so can't be empty
-            _ = f.create_dataset(
-                "ccs", data=[[[np.nan]]], dtype=float,
-                maxshape=(None, None, None))
+            # Top-level group - correlations which hosts len(seed_ids) groups
+            # of len(eventid) datasets of len(eventid)
+            _ = f.create_group(name="ccs")
             _ = f.create_dataset(
                 name="eventids", data=[""], dtype=self._string_dtype,
                 maxshape=(None, ))
@@ -90,13 +88,18 @@ class Correlations:
 
     def _get_correlation(
         self,
-        seed_index: int,
-        event1_index: int,
+        seed_id: str,
+        event1_id: str,
         event2_index: int
     ) -> float:
         with h5py.File(self.correlation_file, "r") as f:
-            correlation = f['ccs'][seed_index][event1_index][event2_index]
+            correlation = f['ccs'][seed_id][event1_id][event2_index]
         return correlation
+
+    def _empty_correlation_array(self):
+        if len(self.eventids) == 0:
+            return [np.nan]
+        return np.ones(len(self.eventids)) * np.nan
 
     def _new_seed_id(self, seed_id: str, file_handle: h5py.File = None):
         """ Add a new seed-id to the file. """
@@ -112,17 +115,16 @@ class Correlations:
             self.seedids.append(seed_id)
         file_handle['seedids'].resize((len(self.seedids), ))
         file_handle['seedids'][-1] = seed_id
-        # Resize and populate correlation matrix with nans
-        file_handle['ccs'].resize(
-            (len(self.seedids), len(self.eventids), len(self.eventids)))
-        # Loop over eventids to avoid creating a large array in memory
-        for i in range(len(self.eventids)):
-            for j in range(len(self.eventids)):
-                Logger.info(f"Setting correlation at (-1, {i}, {j}) to nan")
-                file_handle['ccs'][-1][i][j] = np.nan
-                file_handle.flush()
-                Logger.info(
-                    f"Value at (-1, {i}, {j}): {file_handle['ccs'][-1][i][j]}")
+        # Add new groups as needed
+        file_handle['ccs'].create_group(name=seed_id)
+        for event1_id in self.eventids:
+            if event1_id == '':
+                continue
+            Logger.info(f"Creating dataset for {event1_id} of "
+                        f"{len(self.eventids)} nans")
+            file_handle['ccs'][seed_id].create_dataset(
+                name=event1_id, data=self._empty_correlation_array(),
+                dtype=float, maxshape=(None, ))
         if close_file:
             file_handle.close()
         return
@@ -140,23 +142,19 @@ class Correlations:
             self.eventids.append(event_id)
         file_handle['eventids'].resize((len(self.eventids), ))
         file_handle['eventids'][-1] = event_id
-        # Resize and populate matrix with nans
-        file_handle['ccs'].resize(
-            (len(self.seedids), len(self.eventids), len(self.eventids)))
-        # Loop over ids to avoid creating large in-memory arrays
-        for i in range(len(self.seedids)):
-            for j in range(len(self.eventids)):
-                # populate both locations of new event
-                Logger.info(f"Setting correlation at ({i}, {j}, -1) to nan")
-                file_handle['ccs'][i][j][-1] = np.nan
-                file_handle.flush()
-                Logger.info(
-                    f"Value at ({i}, {j}, -1): {file_handle['ccs'][i][j][-1]}")
-                Logger.info(f"Setting correlation at ({i}, -1, {j}) to nan")
-                file_handle['ccs'][i][-1][j] = np.nan
-                file_handle.flush()
-                Logger.info(
-                    f"Value at ({i}, -1, {j}): {file_handle['ccs'][i][-1][j]}")
+
+        for sid in self.seedids:
+            if sid == '':
+                continue
+            # Add new array for this eventid
+            file_handle['ccs'][sid].create_dataset(
+                name=event_id, data=self._empty_correlation_array(),
+                dtype=float, maxshape=(None, ))
+            # Add a new entry to all the other arrays
+            for event1_id in self.eventids:
+                file_handle['ccs'][sid][event1_id].resize(
+                    (len(self.eventids), ))
+                file_handle['ccs'][sid][event1_id][-1] = np.nan
         if close_file:
             file_handle.close()
         return
@@ -177,12 +175,14 @@ class Correlations:
                     }
                 }
             }
+
+        Will assume that the correlation for event1 <-> event2 is equal
+        either way, so will set both correlations.
         """
         file_handle = h5py.File(self.correlation_file, "r+")
         for seed_id, seed_dict in other.items():
             if seed_id not in self.seedids:
                 self._new_seed_id(seed_id, file_handle=file_handle)
-            sid_index = self.seedids.index(seed_id)
             for event1_id, event1_dict in seed_dict.items():
                 if event1_id not in self.eventids:
                     self._new_event_id(event1_id, file_handle=file_handle)
@@ -191,15 +191,12 @@ class Correlations:
                     if event2_id not in self.eventids:
                         self._new_event_id(event2_id, file_handle=file_handle)
                     event2_index = self.eventids.index(event2_id)
-                    Logger.info(
-                        f"Updating correlation at ({sid_index}, "
-                        f"{event1_index}, {event2_index}) to {cc}")
-                    file_handle['ccs'][sid_index][event1_index][event2_index] = cc
-                    file_handle.flush()
-                    Logger.info(
-                        f"Value at ({sid_index}, {event1_index}, "
-                        f"{event2_index}): "
-                        f"{file_handle['ccs'][sid_index][event1_index][event2_index]}")
+                    Logger.debug(
+                        f"Updating correlation at ({seed_id}, "
+                        f"{event1_id}, {event2_index}) to {cc}")
+                    file_handle['ccs'][seed_id][event1_id][event2_index] = cc
+                    # Set the mirrored correlation
+                    file_handle['ccs'][seed_id][event2_id][event1_index] = cc
         file_handle.close()
         return
 
@@ -215,39 +212,38 @@ class Correlations:
         eventid_2 = eventid_2 or "*"
 
         # Work out indexes
-        seed_indexes, event1_indexes, event2_indexes = None, None, None
-        if seed_id:
-            sids = fnmatch.filter(self.seedids, seed_id)
-            if len(sids) == 0:
-                raise NotImplementedError(
-                    f"{seed_id} not found in correlations")
-            else:
-                seed_indexes = [(s, self.seedids.index(s)) for s in sids]
-        if eventid_1:
-            event1_ids = fnmatch.filter(self.eventids, eventid_1)
-            if len(event1_ids) == 0:
-                raise NotImplementedError(
-                    f"{eventid_1} not found in correlations")
-            else:
-                event1_indexes = [
-                    (s, self.eventids.index(s)) for s in event1_ids]
-        if eventid_2:
-            event2_ids = fnmatch.filter(self.eventids, eventid_2)
-            if len(event2_ids) == 0:
-                raise NotImplementedError(
-                    f"{eventid_2} not found in correlations")
-            else:
-                event2_indexes = [
-                    (s, self.eventids.index(s)) for s in event2_ids]
+        sids = fnmatch.filter(self.seedids, seed_id)
+        if len(sids) == 0:
+            raise NotImplementedError(
+                f"{seed_id} not found in correlations")
+
+        event1_ids = fnmatch.filter(self.eventids, eventid_1)
+        if len(event1_ids) == 0:
+            raise NotImplementedError(
+                f"{eventid_1} not found in correlations")
+
+        event2_ids = fnmatch.filter(self.eventids, eventid_2)
+        if len(event2_ids) == 0:
+            raise NotImplementedError(
+                f"{eventid_2} not found in correlations")
+        else:
+            event2_indexes = [
+                (s, self.eventids.index(s)) for s in event2_ids]
         out = dict()
-        for sid, sid_index in seed_indexes:
+        for sid in sids:
+            if sid == '':
+                continue
             event1_dict = dict()
-            for event1_id, event1_index in event1_indexes:
+            for event1_id in event1_ids:
+                if event1_id == '':
+                    continue
                 event2_dict = dict()
                 for event2_id, event2_index in event2_indexes:
+                    if event2_id == '':
+                        continue
                     event2_dict.update({event2_id: self._get_correlation(
-                        seed_index=sid_index,
-                        event1_index=event1_index,
+                        seed_id=sid,
+                        event1_id=event1_id,
                         event2_index=event2_index)})
                 event1_dict.update({event1_id: event2_dict})
             out.update({sid: event1_dict})
