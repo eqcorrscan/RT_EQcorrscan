@@ -2,9 +2,11 @@
 Class and methods to lazily compute correlations for new events.
 """
 
+import fnmatch
 import os
 import h5py
 import numpy as np
+import logging
 
 from typing import Iterable, Union
 
@@ -16,6 +18,9 @@ from eqcorrscan.utils.catalog_to_dd import (
     SparseEvent, SparsePick, SeedPickID, _meta_filter_stream)
 
 
+Logger = logging.getLogger(__name__)
+
+
 class Correlations:
     """
     Object to hold correlations backed by an hdf5 file.
@@ -23,15 +28,38 @@ class Correlations:
     Correlations are stored as an m x n x n array where n is the number of
     events and m is the number of channels.
     """
-
+    _string_encoding = 'utf-8'
+    _string_dtype = h5py.string_dtype(encoding=_string_encoding, length=None)
 
     def __init__(self, correlation_file: str = None):
         if correlation_file is None:
             correlation_file = f".correlations_{id(self)}.h5"
         self._correlation_file = correlation_file
         if not os.path.isfile(correlation_file):
-            self._make
+            self._make_correlation_file()
         self._validate_correlation_file()
+        self.seedids = self._get_seed_indexes()
+        self.eventids = self._get_event_indexes()
+
+    def __repr__(self):
+        return f"Correlations(correlation_file={self.correlation_file})"
+
+    def _get_correlation_file(self):
+        return self._correlation_file
+
+    correlation_file = property(fget=_get_correlation_file)
+
+    def _get_seed_indexes(self):
+        with h5py.File(self.correlation_file, "r") as f:
+            sids = [_.decode(self._string_encoding)
+                    for _ in list(f['seedids'][:])]
+        return sids
+
+    def _get_event_indexes(self):
+        with h5py.File(self.correlation_file, "r") as f:
+            sids = [_.decode(self._string_encoding)
+                    for _ in list(f['eventids'][:])]
+        return sids
 
     def _validate_correlation_file(self):
         if not os.path.isfile(self.correlation_file):
@@ -47,47 +75,183 @@ class Correlations:
         return True
 
     def _make_correlation_file(self):
-            with h5py.File(self.correlation_file, "w") as f:
-                # Needs to be resizeable, and so can't be empty
-                ccs_dataset = f.create_dataset(
-                    "ccs", data=[[[0.0]]], dtype=float,
-                    maxshape=(None, None, None))
-                eventid_dataset = f.create_dataset(
-                    name="eventids", data=[""], dtype=str,
-                    maxshape=(None, ))
-                seedids_dataset = f.create_dataset(
-                    name="seedids", data=[""], dtype=str,
-                    maxshape=(None,))
+        with h5py.File(self.correlation_file, "w") as f:
+            # Needs to be resizeable, and so can't be empty
+            _ = f.create_dataset(
+                "ccs", data=[[[np.nan]]], dtype=float,
+                maxshape=(None, None, None))
+            _ = f.create_dataset(
+                name="eventids", data=[""], dtype=self._string_dtype,
+                maxshape=(None, ))
+            _ = f.create_dataset(
+                name="seedids", data=[""], dtype=self._string_dtype,
+                maxshape=(None,))
+        return
 
-    def _get_correlation_file(self):
-        return self._correlation_file
-
-    correlation_file = property(fget=_get_correlation_file)
-
-    def _get_correlations(
+    def _get_correlation(
         self,
-        seed_index: int = None,
-        event1_index: int = None,
-        event2_index: int = None
-    ) -> Union[np.ndarray[float], float]:
-        with open(self.correlation_file, "r") as f:
-            # TODO: Lookup indexes in eventids and seedids
+        seed_index: int,
+        event1_index: int,
+        event2_index: int
+    ) -> float:
+        with h5py.File(self.correlation_file, "r") as f:
+            correlation = f['ccs'][seed_index][event1_index][event2_index]
+        return correlation
 
-    def append(self, other):
-        # TODO: Cope with things...
+    def _new_seed_id(self, seed_id: str, file_handle: h5py.File = None):
+        """ Add a new seed-id to the file. """
+        close_file = False
+        if file_handle is None:
+            file_handle = h5py.File(self.correlation_file, "r+")
+            close_file = True
+        # Cope with starting with an empty file
+        if len(self.seedids) == 1 and self.seedids[0] == '':
+            self.seedids[0] = seed_id
+        else:
+            # Resize seed-ids and add new seed-id in place
+            self.seedids.append(seed_id)
+        file_handle['seedids'].resize((len(self.seedids), ))
+        file_handle['seedids'][-1] = seed_id
+        # Resize and populate correlation matrix with nans
+        file_handle['ccs'].resize(
+            (len(self.seedids), len(self.eventids), len(self.eventids)))
+        # Loop over eventids to avoid creating a large array in memory
+        for i in range(len(self.eventids)):
+            for j in range(len(self.eventids)):
+                Logger.info(f"Setting correlation at (-1, {i}, {j}) to nan")
+                file_handle['ccs'][-1][i][j] = np.nan
+                file_handle.flush()
+                Logger.info(
+                    f"Value at (-1, {i}, {j}): {file_handle['ccs'][-1][i][j]}")
+        if close_file:
+            file_handle.close()
+        return
 
-    def extend(self, other):
-        # TODO: Cope with things...
+    def _new_event_id(self, event_id: str, file_handle: h5py.File = None):
+        """ Add a new event-id to the file. """
+        close_file = False
+        if file_handle is None:
+            file_handle = h5py.File(self.correlation_file, "r+")
+            close_file = True
+        if len(self.eventids) == 1 and self.eventids[0] == '':
+            self.eventids[0] = event_id
+        else:
+            # Resize and add new event-id in place
+            self.eventids.append(event_id)
+        file_handle['eventids'].resize((len(self.eventids), ))
+        file_handle['eventids'][-1] = event_id
+        # Resize and populate matrix with nans
+        file_handle['ccs'].resize(
+            (len(self.seedids), len(self.eventids), len(self.eventids)))
+        # Loop over ids to avoid creating large in-memory arrays
+        for i in range(len(self.seedids)):
+            for j in range(len(self.eventids)):
+                # populate both locations of new event
+                Logger.info(f"Setting correlation at ({i}, {j}, -1) to nan")
+                file_handle['ccs'][i][j][-1] = np.nan
+                file_handle.flush()
+                Logger.info(
+                    f"Value at ({i}, {j}, -1): {file_handle['ccs'][i][j][-1]}")
+                Logger.info(f"Setting correlation at ({i}, -1, {j}) to nan")
+                file_handle['ccs'][i][-1][j] = np.nan
+                file_handle.flush()
+                Logger.info(
+                    f"Value at ({i}, -1, {j}): {file_handle['ccs'][i][-1][j]}")
+        if close_file:
+            file_handle.close()
+        return
 
-    def lookup(
+    def update(self, other: dict):
+        """
+        Update the values in the correlation file.
+
+        Other should be a nested dictionary of correlations keyed by seed-id,
+        event1-id, event2-id. For example a dictionary for other might look
+        like:
+
+        other = {
+            "NZ.WEL.10.HHZ": {
+                "2019p230876": {
+                    "2020p2386755": 0.2,
+                    "2012p2367858": -0.6,
+                    }
+                }
+            }
+        """
+        file_handle = h5py.File(self.correlation_file, "r+")
+        for seed_id, seed_dict in other.items():
+            if seed_id not in self.seedids:
+                self._new_seed_id(seed_id, file_handle=file_handle)
+            sid_index = self.seedids.index(seed_id)
+            for event1_id, event1_dict in seed_dict.items():
+                if event1_id not in self.eventids:
+                    self._new_event_id(event1_id, file_handle=file_handle)
+                event1_index = self.eventids.index(event1_id)
+                for event2_id, cc in event1_dict.items():
+                    if event2_id not in self.eventids:
+                        self._new_event_id(event2_id, file_handle=file_handle)
+                    event2_index = self.eventids.index(event2_id)
+                    Logger.info(
+                        f"Updating correlation at ({sid_index}, "
+                        f"{event1_index}, {event2_index}) to {cc}")
+                    file_handle['ccs'][sid_index][event1_index][event2_index] = cc
+                    file_handle.flush()
+                    Logger.info(
+                        f"Value at ({sid_index}, {event1_index}, "
+                        f"{event2_index}): "
+                        f"{file_handle['ccs'][sid_index][event1_index][event2_index]}")
+        file_handle.close()
+        return
+
+    def select(
         self,
+        seed_id: str = None,
         eventid_1: str = None,
         eventid_2: str = None,
-        seed_id: str = None,
-    ) -> Union[np.ndarray[float], float]:
-        if eventid_1 is None and eventid_2 is None and seed_id is None:
-            return self._get_correlations()
-        # TODO: Return to correct correlation or correlations.
+    ) -> dict:
+        """ Supports glob patterns """
+        seed_id = seed_id or "*"
+        eventid_1 = eventid_1 or "*"
+        eventid_2 = eventid_2 or "*"
+
+        # Work out indexes
+        seed_indexes, event1_indexes, event2_indexes = None, None, None
+        if seed_id:
+            sids = fnmatch.filter(self.seedids, seed_id)
+            if len(sids) == 0:
+                raise NotImplementedError(
+                    f"{seed_id} not found in correlations")
+            else:
+                seed_indexes = [(s, self.seedids.index(s)) for s in sids]
+        if eventid_1:
+            event1_ids = fnmatch.filter(self.eventids, eventid_1)
+            if len(event1_ids) == 0:
+                raise NotImplementedError(
+                    f"{eventid_1} not found in correlations")
+            else:
+                event1_indexes = [
+                    (s, self.eventids.index(s)) for s in event1_ids]
+        if eventid_2:
+            event2_ids = fnmatch.filter(self.eventids, eventid_2)
+            if len(event2_ids) == 0:
+                raise NotImplementedError(
+                    f"{eventid_2} not found in correlations")
+            else:
+                event2_indexes = [
+                    (s, self.eventids.index(s)) for s in event2_ids]
+        out = dict()
+        for sid, sid_index in seed_indexes:
+            event1_dict = dict()
+            for event1_id, event1_index in event1_indexes:
+                event2_dict = dict()
+                for event2_id, event2_index in event2_indexes:
+                    event2_dict.update({event2_id: self._get_correlation(
+                        seed_index=sid_index,
+                        event1_index=event1_index,
+                        event2_index=event2_index)})
+                event1_dict.update({event1_id: event2_dict})
+            out.update({sid: event1_dict})
+        return out
 
 
 class Correlator:
