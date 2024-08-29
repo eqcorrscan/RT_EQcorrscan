@@ -10,7 +10,8 @@ import logging
 
 from typing import Iterable, Union
 
-from bokeh.core.property.validation import validate
+from collections import namedtuple
+
 from obspy import Catalog
 
 from eqcorrscan.utils.catalog_to_dd import (
@@ -19,6 +20,9 @@ from eqcorrscan.utils.catalog_to_dd import (
 
 
 Logger = logging.getLogger(__name__)
+
+
+Correlation = namedtuple("Correlation", ["value", "shift"])
 
 
 class Correlations:
@@ -67,6 +71,7 @@ class Correlations:
         # Check that the data structure is as expected
         with h5py.File(self.correlation_file, "r") as f:
             assert "ccs" in f.keys(), f"Missing ccs in {f.keys()}"
+            assert "shifts" in f.keys(), f"Missing shifts in {f.keys()}"
             assert "eventids" in f.keys(), f"Missing eventids in {f.keys()}"
             assert "seedids" in f.keys(), f"Missing seedids in {f.keys()}"
             assert f['eventids'].maxshape == (None, ), "eventids is not expandable"
@@ -78,6 +83,7 @@ class Correlations:
             # Top-level group - correlations which hosts len(seed_ids) groups
             # of len(eventid) datasets of len(eventid)
             _ = f.create_group(name="ccs")
+            _ = f.create_group(name="shifts")
             _ = f.create_dataset(
                 name="eventids", data=[""], dtype=self._string_dtype,
                 maxshape=(None, ))
@@ -93,8 +99,9 @@ class Correlations:
         event2_index: int
     ) -> float:
         with h5py.File(self.correlation_file, "r") as f:
-            correlation = f['ccs'][seed_id][event1_id][event2_index]
-        return correlation
+            value = f['ccs'][seed_id][event1_id][event2_index]
+            shift = f['shifts'][seed_id][event1_id][event2_index]
+        return Correlation(value=value, shift=shift)
 
     def _empty_correlation_array(self):
         if len(self.eventids) == 0:
@@ -116,15 +123,16 @@ class Correlations:
         file_handle['seedids'].resize((len(self.seedids), ))
         file_handle['seedids'][-1] = seed_id
         # Add new groups as needed
-        file_handle['ccs'].create_group(name=seed_id)
-        for event1_id in self.eventids:
-            if event1_id == '':
-                continue
-            Logger.info(f"Creating dataset for {event1_id} of "
-                        f"{len(self.eventids)} nans")
-            file_handle['ccs'][seed_id].create_dataset(
-                name=event1_id, data=self._empty_correlation_array(),
-                dtype=float, maxshape=(None, ))
+        for group in ('ccs', 'shifts'):
+            file_handle[group].create_group(name=seed_id)
+            for event1_id in self.eventids:
+                if event1_id == '':
+                    continue
+                Logger.info(f"Creating dataset for {event1_id} of "
+                            f"{len(self.eventids)} nans")
+                file_handle[group][seed_id].create_dataset(
+                    name=event1_id, data=self._empty_correlation_array(),
+                    dtype=float, maxshape=(None, ))
         if close_file:
             file_handle.close()
         return
@@ -143,18 +151,19 @@ class Correlations:
         file_handle['eventids'].resize((len(self.eventids), ))
         file_handle['eventids'][-1] = event_id
 
-        for sid in self.seedids:
-            if sid == '':
-                continue
-            # Add new array for this eventid
-            file_handle['ccs'][sid].create_dataset(
-                name=event_id, data=self._empty_correlation_array(),
-                dtype=float, maxshape=(None, ))
-            # Add a new entry to all the other arrays
-            for event1_id in self.eventids:
-                file_handle['ccs'][sid][event1_id].resize(
-                    (len(self.eventids), ))
-                file_handle['ccs'][sid][event1_id][-1] = np.nan
+        for group in ("ccs", "shifts"):
+            for sid in self.seedids:
+                if sid == '':
+                    continue
+                # Add new array for this eventid
+                file_handle[group][sid].create_dataset(
+                    name=event_id, data=self._empty_correlation_array(),
+                    dtype=float, maxshape=(None, ))
+                # Add a new entry to all the other arrays
+                for event1_id in self.eventids:
+                    file_handle[group][sid][event1_id].resize(
+                        (len(self.eventids), ))
+                    file_handle[group][sid][event1_id][-1] = np.nan
         if close_file:
             file_handle.close()
         return
@@ -170,8 +179,8 @@ class Correlations:
         other = {
             "NZ.WEL.10.HHZ": {
                 "2019p230876": {
-                    "2020p2386755": 0.2,
-                    "2012p2367858": -0.6,
+                    "2020p2386755": Correlation(value=0.2, shift=0.15),
+                    "2012p2367858": Correlation(value=-0.6, shift=-2.0),
                     }
                 }
             }
@@ -194,9 +203,15 @@ class Correlations:
                     Logger.debug(
                         f"Updating correlation at ({seed_id}, "
                         f"{event1_id}, {event2_index}) to {cc}")
-                    file_handle['ccs'][seed_id][event1_id][event2_index] = cc
+                    file_handle['ccs'][seed_id][event1_id][
+                        event2_index] = cc.value
+                    file_handle['shifts'][seed_id][event1_id][
+                        event2_index] = cc.shift
                     # Set the mirrored correlation
-                    file_handle['ccs'][seed_id][event2_id][event1_index] = cc
+                    file_handle['ccs'][seed_id][event2_id][
+                        event1_index] = cc.value
+                    file_handle['shifts'][seed_id][event2_id][
+                        event1_index] = cc.shift
         file_handle.close()
         return
 
