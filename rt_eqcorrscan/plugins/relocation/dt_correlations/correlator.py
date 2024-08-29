@@ -4,11 +4,13 @@ Class and methods to lazily compute correlations for new events.
 
 import fnmatch
 import os
+import warnings
+
 import h5py
 import numpy as np
 import logging
 
-from typing import Iterable, Union
+from typing import Iterable, Union, Dict
 
 from collections import namedtuple
 
@@ -21,6 +23,8 @@ from obsplus import WaveBank
 from eqcorrscan.utils.catalog_to_dd import (
     _compute_dt_correlations, _make_event_pair, _make_sparse_event,
     SparseEvent, SparsePick, SeedPickID, _meta_filter_stream)
+from eqcorrscan.utils.correlate import pool_boy
+from eqcorrscan.utils.catalog_to_dd import _filter_stream
 
 from rt_eqcorrscan.plugins.waveform_access import InMemoryWaveBank
 
@@ -272,6 +276,7 @@ class Correlations:
 
 class Correlator:
     _pairs_run = set()  # Cache of what work has already been done
+    event_mapper = dict()  # Key to map event ids to dt.cc ids
     _wf_cache_dir = os.path.abspath(("./.dt_waveforms"))
     _wf_naming = "{cache_dir}/{event_id}.ms"
 
@@ -300,7 +305,7 @@ class Correlator:
         self,
         event: Event,
         client: Union[Client, WaveBank, InMemoryWaveBank]
-    ) -> Stream:
+    ) -> Dict[str, Stream]:
         """
         Get and process stream - look in database first, get from client second
         """
@@ -310,17 +315,47 @@ class Correlator:
             cache_dir=self._wf_cache_dir,
             event_id=event.resource_id.id.split('/')[-1])
         if os.path.isfile(waveform_filename):
-            return read(waveform_filename)
-        # Get from the client and process
-
+            return {event.resource_id.id: read(waveform_filename)}
+        # Get from the client and process - get an excess of data
+        bulk = [(p.waveform_id.network_code,
+                 p.waveform_id.station_code,
+                 p.waveform_id.location_code,
+                 p.waveform_id.channel_code,
+                 p.time - self.pre_pick * 4,
+                 p.time + 4 * (self.length - self.pre_pick))
+                for p in event.picks]
+        st = client.get_waveforms_bulk(bulk)
+        st_dict = _filter_stream(
+            event.resource_id.id, st, self.lowcut, self.highcut)
+        Logger.info(f"Writing waveform to {waveform_filename}")
+        # Catch and ignore warnings
+        with warnings.simplefilter("ignore"):
+            st_dict[event.resource_id.id].write(
+                waveform_filename, format="MSEED")
+        return st_dict
 
     def add_events(
         self,
         catalog: Union[Catalog, Iterable[SparseEvent]],
         client: Union[Client, WaveBank, InMemoryWaveBank]
     ):
-        # TODO: stuff - take logic from MF-defaults - only run new pairs.
+        # Find new events
+        event_ids = {ev.resource_id.id for ev in catalog}
+        new_event_ids = event_ids.difference(set(self.event_mapper.keys()))
+        # Distance cluster - we should cache the distance matrix somehow
 
+        # Select only the new-events that meet the distance criteria and none in self._pairs_run
+
+        # Get stream-dict
+
+        # Compute correlations
+
+        # Add correlations to self.correlation
+
+
+
+    def write_correlations(self, outfile: str = "dt.cc"):
+        """ Write the correlations to a dt.cc file """
 
 
 if __name__ == "__main__":
