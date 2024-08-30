@@ -10,9 +10,7 @@ import h5py
 import numpy as np
 import logging
 
-from typing import Iterable, Union, Dict
-
-from collections import namedtuple
+from typing import Iterable, Union, Dict, List
 
 from obspy import Catalog, Stream, read
 from obspy.core.event import Event
@@ -21,17 +19,13 @@ from obspy.clients.fdsn import Client
 from obsplus import WaveBank
 
 from eqcorrscan.utils.catalog_to_dd import (
-    _compute_dt_correlations, _make_event_pair, _make_sparse_event,
-    SparseEvent, SparsePick, SeedPickID, _meta_filter_stream)
-from eqcorrscan.utils.correlate import pool_boy
+    _compute_dt_correlations, SparseEvent, _DTObs, _EventPair)
 from eqcorrscan.utils.catalog_to_dd import _filter_stream
+from eqcorrscan.utils.clustering import dist_array_km
 
 from rt_eqcorrscan.plugins.waveform_access import InMemoryWaveBank
 
 Logger = logging.getLogger(__name__)
-
-
-Correlation = namedtuple("Correlation", ["value", "shift"])
 
 
 class Correlations:
@@ -51,8 +45,9 @@ class Correlations:
         if not os.path.isfile(correlation_file):
             self._make_correlation_file()
         self._validate_correlation_file()
-        self.seedids = self._get_seed_indexes()
+        self.stations = self._get_station_indexes()
         self.eventids = self._get_event_indexes()
+        self.phases = self._get_phase_indexes()
 
     def __repr__(self):
         return f"Correlations(correlation_file={self.correlation_file})"
@@ -62,86 +57,107 @@ class Correlations:
 
     correlation_file = property(fget=_get_correlation_file)
 
-    def _get_seed_indexes(self):
+    def _get_station_indexes(self):
         with h5py.File(self.correlation_file, "r") as f:
             sids = [_.decode(self._string_encoding)
-                    for _ in list(f['seedids'][:])]
+                    for _ in list(f['stations'][:])]
         return sids
 
     def _get_event_indexes(self):
         with h5py.File(self.correlation_file, "r") as f:
-            sids = [_.decode(self._string_encoding)
+            eids = [_.decode(self._string_encoding)
                     for _ in list(f['eventids'][:])]
-        return sids
+        return eids
+
+    def _get_phase_indexes(self):
+        with h5py.File(self.correlation_file, "r") as f:
+            pids = [_.decode(self._string_encoding)
+                    for _ in list(f['phases'][:])]
+        return pids
 
     def _validate_correlation_file(self):
         if not os.path.isfile(self.correlation_file):
             return False
         # Check that the data structure is as expected
         with h5py.File(self.correlation_file, "r") as f:
-            assert "ccs" in f.keys(), f"Missing ccs in {f.keys()}"
-            assert "shifts" in f.keys(), f"Missing shifts in {f.keys()}"
+            assert "tt1" in f.keys(), f"Missing tt1 in {f.keys()}"
+            assert "tt2" in f.keys(), f"Missing tt2 in {f.keys()}"
+            assert "weight" in f.keys(), f"Missing weight in {f.keys()}"
             assert "eventids" in f.keys(), f"Missing eventids in {f.keys()}"
-            assert "seedids" in f.keys(), f"Missing seedids in {f.keys()}"
+            assert "stations" in f.keys(), f"Missing stations in {f.keys()}"
+            assert "phases" in f.keys(), f"Missing stations in {f.keys()}"
             assert f['eventids'].maxshape == (None, ), "eventids is not expandable"
-            assert f['seedids'].maxshape == (None, ), "seedids is not expandable"
+            assert f['stations'].maxshape == (None, ), "stations is not expandable"
+            assert f['phases'].maxshape == (None,), "phases is not expandable"
         return True
 
     def _make_correlation_file(self):
         with h5py.File(self.correlation_file, "w") as f:
             # Top-level group - correlations which hosts len(seed_ids) groups
             # of len(eventid) datasets of len(eventid)
-            _ = f.create_group(name="ccs")
-            _ = f.create_group(name="shifts")
+            _ = f.create_group(name="tt1")  # tt1 if travel-time for event1
+            _ = f.create_group(name="tt2")  # tt2 is travel time for event 2
+            _ = f.create_group(name="weight")  # Weight is correlation
             _ = f.create_dataset(
                 name="eventids", data=[""], dtype=self._string_dtype,
                 maxshape=(None, ))
             _ = f.create_dataset(
-                name="seedids", data=[""], dtype=self._string_dtype,
+                name="stations", data=[""], dtype=self._string_dtype,
+                maxshape=(None,))
+            _ = f.create_dataset(
+                name="phases", data=[""], dtype=self._string_dtype,
                 maxshape=(None,))
         return
 
     def _get_correlation(
         self,
-        seed_id: str,
+        station: str,
+        phase: str,
         event1_id: str,
         event2_index: int
-    ) -> float:
+    ) -> _DTObs:
         with h5py.File(self.correlation_file, "r") as f:
-            value = f['ccs'][seed_id][event1_id][event2_index]
-            shift = f['shifts'][seed_id][event1_id][event2_index]
-        return Correlation(value=value, shift=shift)
+            tt1 = f['tt1'][station][phase][event1_id][event2_index]
+            tt2 = f['tt2'][station][phase][event1_id][event2_index]
+            weight = f['weight'][station][phase][event1_id][event2_index]
+        dt = _DTObs(station=station, tt1=tt1, tt2=tt2,
+                    weight=weight, phase=phase)
+        return dt
 
     def _empty_correlation_array(self):
         if len(self.eventids) == 0:
             return [np.nan]
         return np.ones(len(self.eventids)) * np.nan
 
-    def _new_seed_id(self, seed_id: str, file_handle: h5py.File = None):
+    def _new_station(self, station: str, file_handle: h5py.File = None):
         """ Add a new seed-id to the file. """
         close_file = False
         if file_handle is None:
             file_handle = h5py.File(self.correlation_file, "r+")
             close_file = True
         # Cope with starting with an empty file
-        if len(self.seedids) == 1 and self.seedids[0] == '':
-            self.seedids[0] = seed_id
+        if len(self.stations) == 1 and self.stations[0] == '':
+            self.stations[0] = station
         else:
             # Resize seed-ids and add new seed-id in place
-            self.seedids.append(seed_id)
-        file_handle['seedids'].resize((len(self.seedids), ))
-        file_handle['seedids'][-1] = seed_id
+            self.stations.append(station)
+        file_handle['stations'].resize((len(self.stations), ))
+        file_handle['stations'][-1] = station
         # Add new groups as needed
-        for group in ('ccs', 'shifts'):
-            file_handle[group].create_group(name=seed_id)
-            for event1_id in self.eventids:
-                if event1_id == '':
+        for group in ('tt1', 'tt2', 'weight'):
+            file_handle[group].create_group(name=station)
+            for phase in self.phases:
+                if phase == "":
                     continue
-                Logger.info(f"Creating dataset for {event1_id} of "
-                            f"{len(self.eventids)} nans")
-                file_handle[group][seed_id].create_dataset(
-                    name=event1_id, data=self._empty_correlation_array(),
-                    dtype=float, maxshape=(None, ))
+                file_handle[group][station].create_group(name=phase)
+                for event1_id in self.eventids:
+                    if event1_id == '':
+                        continue
+                    Logger.info(f"Creating dataset for {event1_id} of "
+                                f"{len(self.eventids)} nans")
+                    file_handle[group][station][phase].create_dataset(
+                        name=event1_id, data=self._empty_correlation_array(),
+                        dtype=float, maxshape=(None, ))
         if close_file:
             file_handle.close()
         return
@@ -160,86 +176,152 @@ class Correlations:
         file_handle['eventids'].resize((len(self.eventids), ))
         file_handle['eventids'][-1] = event_id
 
-        for group in ("ccs", "shifts"):
-            for sid in self.seedids:
-                if sid == '':
+        for group in ("tt1", "tt2", "weight"):
+            for station in self.stations:
+                if station == '':
                     continue
-                # Add new array for this eventid
-                file_handle[group][sid].create_dataset(
-                    name=event_id, data=self._empty_correlation_array(),
-                    dtype=float, maxshape=(None, ))
-                # Add a new entry to all the other arrays
-                for event1_id in self.eventids:
-                    file_handle[group][sid][event1_id].resize(
-                        (len(self.eventids), ))
-                    file_handle[group][sid][event1_id][-1] = np.nan
+                for phase in self.phases:
+                    if phase == '':
+                        continue
+                    # Add new array for this eventid
+                    file_handle[group][station][phase].create_dataset(
+                        name=event_id, data=self._empty_correlation_array(),
+                        dtype=float, maxshape=(None, ))
+                    # Add a new entry to all the other arrays
+                    for event1_id in self.eventids:
+                        file_handle[group][station][phase][event1_id].resize(
+                            (len(self.eventids), ))
+                        file_handle[group][station][phase][event1_id][-1] = np.nan
         if close_file:
             file_handle.close()
         return
 
-    def update(self, other: dict):
+    def _new_phase(self, phase: str, file_handle: h5py.File = None):
+        """ Add a new event-id to the file. """
+        close_file = False
+        if file_handle is None:
+            file_handle = h5py.File(self.correlation_file, "r+")
+            close_file = True
+        if len(self.phases) == 1 and self.phases[0] == '':
+            self.phases[0] = phase
+        else:
+            # Resize and add new event-id in place
+            self.phases.append(phase)
+        file_handle['phases'].resize((len(self.phases), ))
+        file_handle['phases'][-1] = phase
+
+        for group in ("tt1", "tt2", "weight"):
+            for station in self.stations:
+                if station == '':
+                    continue
+                file_handle[group][station].create_group(name=phase)
+                for event1_id in self.eventids:
+                    if event1_id == '':
+                        continue
+                    Logger.info(f"Creating dataset for {event1_id} of "
+                                f"{len(self.eventids)} nans")
+                    file_handle[group][station][phase].create_dataset(
+                        name=event1_id, data=self._empty_correlation_array(),
+                        dtype=float, maxshape=(None, ))
+        if close_file:
+            file_handle.close()
+        return
+
+    def update(self, other: List[_EventPair]):
         """
         Update the values in the correlation file.
 
-        Other should be a nested dictionary of correlations keyed by seed-id,
-        event1-id, event2-id. For example a dictionary for other might look
-        like:
+        Other should be a list of _EventPair objects.
 
-        other = {
-            "NZ.WEL.10.HHZ": {
-                "2019p230876": {
-                    "2020p2386755": Correlation(value=0.2, shift=0.15),
-                    "2012p2367858": Correlation(value=-0.6, shift=-2.0),
-                    }
-                }
-            }
+        other = [
+            _EventPair(
+                event_id_1=1, event_id_2=2,
+                obs=[_DTObs(weight=0.2, tt1=12.1, tt2=13.2, station="WVZ", phase="P"),
+                     _DTObs(weight=0.1, tt1=15.1, tt2=16.2, station="WVZ", phase="S"),
+                     _DTObs(weight=0.8, tt1=9.1, tt2=9.2, station="FOZ", phase="P")]),
+            _EventPair(
+                event_id_1=1, event_id_2=3,
+                obs=[_DTObs(weight=-0.2, tt1=12.1, tt2=15.2, station="WVZ", phase="P"),
+                     _DTObs(weight=0.7, tt1=15.1, tt2=17.2, station="WVZ", phase="S"),
+                     _DTObs(weight=0.9, tt1=9.1, tt2=9.1, station="FOZ", phase="P")])]
+
 
         Will assume that the correlation for event1 <-> event2 is equal
         either way, so will set both correlations.
         """
         file_handle = h5py.File(self.correlation_file, "r+")
-        for seed_id, seed_dict in other.items():
-            if seed_id not in self.seedids:
-                self._new_seed_id(seed_id, file_handle=file_handle)
-            for event1_id, event1_dict in seed_dict.items():
-                if event1_id not in self.eventids:
-                    self._new_event_id(event1_id, file_handle=file_handle)
-                event1_index = self.eventids.index(event1_id)
-                for event2_id, cc in event1_dict.items():
-                    if event2_id not in self.eventids:
-                        self._new_event_id(event2_id, file_handle=file_handle)
-                    event2_index = self.eventids.index(event2_id)
-                    Logger.debug(
-                        f"Updating correlation at ({seed_id}, "
-                        f"{event1_id}, {event2_index}) to {cc}")
-                    file_handle['ccs'][seed_id][event1_id][
-                        event2_index] = cc.value
-                    file_handle['shifts'][seed_id][event1_id][
-                        event2_index] = cc.shift
-                    # Set the mirrored correlation
-                    file_handle['ccs'][seed_id][event2_id][
-                        event1_index] = cc.value
-                    file_handle['shifts'][seed_id][event2_id][
-                        event1_index] = cc.shift
+        for event_pair in other:
+            for obs in event_pair.obs:
+                # Make the necessary structural changes - heirachy is station/phase/eventids
+                if obs.station not in self.stations:
+                    self._new_station(obs.station, file_handle=file_handle)
+                if obs.phase not in self.phases:
+                    self._new_phase(obs.phase, file_handle=file_handle)
+                if str(event_pair.event_id_1) not in self.eventids:
+                    self._new_event_id(
+                        str(event_pair.event_id_1), file_handle=file_handle)
+                if str(event_pair.event_id_2) not in self.eventids:
+                    self._new_event_id(
+                        str(event_pair.event_id_2), file_handle=file_handle)
+                Logger.debug(
+                    f"Updated values for {obs.station} {obs.phase} "
+                    f"{event_pair.event_id_1} -- {event_pair.event_id_2}")
+                # Mirror the changes
+                event_pairings = [
+                    (str(event_pair.event_id_1), str(event_pair.event_id_2)), # forward
+                    (str(event_pair.event_id_2), str(event_pair.event_id_1))  # reverse
+                ]
+                tt_pairings = [(obs.tt1, obs.tt2), (obs.tt2, obs.tt2)]
+
+                for (eid1, eid2), (tt1, tt2) in zip(event_pairings, tt_pairings):
+                    eid2_index = self.eventids.index(eid2)
+                    file_handle['tt1'][obs.station][obs.phase][eid1][
+                        eid2_index] = tt1
+                    file_handle['tt2'][obs.station][obs.phase][eid1][
+                        eid2_index] = tt2
+                    file_handle['weight'][obs.station][obs.phase][eid1][
+                        eid2_index] = obs.weight
         file_handle.close()
         return
 
     def select(
         self,
-        seed_id: str = None,
-        eventid_1: str = None,
-        eventid_2: str = None,
-    ) -> dict:
+        station: str = None,
+        phase: str = None,
+        eventid_1: Union[str, int] = None,
+        eventid_2: Union[str, int] = None,
+    ) -> List[_EventPair]:
         """ Supports glob patterns """
-        seed_id = seed_id or "*"
+        station = station or "*"
+        phase = phase or "*"
+        eid_ints = True  # Should be ints by default because that is what we expect
+        if isinstance(eventid_1, int):
+            eventid_1 = str(eventid_1)
+        elif isinstance(eventid_1, str):
+            eid_ints = False
+
+        if isinstance(eventid_2, int):
+            eventid_2 = str(eventid_2)
+        elif isinstance(eventid_2, str):
+            eid_ints = False
+
         eventid_1 = eventid_1 or "*"
         eventid_2 = eventid_2 or "*"
 
+        if not eid_ints:
+            Logger.warning("Returning event ids as strings - this may cause "
+                           "issues for formatting output strings")
+
         # Work out indexes
-        sids = fnmatch.filter(self.seedids, seed_id)
+        sids = fnmatch.filter(self.stations, station)
         if len(sids) == 0:
             raise NotImplementedError(
-                f"{seed_id} not found in correlations")
+                f"{station} not found in correlations")
+
+        pids = fnmatch.filter(self.phases, phase)
+        if len(pids) == 0:
+            raise NotImplementedError(
+                f"{phase} not found in correlations")
 
         event1_ids = fnmatch.filter(self.eventids, eventid_1)
         if len(event1_ids) == 0:
@@ -253,28 +335,41 @@ class Correlations:
         else:
             event2_indexes = [
                 (s, self.eventids.index(s)) for s in event2_ids]
-        out = dict()
-        for sid in sids:
-            if sid == '':
+        out = []
+        for event1_id in event1_ids:
+            if event1_id == '':
                 continue
-            event1_dict = dict()
-            for event1_id in event1_ids:
-                if event1_id == '':
+            if eid_ints:
+                event1_id_out = int(event1_id)
+            else:
+                event1_id_out = event1_id
+            for event2_id, event2_index in event2_indexes:
+                if event2_id == '':
                     continue
-                event2_dict = dict()
-                for event2_id, event2_index in event2_indexes:
-                    if event2_id == '':
+                if eid_ints:
+                    event2_id_out = int(event2_id)
+                else:
+                    event2_id_out = event2_id
+                event_pair = _EventPair(
+                    event_id_1=event1_id_out, event_id_2=event2_id_out, obs=[])
+                for station in sids:
+                    if station == '':
                         continue
-                    event2_dict.update({event2_id: self._get_correlation(
-                        seed_id=sid,
-                        event1_id=event1_id,
-                        event2_index=event2_index)})
-                event1_dict.update({event1_id: event2_dict})
-            out.update({sid: event1_dict})
+                    for phase in pids:
+                        if phase == '':
+                            continue
+                        obs = self._get_correlation(
+                            station=station, phase=phase, event1_id=event1_id,
+                            event2_index=event2_index)
+                        if not np.isnan(obs.weight):
+                            event_pair.obs.append(obs)
+                if len(event_pair.obs) > 0:
+                    out.append(event_pair)
         return out
 
 
 class Correlator:
+    _catalog = list()  # List of Sparse Events
     _pairs_run = set()  # Cache of what work has already been done
     event_mapper = dict()  # Key to map event ids to dt.cc ids
     _wf_cache_dir = os.path.abspath(("./.dt_waveforms"))
@@ -284,38 +379,45 @@ class Correlator:
         self,
         minlink: int,
         maxsep: float,
-        shift: float,
+        shift_len: float,
         pre_pick: float,
         length: float,
         lowcut: float,
         highcut: float,
+        interpolate: bool,
+        client: Union[Client, WaveBank, InMemoryWaveBank],
         correlation_cache: str = None
     ):
         self.minlink = minlink
         self.maxsep = maxsep
-        self.shift = shift
+        self.shift_len = shift_len
         self.pre_pick = pre_pick
         self.length = length
         self.lowcut = lowcut
         self.highcut = highcut
+        self.interpolate = interpolate
+        self.client = client
         self.correlation_cache = Correlations(
             correlation_file=correlation_cache)
 
     def _get_waveforms(
         self,
-        event: Event,
-        client: Union[Client, WaveBank, InMemoryWaveBank]
+        event: Union[Event, SparseEvent],
     ) -> Dict[str, Stream]:
         """
         Get and process stream - look in database first, get from client second
         """
+        if isinstance(event, SparseEvent):
+            rid = event.resource_id
+        else:
+            rid = event.resource_id.id
         if not os.path.isdir(self._wf_cache_dir):
             os.makedirs(self._wf_cache_dir)
         waveform_filename = self._wf_naming.format(
             cache_dir=self._wf_cache_dir,
-            event_id=event.resource_id.id.split('/')[-1])
+            event_id=rid.split('/')[-1])
         if os.path.isfile(waveform_filename):
-            return {event.resource_id.id: read(waveform_filename)}
+            return {rid: read(waveform_filename)}
         # Get from the client and process - get an excess of data
         bulk = [(p.waveform_id.network_code,
                  p.waveform_id.station_code,
@@ -324,38 +426,125 @@ class Correlator:
                  p.time - self.pre_pick * 4,
                  p.time + 4 * (self.length - self.pre_pick))
                 for p in event.picks]
-        st = client.get_waveforms_bulk(bulk)
+        try:
+            st = self.client.get_waveforms_bulk(bulk)
+        except Exception as e:
+            Logger.error(e)
+            Logger.info("Trying chunked")
+            st = Stream()
+            for _b in bulk:
+                try:
+                    st += self.client.get_waveforms(*_b)
+                except Exception as e:
+                    Logger.error(e)
+                    Logger.info(f"Skipping {_b}")
+                    continue
         st_dict = _filter_stream(
-            event.resource_id.id, st, self.lowcut, self.highcut)
+            rid, st, self.lowcut, self.highcut)
         Logger.info(f"Writing waveform to {waveform_filename}")
         # Catch and ignore warnings
-        with warnings.simplefilter("ignore"):
-            st_dict[event.resource_id.id].write(
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            st_dict[rid].write(
                 waveform_filename, format="MSEED")
         return st_dict
+
+    @property
+    def _nexteid(self):
+        last_eid = 0
+        for eid in self.event_mapper.values():
+            if eid > last_eid:
+                last_eid = eid
+        return last_eid + 1
+
+    def add_event(
+        self,
+        event: Event,
+        max_workers: int = 1,
+    ):
+        if event.resource_id.id in self.event_mapper.keys():
+            Logger.info("Event already included, skipping")
+            return
+        # TODO: Increment the event id mapper and add event to mapper
+        self.event_mapper.update({event.resource_id.id: self._nexteid})
+        Logger.info("Getting waveforms")
+        st_dict = self._get_waveforms(event=event)
+        Logger.info("Computing distance array")
+        distance_array = dist_array_km(master=event, catalog=self._catalog)
+        events_to_correlate = [ev for i, ev in enumerate(self._catalog)
+                               if distance_array[i] <= self.maxsep]
+        if len(events_to_correlate) == 0:
+            # We don't need to do anymore work
+            if isinstance(event, Event):
+                self._catalog.append(SparseEvent.from_event(event))
+            else:
+                self._catalog.append(event)
+            return
+        Logger.info(
+            f"There are {len(events_to_correlate)} events to correlate")
+        # Get waveforms for all events in events to correlate
+        Logger.info("Getting waveforms for other events")
+        for event in events_to_correlate:
+            st_dict.update(self._get_waveforms(event=event))
+        Logger.info("Running correlations")
+        # Run _compute_dt_correlations
+        differential_times = _compute_dt_correlations(
+            catalog=events_to_correlate, master=event,
+            min_link=self.minlink, event_id_mapper=self.event_mapper,
+            stream_dict=st_dict, min_cc=0.0, extract_len=self.length,
+            pre_pick=self.pre_pick, shift_len=self.shift_len,
+            interpolate=self.interpolate, max_workers=max_workers,
+            shm_data_shape=None, shm_dtype=None,
+            weight_by_square=False)
+        # Differential times is a list of _EventPairs
+        Logger.info("Updating the cache")
+        self.correlation_cache.update(differential_times)
+        if isinstance(event, Event):
+            self._catalog.append(SparseEvent.from_event(event))
+        else:
+            self._catalog.append(event)
+        return
 
     def add_events(
         self,
         catalog: Union[Catalog, Iterable[SparseEvent]],
-        client: Union[Client, WaveBank, InMemoryWaveBank]
+        max_workers: int = 1,
     ):
-        # Find new events
-        event_ids = {ev.resource_id.id for ev in catalog}
-        new_event_ids = event_ids.difference(set(self.event_mapper.keys()))
-        # Distance cluster - we should cache the distance matrix somehow
+        # TODO: This could be parallel, but probably wouldn't help that much
+        for event in catalog:
+            self.add_event(event, max_workers=max_workers)
 
-        # Select only the new-events that meet the distance criteria and none in self._pairs_run
-
-        # Get stream-dict
-
-        # Compute correlations
-
-        # Add correlations to self.correlation
-
-
-
-    def write_correlations(self, outfile: str = "dt.cc"):
+    def write_correlations(
+        self,
+        outfile: str = "dt.cc",
+        min_cc: float = 0.0,
+        weight_by_square: bool = True
+    ):
         """ Write the correlations to a dt.cc file """
+        # Conserve memory and just get one event at a time
+        with open(outfile, "w") as f:
+            for event1_id in self.correlation_cache.eventids:
+                event1_id = int(event1_id)  # Correlation cache stores as strings, but we know they are ints
+                event_pairs = self.correlation_cache.select(
+                    eventid_1=event1_id)
+                for event_pair in event_pairs:
+                    if event_pair.event_id_1 == event_pair.event_id_2:
+                        continue
+                    # Threshold observations
+                    retained_observations = []
+                    for observation in event_pair.obs:
+                        if observation.weight < min_cc:
+                            continue
+                        if weight_by_square:
+                            observation.weight **= 2
+                        retained_observations.append(observation)
+                    event_pair.obs = retained_observations
+                    if len(event_pair.obs) == 0:
+                        # Don't write empty pairs
+                        continue
+                    f.write(event_pair.cc_string)
+                    f.write("\n")
+        return
 
 
 if __name__ == "__main__":
