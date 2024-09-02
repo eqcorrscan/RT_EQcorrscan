@@ -462,6 +462,13 @@ class Correlator:
                 last_eid = eid
         return last_eid + 1
 
+    def _append_event(self, event: Union[Event, SparseEvent]):
+        if isinstance(event, Event):
+            self._catalog.append(SparseEvent.from_event(event))
+        else:
+            self._catalog.append(event)
+        return
+
     def add_event(
         self,
         event: Union[Event, SparseEvent],
@@ -469,28 +476,29 @@ class Correlator:
     ):
         if event.resource_id.id in self.event_mapper.keys():
             Logger.info(f"Event {event.resource_id.id} already included, skipping")
+            self._append_event(event)
             return
         # TODO: Increment the event id mapper and add event to mapper
         self.event_mapper.update({event.resource_id.id: self._nexteid})
         Logger.info("Getting waveforms")
         st_dict = self._get_waveforms(event=event)
+        if len(st_dict[event.resource_id.id]) == 0:
+            Logger.info(f"No waveforms for event {event.resource_id.id}: skipping")
         Logger.info("Computing distance array")
         distance_array = dist_array_km(master=event, catalog=self._catalog)
         events_to_correlate = [ev for i, ev in enumerate(self._catalog)
                                if distance_array[i] <= self.maxsep]
         if len(events_to_correlate) == 0:
             # We don't need to do anymore work
-            if isinstance(event, Event):
-                self._catalog.append(SparseEvent.from_event(event))
-            else:
-                self._catalog.append(event)
-            return
+            self._append_event(event)
         Logger.info(
             f"There are {len(events_to_correlate)} events to correlate")
         # Get waveforms for all events in events to correlate
         Logger.info("Getting waveforms for other events")
         for event in events_to_correlate:
-            st_dict.update(self._get_waveforms(event=event))
+            event_st_dict = self._get_waveforms(event=event)
+            if len(event_st_dict[event.resource_id.id]):
+                st_dict.update(event_st_dict)
         Logger.info("Running correlations")
         # Run _compute_dt_correlations
         differential_times = _compute_dt_correlations(
@@ -504,10 +512,7 @@ class Correlator:
         # Differential times is a list of _EventPairs
         Logger.info("Updating the cache")
         self.correlation_cache.update(differential_times)
-        if isinstance(event, Event):
-            self._catalog.append(SparseEvent.from_event(event))
-        else:
-            self._catalog.append(event)
+        self._append_event(event)
         return
 
     def add_events(

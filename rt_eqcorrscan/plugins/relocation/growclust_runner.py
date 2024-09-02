@@ -653,6 +653,10 @@ class GrowClust(_Plugin):
                 Logger.debug(f"Could not read from {f} due to {e}")
                 continue
             for ev in _cat:
+                if len(ev.picks) == 0:
+                    Logger.warning(
+                        f"No picks for event: {ev.resource_id.id}, not relocating")
+                    continue
                 new_events.append(SparseEvent.from_event(ev))
                 self._all_event_files.update({ev.resource_id.id: f})
 
