@@ -425,6 +425,7 @@ class Correlator:
                  p.time - self.pre_pick * 4,
                  p.time + 4 * (self.length - self.pre_pick))
                 for p in event.picks]
+        Logger.info(f"Trying to get data from {self.client} using bulk: {bulk}")
         try:
             st = self.client.get_waveforms_bulk(bulk)
         except Exception as e:
@@ -440,6 +441,8 @@ class Correlator:
                     continue
         st = st.merge()
         Logger.info(f"Read in {len(st)} traces")
+        if len(st) == 0:
+            return {rid: Stream()}
         st_dict = _filter_stream(
             rid, st, self.lowcut, self.highcut)
         Logger.info(f"Writing waveform to {waveform_filename}")
@@ -484,6 +487,7 @@ class Correlator:
         st_dict = self._get_waveforms(event=event)
         if len(st_dict[event.resource_id.id]) == 0:
             Logger.info(f"No waveforms for event {event.resource_id.id}: skipping")
+            return
         Logger.info("Computing distance array")
         distance_array = dist_array_km(master=event, catalog=self._catalog)
         events_to_correlate = [ev for i, ev in enumerate(self._catalog)
