@@ -80,7 +80,11 @@ class InMemoryWaveBank:
             network=network, station=station, location=location,
             channel=channel, starttime=starttime, endtime=endtime)
         for file in files:
-            tr = read(file).trim(starttime=starttime, endtime=endtime)
+            try:
+                tr = read(file).trim(starttime=starttime, endtime=endtime)
+            except Exception as e:
+                Logger.error(f"Could not read from {file} due to {e}")
+                continue
             Logger.info(
                 f"Read in {tr} from {file} for {network}.{station}."
                 f"{location}.{channel} between {starttime} and {endtime}")
@@ -147,8 +151,12 @@ class InMemoryWaveBank:
             for file in pick.files:
                 if file.filename is None:
                     continue
-                st += read(file.filename, starttime=UTCDateTime(tr_start),
-                           endtime=UTCDateTime(tr_end))
+                try:
+                    st += read(file.filename, starttime=UTCDateTime(tr_start),
+                               endtime=UTCDateTime(tr_end))
+                except Exception as e:
+                    Logger.error(f"Could not read from {file.filename} due to {e}")
+                    continue
         return st
 
     def get_data_availability(self, scan_all: bool = True):
