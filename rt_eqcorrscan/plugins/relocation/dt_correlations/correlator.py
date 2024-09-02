@@ -539,6 +539,9 @@ class Correlator:
         # Conserve memory and just get one event at a time
         with open(outfile, "w") as f:
             for event1_id in self.correlation_cache.eventids:
+                if event1_id == '':
+                    # Skip
+                    continue
                 event1_id = int(event1_id)  # Correlation cache stores as strings, but we know they are ints
                 event_pairs = self.correlation_cache.select(
                     eventid_1=event1_id)
