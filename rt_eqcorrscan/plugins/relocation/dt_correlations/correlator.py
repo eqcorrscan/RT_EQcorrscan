@@ -424,7 +424,8 @@ class Correlator:
                  p.waveform_id.channel_code,
                  p.time - self.pre_pick * 4,
                  p.time + 4 * (self.length - self.pre_pick))
-                for p in event.picks]
+                for p in event.picks
+                if p.phase_hint.upper().startswith(("P", "S"))]
         Logger.info(f"Trying to get data from {self.client} using bulk: {bulk}")
         try:
             st = self.client.get_waveforms_bulk(bulk)

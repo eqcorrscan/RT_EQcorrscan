@@ -21,10 +21,9 @@ _FileInfo = namedtuple("FileInfo",
 PickData = namedtuple("PickData", ["seed_id", "time", "files"])
 
 class InMemoryWaveBank:
-    data_availability = dict()  # Keyed by seed ID, values as _FileInfo
-
     def __init__(self, wavedir: str):
         self.wavedir = os.path.abspath(wavedir)
+        self.data_availability = dict()  # Keyed by seed ID, values as _FileInfo
 
     def __repr__(self):
         return f"InMemoryWaveBank(wavedir={self.wavedir})"
@@ -187,7 +186,7 @@ class InMemoryWaveBank:
                     seed_availability = self.data_availability.get(tr.id, [])
                     seed_availability.append(
                         _FileInfo(
-                            filepath,
+                            os.path.abspath(filepath),
                             tr.id,
                             tr.stats.starttime.datetime,  # these need to be datetimes to be hashable
                             tr.stats.endtime.datetime
