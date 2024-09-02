@@ -80,7 +80,11 @@ class InMemoryWaveBank:
             network=network, station=station, location=location,
             channel=channel, starttime=starttime, endtime=endtime)
         for file in files:
-            st += read(file).trim(starttime=starttime, endtime=endtime)
+            tr = read(file).trim(starttime=starttime, endtime=endtime)
+            Logger.info(
+                f"Read in {tr} from {file} for {network}.{station}."
+                f"{location}.{channel} between {starttime} and {endtime}")
+            st += tr
         st = st.merge()
         return st
 
