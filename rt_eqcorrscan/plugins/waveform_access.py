@@ -72,8 +72,11 @@ class InMemoryWaveBank:
         location: str,
         channel: str,
         starttime: UTCDateTime,
-        endtime: UTCDateTime
+        endtime: UTCDateTime,
+        check_new_files: bool = True,
     ) -> Stream:
+        if check_new_files:
+            self.get_data_availability(scan_all=False)
         st = Stream()
         files = self.get_files(
             network=network, station=station, location=location,
@@ -91,10 +94,13 @@ class InMemoryWaveBank:
         st = st.merge()
         return st
 
-    def get_waveforms_bulk(self, bulk: Iterable) -> Stream:
+    def get_waveforms_bulk(
+        self, bulk: Iterable,
+        check_new_files: bool = True
+    ) -> Stream:
         st = Stream()
         for _bulk in bulk:
-            st += self.get_waveforms(*_bulk)
+            st += self.get_waveforms(*_bulk, check_new_files=check_new_files)
         return st
 
     def get_event_waveforms(
