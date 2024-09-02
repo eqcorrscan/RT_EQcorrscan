@@ -445,7 +445,7 @@ class Correlator:
         if len(st) == 0:
             return {rid: Stream()}
         st_dict = _filter_stream(
-            rid, st, self.lowcut, self.highcut)
+            rid, st.split(), self.lowcut, self.highcut)
         Logger.info(f"Writing waveform to {waveform_filename}")
         # Catch and ignore warnings
         with warnings.catch_warnings():
@@ -514,6 +514,9 @@ class Correlator:
             interpolate=self.interpolate, max_workers=max_workers,
             shm_data_shape=None, shm_dtype=None,
             weight_by_square=False)
+        Logger.info("Got the following differential times:")
+        for dt in differential_times:
+            Logger.info(dt)
         # Differential times is a list of _EventPairs
         Logger.info("Updating the cache")
         self.correlation_cache.update(differential_times)
