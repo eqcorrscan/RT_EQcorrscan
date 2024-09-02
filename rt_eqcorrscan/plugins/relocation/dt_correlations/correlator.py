@@ -508,7 +508,7 @@ class Correlator:
         # Run _compute_dt_correlations
         differential_times = _compute_dt_correlations(
             catalog=events_to_correlate, master=event,
-            min_link=self.minlink, event_id_mapper=self.event_mapper,
+            min_link=0, event_id_mapper=self.event_mapper,
             stream_dict=st_dict, min_cc=0.0, extract_len=self.length,
             pre_pick=self.pre_pick, shift_len=self.shift_len,
             interpolate=self.interpolate, max_workers=max_workers,
@@ -534,9 +534,10 @@ class Correlator:
         outfile: str = "dt.cc",
         min_cc: float = 0.0,
         weight_by_square: bool = True
-    ):
+    ) -> int:
         """ Write the correlations to a dt.cc file """
         # Conserve memory and just get one event at a time
+        written_links = 0
         with open(outfile, "w") as f:
             for event1_id in self.correlation_cache.eventids:
                 if event1_id == '':
@@ -562,7 +563,8 @@ class Correlator:
                         continue
                     f.write(event_pair.cc_string)
                     f.write("\n")
-        return
+                    written_links += 1
+        return written_links
 
 
 if __name__ == "__main__":

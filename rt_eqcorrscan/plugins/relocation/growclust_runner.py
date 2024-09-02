@@ -591,7 +591,6 @@ class GrowClust(_Plugin):
             catalog, event_id_mapper=self.correlator.event_mapper)
         phase_to_evlist("phase.dat")
         # Write station file
-        # TODO: Work out seed ids and start and end times from catalog
         seed_ids = {p.waveform_id.get_seed_string()
                     for ev in catalog for p in ev.picks}
         # Events don't *have* to have an origin, so we still need to use picks
@@ -601,10 +600,19 @@ class GrowClust(_Plugin):
                        station_file=station_file)
         # Write correlations
         Logger.info("Writing correlations")
-        self.correlator.write_correlations(
+        written_links = self.correlator.write_correlations(
             outfile="dt.cc", min_cc=self.config.correlation_config.min_cc,
             weight_by_square=self.config.correlation_config.weight_by_square)
+        if written_links == 0:
+            Logger.warning(
+                f"No links above threshold "
+                f"({self.config.correlation_config.min_cc}), not running "
+                f"growclust")
+            os.chdir(cwd)
 
+            # Out of tempdir
+            working_dir.cleanup()
+            return
         # Run growclust
         mean_lat, mean_lon = get_catalog_mean_location(catalog)
         Logger.info("Running growclust")

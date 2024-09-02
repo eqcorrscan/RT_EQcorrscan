@@ -87,7 +87,7 @@ class InMemoryWaveBank:
             except Exception as e:
                 Logger.error(f"Could not read from {file} due to {e}")
                 continue
-            Logger.info(
+            Logger.debug(
                 f"Read in {tr} from {file} for {network}.{station}."
                 f"{location}.{channel} between {starttime} and {endtime}")
             st += tr
