@@ -438,14 +438,20 @@ class Correlator:
                     Logger.error(e)
                     Logger.info(f"Skipping {_b}")
                     continue
+        st = st.merge()
+        Logger.info(f"Read in {len(st)} traces")
         st_dict = _filter_stream(
             rid, st, self.lowcut, self.highcut)
         Logger.info(f"Writing waveform to {waveform_filename}")
         # Catch and ignore warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            st_dict[rid].write(
-                waveform_filename, format="MSEED")
+            try:
+                st_dict[rid].write(
+                    waveform_filename, format="MSEED")
+            except Exception as e:
+                Logger.error(f"Could not write {st_dict[rid]} to "
+                             f"{waveform_filename} due to {e}")
         return st_dict
 
     @property
