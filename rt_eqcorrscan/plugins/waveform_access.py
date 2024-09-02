@@ -3,6 +3,9 @@
 import datetime as dt
 import logging
 import os
+import fnmatch
+
+from typing import Iterable, List
 
 from collections import namedtuple
 
@@ -15,10 +18,10 @@ Logger = logging.getLogger(__name__)
 # Convenience file info
 _FileInfo = namedtuple("FileInfo",
                        ["filename", "seed_id", "starttime", "endtime"])
-
+PickData = namedtuple("PickData", ["seed_id", "time", "files"])
 
 class InMemoryWaveBank:
-    data_availability = dict()
+    data_availability = dict()  # Keyed by seed ID, values as _FileInfo
 
     def __init__(self, wavedir: str):
         self.wavedir = os.path.abspath(wavedir)
@@ -33,6 +36,60 @@ class InMemoryWaveBank:
                     for finfo in value}
         return set()
 
+    def get_files(
+        self,
+        network: str = None,
+        station: str = None,
+        location: str = None,
+        channel: str = None,
+        starttime: UTCDateTime = None,
+        endtime: UTCDateTime = None,
+    ) -> List[str]:
+        sid = ".".join((
+            network or "*",
+            station or "*",
+            location or "*",
+            channel or "*"))
+        keys = fnmatch.filter(self.data_availability.keys(), sid)
+        # Filter on time
+        files = []
+        for key in keys:
+            for finfo in self.data_availability[key]:
+                if finfo.starttime <= starttime <= finfo.endtime:
+                    # Starttime is within file, we want file
+                    files.append(finfo.filename)
+                elif finfo.starttime <= endtime <= finfo.endtime:
+                    # Endtime is within file, we want file
+                    files.append(finfo.filename)
+                elif starttime <= finfo.starttime and endtime >= finfo.endtime:
+                    # File starts and ends within requested start and end
+                    files.append(finfo.filename)
+        return files
+
+    def get_waveforms(
+        self,
+        network: str,
+        station: str,
+        location: str,
+        channel: str,
+        starttime: UTCDateTime,
+        endtime: UTCDateTime
+    ) -> Stream:
+        st = Stream()
+        files = self.get_files(
+            network=network, station=station, location=location,
+            channel=channel, starttime=starttime, endtime=endtime)
+        for file in files:
+            st += read(file).trim(starttime=starttime, endtime=endtime)
+        st = st.merge()
+        return st
+
+    def get_waveforms_bulk(self, bulk: Iterable) -> Stream:
+        st = Stream()
+        for _bulk in bulk:
+            st += self.get_waveforms(*_bulk)
+        return st
+
     def get_event_waveforms(
         self,
         event: Event,
@@ -44,14 +101,13 @@ class InMemoryWaveBank:
         # convenience pick named tuple
         if phases is None:
             phases = {"P", "Pn", "Pg", "Pb", "S", "Sn", "Sg", "Sb"}
-        SparsePick = namedtuple("SparsePick", ["seed_id", "time", "files"])
         # Check for new files
         if check_new_files:
             self.get_data_availability(scan_all=False)
         # Filter on phase hint
         used_picks = [
-            SparsePick(pick.waveform_id.get_seed_string(),
-                       pick.time.datetime, [None])
+            PickData(pick.waveform_id.get_seed_string(),
+                     pick.time.datetime, [None])
             for pick in event.picks if pick.phase_hint in phases]
         # Filter on availability
         used_picks = [p for p in used_picks
@@ -64,9 +120,14 @@ class InMemoryWaveBank:
             tr_end = ((pick.time - dt.timedelta(seconds=pre_pick)) +
                       dt.timedelta(seconds=length))
             files = {f for f in seed_availability
-                     if f.starttime < tr_start < f.endtime}  # Starts within file
+                     if f.starttime < tr_start < f.endtime}
+            # Starts within file
             files.update({f for f in seed_availability
-                          if f.starttime < tr_end < f.endtime})  # Ends within file
+                          if f.starttime < tr_end < f.endtime})
+            # Ends within file
+            files.update({f for f in seed_availability
+                          if tr_start <= f.starttime and tr_end <= f.endtime})
+            # File completely within timespan
             _used_picks.append(pick._replace(files=files))
         used_picks = _used_picks
         del _used_picks

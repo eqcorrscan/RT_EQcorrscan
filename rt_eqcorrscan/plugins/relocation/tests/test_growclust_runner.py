@@ -7,18 +7,16 @@ import logging
 import time
 import os
 import shutil
-import glob
 
 from typing import List
-from multiprocessing import Process, Queue
+from multiprocessing import Process
 
 from obspy import Catalog, UTCDateTime, read_events
 
 from eqcorrscan.utils.catalog_utils import filter_picks
 
-from rt_eqcorrscan.plugins.waveform_access import InMemoryWaveBank
 from rt_eqcorrscan.plugins.relocation.growclust_runner import (
-    run_growclust_for_files, _cleanup, GrowClustConfig, GrowClust)
+    _cleanup, GrowClustConfig, GrowClust)
 
 Logger = logging.getLogger(__name__)
 
@@ -130,11 +128,21 @@ class TestGrowclustPlugin(unittest.TestCase):
         cls.clean_up.extend([cls.eventdir, cls.wavedir, cls.outdir])
 
     def test_main(self):
-        run_growclust_for_files(
-            input_files=set(glob.glob(f"{self.eventdir}/*.xml")),
-            in_memory_wavebank=InMemoryWaveBank(self.wavedir),
-            outdir=self.outdir, station_file=f"{self.eventdir}/stations.xml")
-        cat_back = read_events(f"{self.outdir}/*.xml")
+        out_dir, config_file = "gc_test_output", "gc_config.yml"
+        config = GrowClustConfig(
+            sleep_interval=5, tt_zmax=50.0, ttxmax=500.0,
+            in_dir=self.eventdir, out_dir=out_dir, wavebank_dir=self.wavedir,
+            station_file=f"{self.eventdir}/stations.xml")
+
+        self.clean_up.extend([out_dir, config_file])
+
+        config.write(config_file)
+
+        gc_runner = GrowClust(config_file=config_file)
+        gc_runner.run(loop=False)
+
+
+        cat_back = read_events(f"{out_dir}/*.xml")
         self.assertEqual(len(cat_back), len(self.cat))
         # All events should be relocated
         for ev in cat_back:

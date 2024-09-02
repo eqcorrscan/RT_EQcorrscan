@@ -35,13 +35,11 @@ class Correlations:
     Correlations are stored as an m x n x n array where n is the number of
     events and m is the number of channels.
     """
-    _string_encoding = 'utf-8'
-    _string_dtype = h5py.string_dtype(encoding=_string_encoding, length=None)
-
     def __init__(self, correlation_file: str = None):
+        self._string_encoding = 'utf-8'
         if correlation_file is None:
             correlation_file = f".correlations_{id(self)}.h5"
-        self._correlation_file = correlation_file
+        self._correlation_file = os.path.abspath(correlation_file)
         if not os.path.isfile(correlation_file):
             self._make_correlation_file()
         self._validate_correlation_file()
@@ -51,6 +49,11 @@ class Correlations:
 
     def __repr__(self):
         return f"Correlations(correlation_file={self.correlation_file})"
+
+    def _get_string_dtype(self):
+        return h5py.string_dtype(encoding=self._string_encoding, length=None)
+
+    _string_dtype = property(fget=_get_string_dtype)
 
     def _get_correlation_file(self):
         return self._correlation_file
@@ -369,12 +372,6 @@ class Correlations:
 
 
 class Correlator:
-    _catalog = list()  # List of Sparse Events
-    _pairs_run = set()  # Cache of what work has already been done
-    event_mapper = dict()  # Key to map event ids to dt.cc ids
-    _wf_cache_dir = os.path.abspath(("./.dt_waveforms"))
-    _wf_naming = "{cache_dir}/{event_id}.ms"
-
     def __init__(
         self,
         minlink: int,
@@ -399,6 +396,11 @@ class Correlator:
         self.client = client
         self.correlation_cache = Correlations(
             correlation_file=correlation_cache)
+        self._catalog = list()  # List of Sparse Events
+        self._pairs_run = set()  # Cache of what work has already been done
+        self.event_mapper = dict()  # Key to map event ids to dt.cc ids
+        self._wf_cache_dir = os.path.abspath(("./.dt_waveforms"))
+        self._wf_naming = "{cache_dir}/{event_id}.ms"
 
     def _get_waveforms(
         self,
@@ -407,10 +409,7 @@ class Correlator:
         """
         Get and process stream - look in database first, get from client second
         """
-        if isinstance(event, SparseEvent):
-            rid = event.resource_id
-        else:
-            rid = event.resource_id.id
+        rid = event.resource_id.id
         if not os.path.isdir(self._wf_cache_dir):
             os.makedirs(self._wf_cache_dir)
         waveform_filename = self._wf_naming.format(
@@ -459,11 +458,11 @@ class Correlator:
 
     def add_event(
         self,
-        event: Event,
+        event: Union[Event, SparseEvent],
         max_workers: int = 1,
     ):
         if event.resource_id.id in self.event_mapper.keys():
-            Logger.info("Event already included, skipping")
+            Logger.info(f"Event {event.resource_id.id} already included, skipping")
             return
         # TODO: Increment the event id mapper and add event to mapper
         self.event_mapper.update({event.resource_id.id: self._nexteid})
