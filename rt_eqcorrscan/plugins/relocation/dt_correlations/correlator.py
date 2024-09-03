@@ -504,7 +504,10 @@ class Correlator:
             event_st_dict = self._get_waveforms(event=event)
             if len(event_st_dict[event.resource_id.id]):
                 st_dict.update(event_st_dict)
-        Logger.info("Running correlations")
+            else:
+                Logger.warning(
+                    f"Could not get waveforms for {event.resource_id.id}")
+        Logger.info(f"Running correlations for {len(st_dict.keys())} events")
         # Run _compute_dt_correlations
         differential_times = _compute_dt_correlations(
             catalog=events_to_correlate, master=event,
