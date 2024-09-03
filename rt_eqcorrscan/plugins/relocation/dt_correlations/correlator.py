@@ -396,7 +396,7 @@ class Correlator:
         self.client = client
         self.correlation_cache = Correlations(
             correlation_file=correlation_cache)
-        self._catalog = list()  # List of Sparse Events
+        self._catalog = set()  # List of Sparse Events
         self._pairs_run = set()  # Cache of what work has already been done
         self.event_mapper = dict()  # Key to map event ids to dt.cc ids
         self._wf_cache_dir = os.path.abspath(("./.dt_waveforms"))
@@ -474,12 +474,10 @@ class Correlator:
         return {ev.resource_id.id for ev in self._catalog}
 
     def _append_event(self, event: Union[Event, SparseEvent]):
-        if event.resource_id.id in self._catalog_event_ids:
-            return
         if isinstance(event, Event):
-            self._catalog.append(SparseEvent.from_event(event))
+            self._catalog.add(SparseEvent.from_event(event))
         else:
-            self._catalog.append(event)
+            self._catalog.add(event)
         return
 
     def add_event(
@@ -499,40 +497,42 @@ class Correlator:
             Logger.info(f"No waveforms for event {event.resource_id.id}: skipping")
             return
         Logger.info("Computing distance array")
-        distance_array = dist_array_km(master=event, catalog=self._catalog)
-        events_to_correlate = [ev for i, ev in enumerate(self._catalog)
+        ordered_catalog = list(self._catalog)
+        distance_array = dist_array_km(
+            master=event, catalog=ordered_catalog)
+        events_to_correlate = [ev for i, ev in enumerate(ordered_catalog)
                                if distance_array[i] <= self.maxsep]
+        Logger.info(
+            f"There are {len(events_to_correlate)} events to correlate")
         if len(events_to_correlate) == 0:
             # We don't need to do anymore work
             self._append_event(event)
-        Logger.info(
-            f"There are {len(events_to_correlate)} events to correlate")
-        if len(events_to_correlate):
-            # Get waveforms for all events in events to correlate
-            Logger.info("Getting waveforms for other events")
-            for event in events_to_correlate:
-                event_st_dict = self._get_waveforms(event=event)
-                if len(event_st_dict[event.resource_id.id]):
-                    st_dict.update(event_st_dict)
-                else:
-                    Logger.warning(
-                        f"Could not get waveforms for {event.resource_id.id}")
-            Logger.info(f"Running correlations for {len(st_dict.keys())} events")
-            # Run _compute_dt_correlations
-            differential_times = _compute_dt_correlations(
-                catalog=events_to_correlate, master=event,
-                min_link=0, event_id_mapper=self.event_mapper,
-                stream_dict=st_dict, min_cc=0.0, extract_len=self.length,
-                pre_pick=self.pre_pick, shift_len=self.shift_len,
-                interpolate=self.interpolate, max_workers=max_workers,
-                shm_data_shape=None, shm_dtype=None,
-                weight_by_square=False)
-            Logger.info("Got the following differential times:")
-            for dt in differential_times:
-                Logger.info(dt)
-            # Differential times is a list of _EventPairs
-            Logger.info("Updating the cache")
-            self.correlation_cache.update(differential_times)
+            return
+        # Get waveforms for all events in events to correlate
+        Logger.info("Getting waveforms for other events")
+        for event in events_to_correlate:
+            event_st_dict = self._get_waveforms(event=event)
+            if len(event_st_dict[event.resource_id.id]):
+                st_dict.update(event_st_dict)
+            else:
+                Logger.warning(
+                    f"Could not get waveforms for {event.resource_id.id}")
+        Logger.info(f"Running correlations for {len(st_dict.keys())} events")
+        # Run _compute_dt_correlations
+        differential_times = _compute_dt_correlations(
+            catalog=events_to_correlate, master=event,
+            min_link=0, event_id_mapper=self.event_mapper,
+            stream_dict=st_dict, min_cc=0.0, extract_len=self.length,
+            pre_pick=self.pre_pick, shift_len=self.shift_len,
+            interpolate=self.interpolate, max_workers=max_workers,
+            shm_data_shape=None, shm_dtype=None,
+            weight_by_square=False)
+        Logger.info("Got the following differential times:")
+        for dt in differential_times:
+            Logger.info(dt)
+        # Differential times is a list of _EventPairs
+        Logger.info("Updating the cache")
+        self.correlation_cache.update(differential_times)
         self._append_event(event)
         return
 
