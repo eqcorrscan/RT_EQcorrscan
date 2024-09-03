@@ -396,7 +396,7 @@ class Correlator:
         self.client = client
         self.correlation_cache = Correlations(
             correlation_file=correlation_cache)
-        self._catalog = list()  # List of Sparse Events
+        self._catalog = set()  # List of Sparse Events
         self._pairs_run = set()  # Cache of what work has already been done
         self.event_mapper = dict()  # Key to map event ids to dt.cc ids
         self._wf_cache_dir = os.path.abspath(("./.dt_waveforms"))
@@ -416,7 +416,10 @@ class Correlator:
             cache_dir=self._wf_cache_dir,
             event_id=rid.split('/')[-1])
         if os.path.isfile(waveform_filename):
-            return {rid: read(waveform_filename)}
+            Logger.info(f"Reading cached waveforms from {waveform_filename}")
+            st = read(waveform_filename)
+            Logger.info(f"Read in {len(st)} traces")
+            return {rid: st}
         # Get from the client and process - get an excess of data
         bulk = [(p.waveform_id.network_code,
                  p.waveform_id.station_code,
@@ -424,7 +427,9 @@ class Correlator:
                  p.waveform_id.channel_code,
                  p.time - self.pre_pick * 4,
                  p.time + 4 * (self.length - self.pre_pick))
-                for p in event.picks]
+                for p in event.picks
+                if p.phase_hint.upper().startswith(("P", "S"))]
+        Logger.info(f"Trying to get data from {self.client} using bulk: {bulk}")
         try:
             st = self.client.get_waveforms_bulk(bulk)
         except Exception as e:
@@ -438,14 +443,22 @@ class Correlator:
                     Logger.error(e)
                     Logger.info(f"Skipping {_b}")
                     continue
+        st = st.merge()
+        Logger.info(f"Read in {len(st)} traces")
+        if len(st) == 0:
+            return {rid: Stream()}
         st_dict = _filter_stream(
-            rid, st, self.lowcut, self.highcut)
+            rid, st.split(), self.lowcut, self.highcut)
         Logger.info(f"Writing waveform to {waveform_filename}")
         # Catch and ignore warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            st_dict[rid].write(
-                waveform_filename, format="MSEED")
+            try:
+                st_dict[rid].write(
+                    waveform_filename, format="MSEED")
+            except Exception as e:
+                Logger.error(f"Could not write {st_dict[rid]} to "
+                             f"{waveform_filename} due to {e}")
         return st_dict
 
     @property
@@ -456,6 +469,17 @@ class Correlator:
                 last_eid = eid
         return last_eid + 1
 
+    @property
+    def _catalog_event_ids(self):
+        return {ev.resource_id.id for ev in self._catalog}
+
+    def _append_event(self, event: Union[Event, SparseEvent]):
+        if isinstance(event, Event):
+            self._catalog.add(SparseEvent.from_event(event))
+        else:
+            self._catalog.add(event)
+        return
+
     def add_event(
         self,
         event: Union[Event, SparseEvent],
@@ -463,45 +487,53 @@ class Correlator:
     ):
         if event.resource_id.id in self.event_mapper.keys():
             Logger.info(f"Event {event.resource_id.id} already included, skipping")
+            self._append_event(event)
             return
         # TODO: Increment the event id mapper and add event to mapper
         self.event_mapper.update({event.resource_id.id: self._nexteid})
         Logger.info("Getting waveforms")
         st_dict = self._get_waveforms(event=event)
-        Logger.info("Computing distance array")
-        distance_array = dist_array_km(master=event, catalog=self._catalog)
-        events_to_correlate = [ev for i, ev in enumerate(self._catalog)
-                               if distance_array[i] <= self.maxsep]
-        if len(events_to_correlate) == 0:
-            # We don't need to do anymore work
-            if isinstance(event, Event):
-                self._catalog.append(SparseEvent.from_event(event))
-            else:
-                self._catalog.append(event)
+        if len(st_dict[event.resource_id.id]) == 0:
+            Logger.info(f"No waveforms for event {event.resource_id.id}: skipping")
             return
+        Logger.info("Computing distance array")
+        ordered_catalog = list(self._catalog)
+        distance_array = dist_array_km(
+            master=event, catalog=ordered_catalog)
+        events_to_correlate = [ev for i, ev in enumerate(ordered_catalog)
+                               if distance_array[i] <= self.maxsep]
         Logger.info(
             f"There are {len(events_to_correlate)} events to correlate")
+        if len(events_to_correlate) == 0:
+            # We don't need to do anymore work
+            self._append_event(event)
+            return
         # Get waveforms for all events in events to correlate
         Logger.info("Getting waveforms for other events")
         for event in events_to_correlate:
-            st_dict.update(self._get_waveforms(event=event))
-        Logger.info("Running correlations")
+            event_st_dict = self._get_waveforms(event=event)
+            if len(event_st_dict[event.resource_id.id]):
+                st_dict.update(event_st_dict)
+            else:
+                Logger.warning(
+                    f"Could not get waveforms for {event.resource_id.id}")
+        Logger.info(f"Running correlations for {len(st_dict.keys())} events")
         # Run _compute_dt_correlations
         differential_times = _compute_dt_correlations(
             catalog=events_to_correlate, master=event,
-            min_link=self.minlink, event_id_mapper=self.event_mapper,
+            min_link=0, event_id_mapper=self.event_mapper,
             stream_dict=st_dict, min_cc=0.0, extract_len=self.length,
             pre_pick=self.pre_pick, shift_len=self.shift_len,
             interpolate=self.interpolate, max_workers=max_workers,
             shm_data_shape=None, shm_dtype=None,
             weight_by_square=False)
+        Logger.info("Got the following differential times:")
+        for dt in differential_times:
+            Logger.info(dt)
         # Differential times is a list of _EventPairs
         Logger.info("Updating the cache")
         self.correlation_cache.update(differential_times)
-        if isinstance(event, Event):
-            self._catalog.append(SparseEvent.from_event(event))
-        else:
-            self._catalog.append(event)
+        self._append_event(event)
         return
 
     def add_events(
@@ -518,11 +550,15 @@ class Correlator:
         outfile: str = "dt.cc",
         min_cc: float = 0.0,
         weight_by_square: bool = True
-    ):
+    ) -> int:
         """ Write the correlations to a dt.cc file """
         # Conserve memory and just get one event at a time
+        written_links = 0
         with open(outfile, "w") as f:
             for event1_id in self.correlation_cache.eventids:
+                if event1_id == '':
+                    # Skip
+                    continue
                 event1_id = int(event1_id)  # Correlation cache stores as strings, but we know they are ints
                 event_pairs = self.correlation_cache.select(
                     eventid_1=event1_id)
@@ -543,7 +579,8 @@ class Correlator:
                         continue
                     f.write(event_pair.cc_string)
                     f.write("\n")
-        return
+                    written_links += 1
+        return written_links
 
 
 if __name__ == "__main__":

@@ -21,10 +21,9 @@ _FileInfo = namedtuple("FileInfo",
 PickData = namedtuple("PickData", ["seed_id", "time", "files"])
 
 class InMemoryWaveBank:
-    data_availability = dict()  # Keyed by seed ID, values as _FileInfo
-
     def __init__(self, wavedir: str):
         self.wavedir = os.path.abspath(wavedir)
+        self.data_availability = dict()  # Keyed by seed ID, values as _FileInfo
 
     def __repr__(self):
         return f"InMemoryWaveBank(wavedir={self.wavedir})"
@@ -73,21 +72,35 @@ class InMemoryWaveBank:
         location: str,
         channel: str,
         starttime: UTCDateTime,
-        endtime: UTCDateTime
+        endtime: UTCDateTime,
+        check_new_files: bool = True,
     ) -> Stream:
+        if check_new_files:
+            self.get_data_availability(scan_all=False)
         st = Stream()
         files = self.get_files(
             network=network, station=station, location=location,
             channel=channel, starttime=starttime, endtime=endtime)
         for file in files:
-            st += read(file).trim(starttime=starttime, endtime=endtime)
+            try:
+                tr = read(file).trim(starttime=starttime, endtime=endtime)
+            except Exception as e:
+                Logger.error(f"Could not read from {file} due to {e}")
+                continue
+            Logger.debug(
+                f"Read in {tr} from {file} for {network}.{station}."
+                f"{location}.{channel} between {starttime} and {endtime}")
+            st += tr
         st = st.merge()
         return st
 
-    def get_waveforms_bulk(self, bulk: Iterable) -> Stream:
+    def get_waveforms_bulk(
+        self, bulk: Iterable,
+        check_new_files: bool = True
+    ) -> Stream:
         st = Stream()
         for _bulk in bulk:
-            st += self.get_waveforms(*_bulk)
+            st += self.get_waveforms(*_bulk, check_new_files=check_new_files)
         return st
 
     def get_event_waveforms(
@@ -143,8 +156,12 @@ class InMemoryWaveBank:
             for file in pick.files:
                 if file.filename is None:
                     continue
-                st += read(file.filename, starttime=UTCDateTime(tr_start),
-                           endtime=UTCDateTime(tr_end))
+                try:
+                    st += read(file.filename, starttime=UTCDateTime(tr_start),
+                               endtime=UTCDateTime(tr_end))
+                except Exception as e:
+                    Logger.error(f"Could not read from {file.filename} due to {e}")
+                    continue
         return st
 
     def get_data_availability(self, scan_all: bool = True):
@@ -175,7 +192,7 @@ class InMemoryWaveBank:
                     seed_availability = self.data_availability.get(tr.id, [])
                     seed_availability.append(
                         _FileInfo(
-                            filepath,
+                            os.path.abspath(filepath),
                             tr.id,
                             tr.stats.starttime.datetime,  # these need to be datetimes to be hashable
                             tr.stats.endtime.datetime
