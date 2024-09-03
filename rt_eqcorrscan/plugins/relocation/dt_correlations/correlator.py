@@ -416,7 +416,10 @@ class Correlator:
             cache_dir=self._wf_cache_dir,
             event_id=rid.split('/')[-1])
         if os.path.isfile(waveform_filename):
-            return {rid: read(waveform_filename)}
+            Logger.info(f"Reading cached waveforms from {waveform_filename}")
+            st = read(waveform_filename)
+            Logger.info(f"Read in {len(st)} traces")
+            return {rid: st}
         # Get from the client and process - get an excess of data
         bulk = [(p.waveform_id.network_code,
                  p.waveform_id.station_code,
