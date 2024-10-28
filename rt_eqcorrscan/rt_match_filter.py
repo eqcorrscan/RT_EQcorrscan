@@ -1158,7 +1158,7 @@ class RealTimeTribe(Tribe):
             Logger.info(f"Read in {len(new_tribe)} new templates from disk")
 
         # dump them to the record of templates running
-        if not os.path.isfile(self.running_template_dir):
+        if not os.path.isdir(self.running_template_dir):
             os.makedirs(self.running_template_dir)
             for template in new_tribe:
                 with open(f"{self.running_template_dir}/{template.name}.pkl", "wb") as f:
