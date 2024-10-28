@@ -104,19 +104,20 @@ class _Plugin(ABC):
         """ Us the appropriate config """
 
     @abstractmethod
-    def core(self, new_files: Iterable) -> List:
+    def core(self, new_files: Iterable, cleanup: bool) -> List:
         """ The internal plugin code to actually run the plugin! """
 
     def _cleanup(self):
         """ Anything that needs to be done at the end of a run. """
         pass
 
-    def run(self, loop: bool = True):
+    def run(self, loop: bool = True, cleanup: bool = True):
         """
 
         Parameters
         ----------
         loop
+        cleanup
 
         Returns
         -------
@@ -171,7 +172,7 @@ class _Plugin(ABC):
 
             # We have some events to process!
             new_files = self.watcher.new.copy()
-            processed_files = self.core(new_files=new_files)
+            processed_files = self.core(new_files=new_files, cleanup=cleanup)
 
             self.watcher.processed(processed_files)
             if loop:
@@ -188,7 +189,8 @@ class _Plugin(ABC):
                 continue
             else:
                 break
-        self._cleanup()
+        if cleanup:
+            self._cleanup()
         return
 
 

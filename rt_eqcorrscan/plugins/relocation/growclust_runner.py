@@ -566,6 +566,7 @@ class GrowClust(_Plugin):
         config: GrowClustConfig = GrowClustConfig(),
         vmodel_file: str = GROWCLUST_DEFAULT_VMODEL,
         growclust_script: str = GROWCLUST_SCRIPT,
+        cleanup: bool = True,
     ):
         catalog = Catalog()
         for value in event_files.values():
@@ -626,7 +627,8 @@ class GrowClust(_Plugin):
         os.chdir(cwd)
 
         # Out of tempdir
-        working_dir.cleanup()
+        if cleanup:
+            working_dir.cleanup()
         if not os.path.isdir(outdir):
             os.makedirs(outdir)
         for ev in catalog_out:
@@ -641,7 +643,12 @@ class GrowClust(_Plugin):
         return
 
 
-    def core(self, new_files: Iterable, workers: int = None) -> List:
+    def core(
+        self,
+        new_files: Iterable,
+        workers: int = None,
+        cleanup: bool = True
+    ) -> List:
         workers = workers or 1
         internal_config = self.config.copy()
         # indir = internal_config.pop("in_dir")
@@ -676,7 +683,7 @@ class GrowClust(_Plugin):
             outdir=outdir, station_file=station_file,
             event_files=self._all_event_files, workers=workers,
             config=internal_config, vmodel_file=vmodel_file,
-            growclust_script=growclust_script)
+            growclust_script=growclust_script, cleanup=cleanup)
 
         return list(new_files)
 

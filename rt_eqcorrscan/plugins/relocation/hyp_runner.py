@@ -373,7 +373,7 @@ class Hyp(_Plugin):
     def _cleanup(self):
         _cleanup()
 
-    def core(self, new_files: Iterable) -> List:
+    def core(self, new_files: Iterable, cleanup: bool = True) -> List:
         internal_config = self.config.copy()
 
         in_dir = internal_config.pop("in_dir")
