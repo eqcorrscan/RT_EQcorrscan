@@ -46,7 +46,7 @@ class Plotter(_Plugin):
     def _read_config(self, config_file: str):
         return PlotConfig.read(config_file=config_file)
 
-    def core(self, new_files: Iterable) -> List:
+    def core(self, new_files: Iterable, cleanup: bool = True) -> List:
         """ Run the plotter. """
         internal_config = self.config.copy()
         out_dir = internal_config.pop("out_dir")

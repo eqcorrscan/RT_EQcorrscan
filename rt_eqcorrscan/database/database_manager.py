@@ -252,10 +252,14 @@ class TemplateBank(EventBank):
 
         {get_event_params}
         """
+        Logger.info("Getting index lock")
         with self.index_lock:
+            Logger.info("Got lock, accessing bank")
             paths = str(self.bank_path) + os.sep + self.read_index(
                 columns=["path", "latitude", "longitude"], **kwargs).path
+        Logger.info(f"Found {len(paths)} templates to read")
         paths = [path.replace(self.ext, self.template_ext) for path in paths]
+        Logger.info("Reading templates")
         future = self.executor.map(_lazy_template_read, paths)
         return Tribe([t for t in future if t is not None])
 

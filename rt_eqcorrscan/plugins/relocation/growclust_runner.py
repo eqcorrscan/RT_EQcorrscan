@@ -12,7 +12,6 @@ Steps:
 """
 
 import logging
-import glob
 import math
 import os
 import tempfile
@@ -27,6 +26,7 @@ from obspy import (
     read_events, Catalog, UTCDateTime, read_inventory, Inventory)
 from obspy.core.event import (
     Origin, ResourceIdentifier, OriginUncertainty, OriginQuality)
+from obspy.geodetics import gps2dist_azimuth
 
 from eqcorrscan.utils.catalog_to_dd import write_correlations, write_phase
 
@@ -264,6 +264,50 @@ def get_catalog_mean_location(
     return mean_lat, mean_lon
 
 
+def check_events_within_bounds(
+    catalog: Catalog,
+    mean_lat: float,
+    mean_lon: float,
+    tt_xmin: float,
+    tt_xmax: float,
+    tt_zmin: float,
+    tt_zmax: float
+) -> Catalog:
+    """
+    Check that events are within the bounds, and remove those outside bounds
+
+    Parameters
+    ----------
+    catalog
+    mean_lat
+    mean_lon
+    tt_xmin
+    tt_xmax
+    tt_zmin
+    tt_zmax
+
+    Returns
+    -------
+
+    """
+    # Every event needs an origin
+    thresholded_events = [ev for ev in catalog if len(ev.origins)]
+    thresholded_events = [
+        ev for ev in thresholded_events if
+        tt_zmin <= (ev.preferred_origin() or
+                    ev.origins[-1]).depth / 1000.0 <= tt_zmax]
+    x_dists = np.array([gps2dist_azimuth(
+        mean_lat, mean_lon,
+        (ev.preferred_origin() or ev.origins[-1]).latitude,
+        (ev.preferred_origin() or ev.origins[-1]).longitude)[0] / 1000.
+               for ev in thresholded_events])
+    x_mask = np.logical_and(x_dists >= tt_xmin, x_dists <= tt_xmax)
+    thresholded_events = [ev for i, ev in enumerate(thresholded_events)
+                          if x_mask[i]]
+
+    return Catalog(thresholded_events)
+
+
 def run_growclust(
     mean_lat: float,
     mean_lon: float,
@@ -278,8 +322,6 @@ def run_growclust(
     import subprocess
     # Need to edit the projection origin for the events
 
-
-
     internal_config = config.copy()
     internal_config.projection.lat0 = mean_lat
     internal_config.projection.lon0 = mean_lon
@@ -291,8 +333,6 @@ def run_growclust(
 
     # TODO: Re-write Julia code to only do ray-tracing once?
     # TODO: If caching travel-times then the lat and lon or the origin of the coord system must be preserved - global mutable variables?
-
-    # TODO: Use a variable for working dir - we make lots of temp files
 
     arg_string = [
         "julia",
@@ -390,7 +430,8 @@ def process_output_catalog(
     """ Add Growclust origins back into catalog. """
     if not os.path.isfile(outfile):
         Logger.warning(f"{outfile} does not exist.")
-        return catalog
+        # return catalog
+        return Catalog()
     gc_origins = read_growclust(
         outfile, event_mapper={val: key for key, val in event_mapper.items()})
 
@@ -402,13 +443,13 @@ def process_output_catalog(
         if gc_origin is None:
             Logger.warning(f"Event {key} did not relocate")
             not_relocated += ev
-            catalog_out += ev
+            # catalog_out += ev
             continue
         ev.origins.append(gc_origin)
         ev.preferred_origin_id = ev.origins[-1].resource_id
         relocated += ev
         catalog_out += ev
-    Logger.info(f"Of {len(catalog_out)}, {len(relocated)} were relocated, and "
+    Logger.info(f"Of {len(catalog)}, {len(relocated)} were relocated, and "
                 f"{len(not_relocated)} were not relocated")
 
     return catalog_out
@@ -566,6 +607,7 @@ class GrowClust(_Plugin):
         config: GrowClustConfig = GrowClustConfig(),
         vmodel_file: str = GROWCLUST_DEFAULT_VMODEL,
         growclust_script: str = GROWCLUST_SCRIPT,
+        cleanup: bool = True,
     ):
         catalog = Catalog()
         for value in event_files.values():
@@ -613,8 +655,18 @@ class GrowClust(_Plugin):
             # Out of tempdir
             working_dir.cleanup()
             return
-        # Run growclust
+        # Find centroid
         mean_lat, mean_lon = get_catalog_mean_location(catalog)
+        # Check that locations fall within ray-tracing bounds
+        input_events = len(catalog)
+        catalog = check_events_within_bounds(
+            catalog=catalog, mean_lat=mean_lat, mean_lon=mean_lon,
+            tt_xmin=config.tt_xmin, tt_xmax=config.tt_xmax,
+            tt_zmin=config.tt_zmin, tt_zmax=config.tt_zmax)
+        Logger.info(
+            f"Of {input_events} input events, {input_events - len(catalog)} "
+            f"were removed due to not being within bounds")
+        # Run growclust
         Logger.info("Running growclust")
         outfile = run_growclust(
             mean_lat=mean_lat, mean_lon=mean_lon, config=config,
@@ -626,7 +678,8 @@ class GrowClust(_Plugin):
         os.chdir(cwd)
 
         # Out of tempdir
-        working_dir.cleanup()
+        if cleanup:
+            working_dir.cleanup()
         if not os.path.isdir(outdir):
             os.makedirs(outdir)
         for ev in catalog_out:
@@ -641,7 +694,12 @@ class GrowClust(_Plugin):
         return
 
 
-    def core(self, new_files: Iterable, workers: int = None) -> List:
+    def core(
+        self,
+        new_files: Iterable,
+        workers: int = None,
+        cleanup: bool = True
+    ) -> List:
         workers = workers or 1
         internal_config = self.config.copy()
         # indir = internal_config.pop("in_dir")
@@ -658,7 +716,7 @@ class GrowClust(_Plugin):
             try:
                 _cat = read_events(f)
             except Exception as e:
-                Logger.debug(f"Could not read from {f} due to {e}")
+                Logger.warning(f"Could not read from {f} due to {e}")
                 continue
             for ev in _cat:
                 if len(ev.picks) == 0:
@@ -676,7 +734,7 @@ class GrowClust(_Plugin):
             outdir=outdir, station_file=station_file,
             event_files=self._all_event_files, workers=workers,
             config=internal_config, vmodel_file=vmodel_file,
-            growclust_script=growclust_script)
+            growclust_script=growclust_script, cleanup=cleanup)
 
         return list(new_files)
 

@@ -255,7 +255,7 @@ class Picker(_Plugin):
     def _read_config(self, config_file: str):
         return PickerConfig.read(config_file=config_file)
 
-    def core(self, new_files: Iterable) -> List:
+    def core(self, new_files: Iterable, cleanup: bool = True) -> List:
         internal_config = self.config.copy()
         detection_dir = internal_config.pop("in_dir")
         template_dir = internal_config.pop("template_dir")
