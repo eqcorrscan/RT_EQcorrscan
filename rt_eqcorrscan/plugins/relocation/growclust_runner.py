@@ -716,7 +716,7 @@ class GrowClust(_Plugin):
             try:
                 _cat = read_events(f)
             except Exception as e:
-                Logger.debug(f"Could not read from {f} due to {e}")
+                Logger.warning(f"Could not read from {f} due to {e}")
                 continue
             for ev in _cat:
                 if len(ev.picks) == 0:

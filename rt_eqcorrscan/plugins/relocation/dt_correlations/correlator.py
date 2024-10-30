@@ -5,6 +5,7 @@ Class and methods to lazily compute correlations for new events.
 import fnmatch
 import os
 import warnings
+import tqdm
 
 import h5py
 import numpy as np
@@ -253,7 +254,7 @@ class Correlations:
         either way, so will set both correlations.
         """
         file_handle = h5py.File(self.correlation_file, "r+")
-        for event_pair in other:
+        for event_pair in tqdm.tqdm(other):
             for obs in event_pair.obs:
                 # Make the necessary structural changes - heirachy is station/phase/eventids
                 if obs.station not in self.stations:
@@ -474,6 +475,9 @@ class Correlator:
         return {ev.resource_id.id for ev in self._catalog}
 
     def _append_event(self, event: Union[Event, SparseEvent]):
+        if event.resource_id.id in self._catalog_event_ids:
+            Logger.info(f"Not adding {event.resource_id.id} to working catalog: "
+                        f"event id is already in catalog")
         if isinstance(event, Event):
             self._catalog.add(SparseEvent.from_event(event))
         else:
@@ -489,12 +493,13 @@ class Correlator:
             Logger.info(f"Event {event.resource_id.id} already included, skipping")
             self._append_event(event)
             return
-        # TODO: Increment the event id mapper and add event to mapper
         self.event_mapper.update({event.resource_id.id: self._nexteid})
         Logger.info("Getting waveforms")
         st_dict = self._get_waveforms(event=event)
         if len(st_dict[event.resource_id.id]) == 0:
-            Logger.info(f"No waveforms for event {event.resource_id.id}: skipping")
+            Logger.warning(
+                f"No waveforms for event {event.resource_id.id}: skipping")
+            self._append_event(event)
             return
         Logger.info("Computing distance array")
         ordered_catalog = list(self._catalog)
@@ -510,13 +515,13 @@ class Correlator:
             return
         # Get waveforms for all events in events to correlate
         Logger.info("Getting waveforms for other events")
-        for event in events_to_correlate:
-            event_st_dict = self._get_waveforms(event=event)
-            if len(event_st_dict[event.resource_id.id]):
+        for ev in events_to_correlate:
+            event_st_dict = self._get_waveforms(event=ev)
+            if len(event_st_dict[ev.resource_id.id]):
                 st_dict.update(event_st_dict)
             else:
                 Logger.warning(
-                    f"Could not get waveforms for {event.resource_id.id}")
+                    f"Could not get waveforms for {ev.resource_id.id}")
         Logger.info(f"Running correlations for {len(st_dict.keys())} events")
         # Run _compute_dt_correlations
         differential_times = _compute_dt_correlations(
@@ -541,7 +546,11 @@ class Correlator:
         catalog: Union[Catalog, Iterable[SparseEvent]],
         max_workers: int = 1,
     ):
-        # TODO: This could be parallel, but probably wouldn't help that much
+        # Note, we shouldn't need to add all the events in first, these should
+        # get added in as the loop runs.
+
+        # for event in catalog:
+        #     self._append_event(event)
         for event in catalog:
             self.add_event(event, max_workers=max_workers)
 
