@@ -3,9 +3,11 @@ Class and methods to lazily compute correlations for new events.
 """
 
 import fnmatch
+import glob
 import os
 import warnings
 import tqdm
+import csv
 
 import h5py
 import numpy as np
@@ -30,6 +32,205 @@ Logger = logging.getLogger(__name__)
 
 
 class Correlations:
+    """
+    Holder for correlations backed by an on-disk file system
+
+    Correlations are stored in directories of:
+
+    eid1
+        eid2
+            station1.csv - file of phase,tt1,tt2,weight
+    """
+    def __init__(self, correlation_directory: str = None):
+        if correlation_directory is None:
+            correlation_directory = ".correlations"
+        self._correlation_directory = os.path.abspath(correlation_directory)
+        if not os.path.isdir(self._correlation_directory):
+            os.makedirs(self._correlation_directory)
+        # Work out what we have!
+        self.eventids = self._get_event_indexes()
+        # Getting stations has to happen after getting eventids
+        self.stations = self._get_stations()
+
+    def __repr__(self):
+        return f"Correlations(correlation_directory={self.correlation_directory})"
+
+    def _get_correlation_directory(self):
+        return self._correlation_directory
+
+    correlation_directory = property(fget=_get_correlation_directory)
+
+    __csv_format = {
+        "delimiter": ",", "lineterminator": "\r\n", "skipinitialspace": True}
+
+    def _eid_dir(self, eid1, eid2):
+        return os.path.join(self.correlation_directory, str(eid1), str(eid2))
+
+    def _correlation_file(self, eid1, eid2, station):
+        return os.path.join(self._eid_dir(eid1, eid2), f"{station}.csv")
+
+    def _get_event_indexes(self):
+        """ Directories are named by event indexes. """
+        Logger.info("Scanning for event ids")
+        event_indexes = {
+            os.path.basename(thing[0])
+            for thing in os.walk(self.correlation_directory)}
+        return event_indexes
+
+    def _get_stations(self):
+        """ Files are named by station beneath event indexes. """
+        stations = set()
+        Logger.info("Scanning for stations")
+        station_files = glob.glob(f"{self.correlation_directory}/*/*/*.csv")
+        stations = {os.path.splitext(os.path.basename(_))[0]
+                    for _ in station_files}
+        return stations
+
+    def _get_correlations(
+        self,
+        eid1: str,
+        eid2: str,
+        station: str,
+        phase: str,
+        min_weight: float = None
+    ) -> Union[_EventPair, None]:
+        """ Read correlations from a file. """
+        if eid1 not in self.eventids or eid2 not in self.eventids or station not in self.stations:
+            Logger.info(f"Unknown request")
+            return None
+        corr_file = self._correlation_file(
+            eid1=eid1, eid2=eid2, station=station)
+        if not os.path.isfile(corr_file):
+            Logger.debug(f"No correlations on disk for {eid1}:{eid2}:{station}")
+            return None
+        event_pair = _EventPair(event_id_1=eid1, event_id_2=eid2, obs=[])
+        with open(corr_file, newline='') as csvfile:
+            corr_reader = csv.reader(csvfile, **self.__csv_format)
+            for row in corr_reader:
+                _phase = row[0]
+                tt1, tt2, weight = map(float, row[1:])
+                if weight >= min_weight and fnmatch.fnmatch(_phase, phase):
+                    event_pair.obs.append(_DTObs(
+                        station=station, tt1=tt1, tt2=tt2,
+                        weight=weight, phase=_phase))
+        return event_pair
+
+    def _write_correlations(
+        self,
+        event_pair: _EventPair,
+        update: bool = False
+    ):
+        # Split into stations to write individual station files
+        stations = {obs.station for obs in event_pair.obs}
+        for station in stations:
+            # Check if eid1/eid2/station.csv or eid2/eid1/station.csv exists
+            corr_file = self._correlation_file(
+                eid1=event_pair.event_id_1, eid2=event_pair.event_id_2,
+                station=station)
+            anti_corr_file = self._correlation_file(
+                eid2=event_pair.event_id_1, eid1=event_pair.event_id_2,
+                station=station)
+            if os.path.isfile(corr_file) or os.path.isfile(anti_corr_file):
+                if not update:
+                    continue
+            obs = [o for o in event_pair.obs if o.station == station]
+            self._write_obs(filename=corr_file, obs=obs)
+        # Update the stations and event ids in use
+        self.eventids.update({event_pair.event_id_1, event_pair.event_id_2})
+        self.stations.update(stations)
+        return
+
+    def _write_obs(self, filename: str, obs: List[_DTObs]):
+        obs_dir = os.path.dirname(filename)
+        if not os.path.isdir(obs_dir):
+            os.makedirs(obs_dir)
+        with open(filename, 'w', newline='') as csvfile:
+            corr_writer = csv.writer(csvfile, **self.__csv_format)
+            for _obs in obs:
+                corr_writer.writerow([
+                    str(_obs.phase), str(_obs.tt1), str(_obs.tt2),
+                    str(_obs.weight)])
+        return
+
+    def update(self, other: List[_EventPair], update: bool = False):
+        for event_pair in tqdm.tqdm(other):
+            self._write_correlations(event_pair=event_pair, update=update)
+        return
+
+    def select(
+        self,
+        station: str = None,
+        phase: str = None,
+        eventid_1: Union[str, int] = None,
+        eventid_2: Union[str, int] = None,
+        min_weight: float = 0.0,
+    ) -> List[_EventPair]:
+        """ Supports globbing """
+        station = station or "*"
+        phase = phase or "*"
+        eid_ints = True  # Should be ints by default because that is what we expect
+        if isinstance(eventid_1, int):
+            eventid_1 = str(eventid_1)
+        elif isinstance(eventid_1, str):
+            eid_ints = False
+
+        if isinstance(eventid_2, int):
+            eventid_2 = str(eventid_2)
+        elif isinstance(eventid_2, str):
+            eid_ints = False
+
+        eventid_1 = eventid_1 or "*"
+        eventid_2 = eventid_2 or "*"
+
+        if not eid_ints:
+            Logger.warning("Returning event ids as strings - this may cause "
+                           "issues for formatting output strings")
+
+        # Work out indexes
+        stations = fnmatch.filter(self.stations, station)
+        if len(stations) == 0:
+            raise NotImplementedError(
+                f"{station} not found in correlations")
+
+        event1_ids = fnmatch.filter(self.eventids, eventid_1)
+        if len(event1_ids) == 0:
+            raise NotImplementedError(
+                f"{eventid_1} not found in correlations")
+
+        event2_ids = fnmatch.filter(self.eventids, eventid_2)
+        if len(event2_ids) == 0:
+            raise NotImplementedError(
+                f"{eventid_2} not found in correlations")
+        out = []
+        for eid1 in event1_ids:
+            if not os.path.isdir(os.path.join(self.correlation_directory, str(eid1))):
+                continue
+            for eid2 in event2_ids:
+                for station in stations:
+                    _out = self._get_correlations(
+                        eid1=eid1, eid2=eid2, station=station, phase=phase,
+                        min_weight=min_weight)
+                    if _out:
+                        out.append(_out)
+        # Group event_pairs
+        output_event_pairs = {} # dict keyed by eid1, eid2
+        for _out in out:
+            if _out.event_id_1 in output_event_pairs.keys():
+                if _out.event_id_2 in output_event_pairs[_out.event_id_1].keys():
+                    output_event_pairs[_out.event_id_1][_out.event_id_2].extend(_out.obs)
+                else:
+                    output_event_pairs[_out.event_id_1].update(
+                        {_out.event_id_2: _out.obs})
+            else:
+                output_event_pairs.update(
+                    {_out.event_id_1: {_out.event_id_2: _out.obs}})
+        out = [_EventPair(event_id_1=eid1, event_id_2=eid2, obs=obs)
+               for eid1, value in output_event_pairs.items()
+               for eid2, obs in value.items()]
+        return out
+
+
+class H5Correlations:
     """
     Object to hold correlations backed by an hdf5 file.
 
@@ -180,6 +381,7 @@ class Correlations:
         file_handle['eventids'].resize((len(self.eventids), ))
         file_handle['eventids'][-1] = event_id
 
+        # TODO: This is slow for large datasets
         for group in ("tt1", "tt2", "weight"):
             for station in self.stations:
                 if station == '':
@@ -396,7 +598,7 @@ class Correlator:
         self.interpolate = interpolate
         self.client = client
         self.correlation_cache = Correlations(
-            correlation_file=correlation_cache)
+            correlation_directory=correlation_cache)
         self._catalog = set()  # List of Sparse Events
         self._pairs_run = set()  # Cache of what work has already been done
         self.event_mapper = dict()  # Key to map event ids to dt.cc ids
@@ -546,12 +748,9 @@ class Correlator:
         catalog: Union[Catalog, Iterable[SparseEvent]],
         max_workers: int = 1,
     ):
-        # Note, we shouldn't need to add all the events in first, these should
-        # get added in as the loop runs.
-
-        # for event in catalog:
-        #     self._append_event(event)
-        for event in catalog:
+        n = len(catalog)
+        for i, event in enumerate(catalog):
+            Logger.info(f"Adding event {i} for {n}")
             self.add_event(event, max_workers=max_workers)
 
     def write_correlations(
