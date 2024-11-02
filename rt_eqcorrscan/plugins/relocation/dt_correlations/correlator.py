@@ -578,6 +578,7 @@ class Correlator:
     def __init__(
         self,
         minlink: int,
+        min_cc: float,
         maxsep: float,
         shift_len: float,
         pre_pick: float,
@@ -586,7 +587,9 @@ class Correlator:
         highcut: float,
         interpolate: bool,
         client: Union[Client, WaveBank, InMemoryWaveBank],
-        correlation_cache: str = None
+        outfile: str = "dt.cc",
+        weight_by_square: bool = False,
+        # correlation_cache: str = None
     ):
         self.minlink = minlink
         self.maxsep = maxsep
@@ -597,8 +600,14 @@ class Correlator:
         self.highcut = highcut
         self.interpolate = interpolate
         self.client = client
-        self.correlation_cache = Correlations(
-            correlation_directory=correlation_cache)
+        if os.path.isfile(outfile):
+            Logger.warning(f"{outfile} exists, removing.")
+            os.remove(outfile)
+        self.outfile = outfile
+        self.min_cc = min_cc
+        self.weight_by_square = weight_by_square
+        # self.correlation_cache = Correlations(
+        #     correlation_directory=correlation_cache)
         self._catalog = set()  # List of Sparse Events
         self._pairs_run = set()  # Cache of what work has already been done
         self.event_mapper = dict()  # Key to map event ids to dt.cc ids
@@ -690,11 +699,11 @@ class Correlator:
         self,
         event: Union[Event, SparseEvent],
         max_workers: int = 1,
-    ):
+    ) -> int:
         if event.resource_id.id in self.event_mapper.keys():
             Logger.info(f"Event {event.resource_id.id} already included, skipping")
             self._append_event(event)
-            return
+            return 0
         self.event_mapper.update({event.resource_id.id: self._nexteid})
         Logger.info("Getting waveforms")
         st_dict = self._get_waveforms(event=event)
@@ -702,7 +711,7 @@ class Correlator:
             Logger.warning(
                 f"No waveforms for event {event.resource_id.id}: skipping")
             self._append_event(event)
-            return
+            return 0
         Logger.info("Computing distance array")
         ordered_catalog = list(self._catalog)
         distance_array = dist_array_km(
@@ -714,7 +723,7 @@ class Correlator:
         if len(events_to_correlate) == 0:
             # We don't need to do anymore work
             self._append_event(event)
-            return
+            return 0
         # Get waveforms for all events in events to correlate
         Logger.info("Getting waveforms for other events")
         for ev in events_to_correlate:
@@ -738,57 +747,78 @@ class Correlator:
         for dt in differential_times:
             Logger.info(dt)
         # Differential times is a list of _EventPairs
-        Logger.info("Updating the cache")
-        self.correlation_cache.update(differential_times)
+        # Logger.info("Updating the cache")
+        # self.correlation_cache.update(differential_times)
+        Logger.info("Writing correlations")
+        written_links = self.write_correlations(differential_times)
+        Logger.info(f"Wrote {written_links} event pairs")
         self._append_event(event)
-        return
+        return written_links
 
     def add_events(
         self,
         catalog: Union[Catalog, Iterable[SparseEvent]],
         max_workers: int = 1,
-    ):
-        n = len(catalog)
+    ) -> int:
+        n, written_links = len(catalog), 0
         for i, event in enumerate(catalog):
             Logger.info(f"Adding event {i} for {n}")
-            self.add_event(event, max_workers=max_workers)
+            written_links += self.add_event(event, max_workers=max_workers)
+        return written_links
 
     def write_correlations(
         self,
-        outfile: str = "dt.cc",
-        min_cc: float = 0.0,
-        weight_by_square: bool = True
+        differential_times: List[_EventPair]
     ) -> int:
         """ Write the correlations to a dt.cc file """
-        # Conserve memory and just get one event at a time
         written_links = 0
-        with open(outfile, "w") as f:
-            for event1_id in self.correlation_cache.eventids:
-                if event1_id == '':
-                    # Skip
+        with open(self.outfile, "a") as f:
+            for event_pair in tqdm.tqdm(differential_times):
+                obs = [o for o in event_pair.obs if o.weight >= self.min_cc]
+                if len(obs) == 0:
                     continue
-                event1_id = int(event1_id)  # Correlation cache stores as strings, but we know they are ints
-                event_pairs = self.correlation_cache.select(
-                    eventid_1=event1_id)
-                for event_pair in event_pairs:
-                    if event_pair.event_id_1 == event_pair.event_id_2:
-                        continue
-                    # Threshold observations
-                    retained_observations = []
-                    for observation in event_pair.obs:
-                        if observation.weight < min_cc:
-                            continue
-                        if weight_by_square:
-                            observation.weight **= 2
-                        retained_observations.append(observation)
-                    event_pair.obs = retained_observations
-                    if len(event_pair.obs) == 0:
-                        # Don't write empty pairs
-                        continue
-                    f.write(event_pair.cc_string)
-                    f.write("\n")
-                    written_links += 1
+                if self.weight_by_square:
+                    sq_obs = []
+                    for o in obs:
+                        sq_obs.append(_DTObs(
+                            station=o.station, tt1=o.tt1, tt2=o.tt2,
+                            weight=o.weight ** 2, phase=o.phase))
+                    obs = sq_obs
+                event_pair.obs = obs
+                f.write(event_pair.cc_string)
+                f.write("\n")
+                written_links += 1
         return written_links
+
+        # Write links for correlation cache.
+        # Conserve memory and just get one event at a time
+        # written_links = 0
+        # with open(outfile, "w") as f:
+        #     for event1_id in self.correlation_cache.eventids:
+        #         if event1_id == '':
+        #             # Skip
+        #             continue
+        #         try:
+        #             event1_id = int(event1_id)
+        #         except ValueError:
+        #             continue
+        #         event_pairs = self.correlation_cache.select(
+        #             eventid_1=event1_id, min_weight=min_cc)
+        #         for event_pair in event_pairs:
+        #             if event_pair.event_id_1 == event_pair.event_id_2:
+        #                 continue
+        #             event_pair.event_id_1 = int(event_pair.event_id_1)
+        #             event_pair.event_id_2 = int(event_pair.event_id_2)
+        #             if weight_by_square:
+        #                 for obs in event_pair.obs:
+        #                     obs.weight **= 2
+        #             if len(event_pair.obs) == 0:
+        #                 # Don't write empty pairs
+        #                 continue
+        #             f.write(event_pair.cc_string)
+        #             f.write("\n")
+        #             written_links += 1
+        # return written_links
 
 
 if __name__ == "__main__":

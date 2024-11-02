@@ -14,6 +14,7 @@ Steps:
 import logging
 import math
 import os
+import shutil
 import tempfile
 
 import numpy as np
@@ -574,6 +575,7 @@ def _cleanup():
 
 
 class GrowClust(_Plugin):
+    _cc_file = "dt.cc"
     def __init__(self, config_file: str, name: str = "GrowClustRunner"):
         super().__init__(config_file=config_file, name=name)
         self.in_memory_wavebank = InMemoryWaveBank(self.config.wavebank_dir)
@@ -588,7 +590,10 @@ class GrowClust(_Plugin):
             highcut=self.config.correlation_config.highcut,
             interpolate=self.config.correlation_config.interpolate,
             client=self.in_memory_wavebank,
-            correlation_cache=None)
+            min_cc=self.config.correlation_config.min_cc,
+            weight_by_square=self.config.correlation_config.weight_by_square,
+            outfile=self._cc_file,
+            )
         self._all_event_files = dict()
         # Keep record of all event files keyed by event id
 
@@ -626,6 +631,10 @@ class GrowClust(_Plugin):
         cwd = os.path.abspath(os.path.curdir)
         outdir, station_file = map(os.path.abspath, (outdir, station_file))
         Logger.info(f"Working in {working_dir.name}")
+        shutil.copyfile(self._cc_file,
+                        os.path.join(working_dir.name, "dt.cc"))
+        Logger.info(f"Copied correlation file from {self._cc_file} to "
+                    f"{os.path.join(working_dir.name, 'dt.cc')}")
         os.chdir(working_dir.name)
 
         # In temp dir
@@ -641,20 +650,20 @@ class GrowClust(_Plugin):
         write_stations(seed_ids=seed_ids, starttime=starttime, endtime=endtime,
                        station_file=station_file)
         # Write correlations
-        Logger.info("Writing correlations")
-        written_links = self.correlator.write_correlations(
-            outfile="dt.cc", min_cc=self.config.correlation_config.min_cc,
-            weight_by_square=self.config.correlation_config.weight_by_square)
-        if written_links == 0:
-            Logger.warning(
-                f"No links above threshold "
-                f"({self.config.correlation_config.min_cc}), not running "
-                f"growclust")
-            os.chdir(cwd)
-
-            # Out of tempdir
-            working_dir.cleanup()
-            return
+        # Logger.info("Writing correlations")
+        # written_links = self.correlator.write_correlations(
+        #     outfile="dt.cc", min_cc=self.config.correlation_config.min_cc,
+        #     weight_by_square=self.config.correlation_config.weight_by_square)
+        # if written_links == 0:
+        #     Logger.warning(
+        #         f"No links above threshold "
+        #         f"({self.config.correlation_config.min_cc}), not running "
+        #         f"growclust")
+        #     os.chdir(cwd)
+        #
+        #     # Out of tempdir
+        #     working_dir.cleanup()
+        #     return
         # Find centroid
         mean_lat, mean_lon = get_catalog_mean_location(catalog)
         # Check that locations fall within ray-tracing bounds
@@ -727,14 +736,17 @@ class GrowClust(_Plugin):
                 self._all_event_files.update({ev.resource_id.id: f})
 
         Logger.info(f"Computing correlations for {len(new_events)} events")
-        self.correlator.add_events(
+        written_links = self.correlator.add_events(
             catalog=new_events, max_workers=workers)
-        
-        self.run_growclust(
-            outdir=outdir, station_file=station_file,
-            event_files=self._all_event_files, workers=workers,
-            config=internal_config, vmodel_file=vmodel_file,
-            growclust_script=growclust_script, cleanup=cleanup)
+
+        if written_links > 0:
+            self.run_growclust(
+                outdir=outdir, station_file=station_file,
+                event_files=self._all_event_files, workers=workers,
+                config=internal_config, vmodel_file=vmodel_file,
+                growclust_script=growclust_script, cleanup=cleanup)
+        else:
+            Logger.info("No new links written, not running growclust")
 
         return list(new_files)
 
