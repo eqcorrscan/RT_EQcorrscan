@@ -587,12 +587,14 @@ class Correlator:
         highcut: float,
         interpolate: bool,
         client: Union[Client, WaveBank, InMemoryWaveBank],
+        max_event_links: int = None,
         outfile: str = "dt.cc",
         weight_by_square: bool = False,
         # correlation_cache: str = None
     ):
         self.minlink = minlink
         self.maxsep = maxsep
+        self.max_event_links = max_event_links
         self.shift_len = shift_len
         self.pre_pick = pre_pick
         self.length = length
@@ -628,9 +630,9 @@ class Correlator:
             cache_dir=self._wf_cache_dir,
             event_id=rid.split('/')[-1])
         if os.path.isfile(waveform_filename):
-            Logger.info(f"Reading cached waveforms from {waveform_filename}")
+            Logger.debug(f"Reading cached waveforms from {waveform_filename}")
             st = read(waveform_filename)
-            Logger.info(f"Read in {len(st)} traces")
+            Logger.debug(f"Read in {len(st)} traces")
             return {rid: st}
         # Get from the client and process - get an excess of data
         bulk = [(p.waveform_id.network_code,
@@ -641,12 +643,12 @@ class Correlator:
                  p.time + 4 * (self.length - self.pre_pick))
                 for p in event.picks
                 if p.phase_hint.upper().startswith(("P", "S"))]
-        Logger.info(f"Trying to get data from {self.client} using bulk: {bulk}")
+        Logger.debug(f"Trying to get data from {self.client} using bulk: {bulk}")
         try:
             st = self.client.get_waveforms_bulk(bulk)
         except Exception as e:
             Logger.error(e)
-            Logger.info("Trying chunked")
+            Logger.debug("Trying chunked")
             st = Stream()
             for _b in bulk:
                 try:
@@ -656,12 +658,12 @@ class Correlator:
                     Logger.info(f"Skipping {_b}")
                     continue
         st = st.merge()
-        Logger.info(f"Read in {len(st)} traces")
+        Logger.debug(f"Read in {len(st)} traces")
         if len(st) == 0:
             return {rid: Stream()}
         st_dict = _filter_stream(
             rid, st.split(), self.lowcut, self.highcut)
-        Logger.info(f"Writing waveform to {waveform_filename}")
+        Logger.debug(f"Writing waveform to {waveform_filename}")
         # Catch and ignore warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -716,17 +718,32 @@ class Correlator:
         ordered_catalog = list(self._catalog)
         distance_array = dist_array_km(
             master=event, catalog=ordered_catalog)
-        events_to_correlate = [ev for i, ev in enumerate(ordered_catalog)
-                               if distance_array[i] <= self.maxsep]
+        # We need to retain the distances used for max_event_link
+        events_to_correlate, distance_array = zip(*[
+            (ev, dist) for ev, dist in zip(ordered_catalog, distance_array)
+            if dist <= self.maxsep])
+        # Convert from tuple to Catalog
+        events_to_correlate = Catalog(events=list(events_to_correlate))
         Logger.info(
             f"There are {len(events_to_correlate)} events to correlate")
         if len(events_to_correlate) == 0:
             # We don't need to do anymore work
             self._append_event(event)
             return 0
+        if self.max_event_links and len(events_to_correlate) > self.max_event_links:
+            # We just want the n closest events
+            order = np.argsort(distance_array)
+            # Order them, and keep the closest n events
+            events_to_correlate.events = [
+                events_to_correlate[i] for i in order][0:self.max_event_links]
+            Logger.info(
+                f"Correlating the {len(events_to_correlate)} closest events")
+            Logger.info(
+                f"Maximum inter-event distance: "
+                f"{distance_array[order[self.max_event_links]]}")
         # Get waveforms for all events in events to correlate
         Logger.info("Getting waveforms for other events")
-        for ev in events_to_correlate:
+        for ev in tqdm.tqdm(events_to_correlate):
             event_st_dict = self._get_waveforms(event=ev)
             if len(event_st_dict[ev.resource_id.id]):
                 st_dict.update(event_st_dict)
