@@ -82,6 +82,7 @@ class CorrelationConfig(_PluginConfig):
         "min_cc": 0.2,
         "interpolate": False,
         "weight_by_square": True,
+        "max_event_links": None,
     }
 
     def __init__(self, *args, **kwargs):
@@ -593,6 +594,7 @@ class GrowClust(_Plugin):
             min_cc=self.config.correlation_config.min_cc,
             weight_by_square=self.config.correlation_config.weight_by_square,
             outfile=self._cc_file,
+            max_event_links=self.config.correlation_config.max_event_links,
             )
         self._all_event_files = dict()
         # Keep record of all event files keyed by event id
