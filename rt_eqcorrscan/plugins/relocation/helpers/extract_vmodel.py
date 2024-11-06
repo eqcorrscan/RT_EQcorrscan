@@ -4,6 +4,7 @@ Tools for extracting 1D models from 3D models
 
 import numpy as np
 import pandas as pd
+import logging
 
 from functools import partial
 
@@ -14,6 +15,8 @@ from typing import Union, List
 from pyproj import Transformer, CRS
 
 MODEL_FILE = "vlnzw2p2dnxyzltln.tbl.txt"  # NZ3D 2.2 from https://zenodo.org/record/3779523#.YCRFaOrRVhF
+
+Logger = logging.getLogger(__name__)
 
 
 def _round_down(num: Union[float, int], nearest: int = 10):
