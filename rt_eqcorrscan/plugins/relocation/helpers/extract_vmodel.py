@@ -145,6 +145,30 @@ def extract_one_d_simulps(
         v_model["y(km)"] <= max_y, v_model["y(km)"] >= min_y)
 
     mask = np.logical_and(x_mask, y_mask)
+    if mask.sum() == 0:
+        x_range = max_x - min_x
+        y_range = max_y - min_y
+        # No points inside grid - expand grid and try again
+        if mask.sum() == 0 and x_mask.sum() > 0 and y_mask.sum() > 0:
+            # Just no overlap, make both x and y bigger
+            min_x -= x_range * .5
+            max_x += x_range * .5
+            min_y -= y_range * .5
+            max_y += y_range * .5
+        elif x_mask.sum() == 0:
+            # Just expand x
+            min_x -= x_range * .5
+            max_x += x_range * .5
+        elif y_mask.sum() == 0:
+            # Just expand y
+            min_y -= y_range * .5
+            max_y += y_range * .5
+        Logger.info(
+            f"No points within grid, expanding to x: {min_x} -- {max_x},"
+            f" y: {min_y} -- {max_y}")
+        return extract_one_d_simulps(
+            model_file=model_file, min_x=min_x, max_x=max_x, min_y=min_y,
+            max_y=max_y)
 
     region = v_model[mask]
     # Make a quick plot showing the region
