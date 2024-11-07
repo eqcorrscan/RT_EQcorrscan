@@ -520,7 +520,8 @@ FORMATTER = {
 def growclust_line_to_origin(line: str) -> [str, Origin, bool]:
     line = line.split()
     deserialized = {key: val[1](line[val[0]]) for key, val in FORMATTER.items()}
-    relocated = nbranch > 1  # If the cluster only had one event, it wasn't relocated.
+    relocated = deserialized["nbranch"] > 1
+    # If the cluster only had one event, it wasn't relocated.
     # Replace nans with None
     for key, val in deserialized.items():
         if math.isnan(val):
