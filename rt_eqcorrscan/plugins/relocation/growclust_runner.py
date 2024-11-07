@@ -19,6 +19,12 @@ import tempfile
 
 import numpy as np
 
+from yaml import load, dump
+try:
+    from yaml import CLoader as Loader, CDumper as Dumper
+except ImportError:  # pragma: no cover
+    from yaml import Loader, Dumper
+
 from scipy.stats import circmean
 
 from typing import Iterable, List, Set
@@ -147,7 +153,7 @@ class GrowClustConfig(_PluginConfig):
         "correlation_config": CorrelationConfig(),
     }
     readonly = []
-    __subclasses = {
+    _subclasses = {
         "projection": _GrowClustProj,
         "correlation_config": CorrelationConfig,
     }
@@ -155,11 +161,29 @@ class GrowClustConfig(_PluginConfig):
     def __init__(self, *args, **kwargs):
         attribs = dict()
         for key, value in kwargs.items():
-            if key in self.__subclasses.keys():
+            if key in self._subclasses.keys():
                 if isinstance(value, dict):
-                    value = self.__subclasses[key](**value)
+                    value = self._subclasses[key](**value)
             attribs.update({key: value})
         super().__init__(*args, **attribs)
+
+    @classmethod
+    def read(cls, config_file: str):
+        from rt_eqcorrscan.config.config import _recursive_replace_space_underscore
+
+        with open(config_file, "rb") as f:
+            configuration = load(f, Loader=Loader)
+        configuration = {key.replace(" ", "_"): value
+                         for key, value in configuration.items()}
+        # Cope with nested subclasses
+        config_dict = {}
+        for key, value in configuration.items():
+            if key.replace(" ", "_") in cls._subclasses.keys():
+                config_dict.update(
+                    _recursive_replace_space_underscore({key: value}))
+            else:
+                config_dict.update({key: value})
+        return cls(**config_dict)
 
     def to_yaml_dict(self):
         """ Overload. """
@@ -441,8 +465,8 @@ def process_output_catalog(
 
     catalog_out, relocated, not_relocated = Catalog(), Catalog(), Catalog()
     for key, ev in catalog_dict.items():
-        gc_origin = gc_origins.get(key)
-        if gc_origin is None:
+        gc_origin, _relocated = gc_origins.get(key)
+        if gc_origin is None or not _relocated:
             Logger.warning(f"Event {key} did not relocate")
             not_relocated += ev
             # catalog_out += ev
@@ -493,9 +517,10 @@ FORMATTER = {
     "depth_origins": (24, float)}
 
 
-def growclust_line_to_origin(line: str) -> [str, Origin]:
+def growclust_line_to_origin(line: str) -> [str, Origin, bool]:
     line = line.split()
     deserialized = {key: val[1](line[val[0]]) for key, val in FORMATTER.items()}
+    relocated = nbranch > 1  # If the cluster only had one event, it wasn't relocated.
     # Replace nans with None
     for key, val in deserialized.items():
         if math.isnan(val):
@@ -533,7 +558,7 @@ def growclust_line_to_origin(line: str) -> [str, Origin]:
             standard_error=(
                 deserialized["qndiffP"] + deserialized["qndiffS"]) *
                 (p_standard_error + s_standard_error)))
-    return deserialized["eventid"], origin
+    return deserialized["eventid"], origin, relocated
 
 
 def read_growclust(
@@ -551,17 +576,17 @@ def read_growclust(
 
     Returns
     -------
-    Dictionary of origins keyed by event id.
+    Dictionary of origins and whether they weere relocated keyed by event id.
     """
     with open(fname, "r") as f:
         lines = f.read().splitlines()
 
     origins = dict()
     for line in lines:
-        event_id, growclust_origin = growclust_line_to_origin(line)
+        event_id, growclust_origin, relocated = growclust_line_to_origin(line)
         if event_mapper:
             event_id = event_mapper.get(event_id, f"{event_id}_notmapped")
-        origins.update({event_id: growclust_origin})
+        origins.update({event_id: (growclust_origin, relocated)})
     return origins
 
 #############################################################################
@@ -640,6 +665,17 @@ class GrowClust(_Plugin):
         os.chdir(working_dir.name)
 
         # In temp dir
+        # Find centroid
+        mean_lat, mean_lon = get_catalog_mean_location(catalog)
+        # Check that locations fall within ray-tracing bounds
+        input_events = len(catalog)
+        catalog = check_events_within_bounds(
+            catalog=catalog, mean_lat=mean_lat, mean_lon=mean_lon,
+            tt_xmin=config.tt_xmin, tt_xmax=config.tt_xmax,
+            tt_zmin=config.tt_zmin, tt_zmax=config.tt_zmax)
+        Logger.info(
+            f"Of {input_events} input events, {input_events - len(catalog)} "
+            f"were removed due to not being within bounds")
         event_mapper = write_phase(
             catalog, event_id_mapper=self.correlator.event_mapper)
         phase_to_evlist("phase.dat")
@@ -666,17 +702,6 @@ class GrowClust(_Plugin):
         #     # Out of tempdir
         #     working_dir.cleanup()
         #     return
-        # Find centroid
-        mean_lat, mean_lon = get_catalog_mean_location(catalog)
-        # Check that locations fall within ray-tracing bounds
-        input_events = len(catalog)
-        catalog = check_events_within_bounds(
-            catalog=catalog, mean_lat=mean_lat, mean_lon=mean_lon,
-            tt_xmin=config.tt_xmin, tt_xmax=config.tt_xmax,
-            tt_zmin=config.tt_zmin, tt_zmax=config.tt_zmax)
-        Logger.info(
-            f"Of {input_events} input events, {input_events - len(catalog)} "
-            f"were removed due to not being within bounds")
         # Run growclust
         Logger.info("Running growclust")
         outfile = run_growclust(

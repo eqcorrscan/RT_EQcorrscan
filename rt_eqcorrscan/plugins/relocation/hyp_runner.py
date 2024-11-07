@@ -61,16 +61,18 @@ class Velocity(object):
     moho:
         Mark whether this layer is the moho.
     """
-    def __init__(self, top: float, vp: float, moho: bool = False):
+    def __init__(self, top: float, vp: float, vs: float = None,
+                 moho: bool = False):
         self.top = top
         self.vp = vp
+        self.vs = vs
         self.moho = moho
 
     def __repr__(self):
-        return "Velocity(top={0}, vp={1}, moho={2})".format(
-            self.top, self.vp, self.moho)
+        return "Velocity(top={0}, vp={1}, vs={2}, moho={3})".format(
+            self.top, self.vp, self.vs, self.moho)
 
-    def __str__(self):
+    def _seisan_str(self):
         if self.moho:
             return "{0:7.3f}   {1:7.3f}    N     ".format(self.vp, self.top)
         return "{0:7.3f}   {1:7.3f}".format(self.vp, self.top)
@@ -98,8 +100,9 @@ class VelocityModel(object):
         elif format.upper() == "GROWCLUST":
             lines = []
             for v in self.velocities:
+                vs = v.vs or (v.vp / self.vpvs)
                 lines.append(
-                    f"{v.top:4.1f} {v.vp:2.1f} {v.vp / self.vpvs:2.1f}")
+                    f"{v.top:4.1f} {v.vp:2.1f} {vs:2.1f}")
             return "\n".join(lines)
 
     def write(self, filename: str, format: str = "SEISAN"):
@@ -108,10 +111,18 @@ class VelocityModel(object):
 
     @classmethod
     def read(cls, filename: str):
+        # Dict of first line and method to read that format
+        formats = {
+            "VelocityModel": cls._decode_native,
+            ",Depth,vp,vs": cls._decode_vmodel_csv
+        }
         with open(filename, "r") as f:
             lines = f.read().splitlines()
-        assert lines[0] == "VelocityModel", "Unknown format"
+        assert lines[0] in formats.keys(), f"Unknown format: {lines[0]}"
+        return formats[lines[0]](lines=lines)
 
+    @classmethod
+    def _decode_native(cls, lines: List[str]):
         velocities = []
         i = 1
         while True:
@@ -124,10 +135,24 @@ class VelocityModel(object):
                     top=float(parts[0]),
                     vp=float(parts[1]),
                     moho=parts[2] == "True"
-                    )
+                        )
                 )
             i += 1
         vpvs = float(line.split()[-1])
+        return cls(velocities=velocities, vpvs=vpvs)
+
+    @classmethod
+    def _decode_vmodel_csv(cls, lines: List[str]):
+        velocities = []
+        for line in lines[1:]:
+            lid, top, vp, vs = line.split(",")
+            velocities.append(
+                Velocity(
+                    top=float(top),
+                    vp=float(vp),
+                    vs=float(vs),
+                    moho=False))
+        vpvs = sum([v.vp / v.vs for v in velocities]) / len(velocities)
         return cls(velocities=velocities, vpvs=vpvs)
 
 
@@ -168,10 +193,16 @@ def seisan_hyp(
         warnings.simplefilter("ignore")
         write_select(catalog=Catalog([event_out]), high_accuracy=False,
                      filename="to_be_located")
-    loc_proc = subprocess.run(
-        ['hyp', "to_be_located"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT)
+    try:
+        loc_proc = subprocess.run(
+            ['hyp', "to_be_located"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=5.0)  # 5s is plenty for hyp to run, timeouts usually
+                          # result from errors in hyp
+    except subprocess.TimeoutExpired:
+        Logger.error(f"Could not locate - hyp timed out")
+        return None
     for line in loc_proc.stdout.decode().splitlines():
         Logger.info(">>> " + line.rstrip())
         # print(">>> " + line.rstrip())
@@ -352,7 +383,7 @@ def _write_station0(
     out += "\n\n"
     # Add velocity model
     for layer in velocities:
-        out += "{0}\n".format(layer)
+        out += f"{layer._seisan_str()}\n"
     out += "\n15.0 1100.2200. {0:.2f} \nTES\n".format(vpvs)
     with open("STATION0.HYP", "w") as f:
         f.write(out)
