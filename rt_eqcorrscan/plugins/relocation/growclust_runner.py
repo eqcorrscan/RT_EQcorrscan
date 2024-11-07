@@ -465,8 +465,8 @@ def process_output_catalog(
 
     catalog_out, relocated, not_relocated = Catalog(), Catalog(), Catalog()
     for key, ev in catalog_dict.items():
-        gc_origin = gc_origins.get(key)
-        if gc_origin is None:
+        gc_origin, _relocated = gc_origins.get(key)
+        if gc_origin is None or not _relocated:
             Logger.warning(f"Event {key} did not relocate")
             not_relocated += ev
             # catalog_out += ev
@@ -517,9 +517,10 @@ FORMATTER = {
     "depth_origins": (24, float)}
 
 
-def growclust_line_to_origin(line: str) -> [str, Origin]:
+def growclust_line_to_origin(line: str) -> [str, Origin, bool]:
     line = line.split()
     deserialized = {key: val[1](line[val[0]]) for key, val in FORMATTER.items()}
+    relocated = nbranch > 1  # If the cluster only had one event, it wasn't relocated.
     # Replace nans with None
     for key, val in deserialized.items():
         if math.isnan(val):
@@ -557,7 +558,7 @@ def growclust_line_to_origin(line: str) -> [str, Origin]:
             standard_error=(
                 deserialized["qndiffP"] + deserialized["qndiffS"]) *
                 (p_standard_error + s_standard_error)))
-    return deserialized["eventid"], origin
+    return deserialized["eventid"], origin, relocated
 
 
 def read_growclust(
@@ -575,17 +576,17 @@ def read_growclust(
 
     Returns
     -------
-    Dictionary of origins keyed by event id.
+    Dictionary of origins and whether they weere relocated keyed by event id.
     """
     with open(fname, "r") as f:
         lines = f.read().splitlines()
 
     origins = dict()
     for line in lines:
-        event_id, growclust_origin = growclust_line_to_origin(line)
+        event_id, growclust_origin, relocated = growclust_line_to_origin(line)
         if event_mapper:
             event_id = event_mapper.get(event_id, f"{event_id}_notmapped")
-        origins.update({event_id: growclust_origin})
+        origins.update({event_id: (growclust_origin, relocated)})
     return origins
 
 #############################################################################
