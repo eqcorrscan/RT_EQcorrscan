@@ -718,6 +718,11 @@ class Correlator:
         ordered_catalog = list(self._catalog)
         distance_array = dist_array_km(
             master=event, catalog=ordered_catalog)
+        if (distance_array <= self.maxsep).sum() == 0:
+            Logger.warning(
+                f"No events within {self.maxsep} km - no correlations.")
+            self._append_event(event)
+            return 0
         # We need to retain the distances used for max_event_link
         events_to_correlate, distance_array = zip(*[
             (ev, dist) for ev, dist in zip(ordered_catalog, distance_array)
@@ -750,7 +755,8 @@ class Correlator:
             else:
                 Logger.warning(
                     f"Could not get waveforms for {ev.resource_id.id}")
-        Logger.info(f"Running correlations for {len(st_dict.keys())} events")
+        Logger.info(f"Running correlations for {len(events_to_correlate)} "
+                    f"events")
         # Run _compute_dt_correlations
         differential_times = _compute_dt_correlations(
             catalog=events_to_correlate, master=event,

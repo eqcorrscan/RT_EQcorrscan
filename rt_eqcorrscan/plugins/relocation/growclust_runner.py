@@ -19,6 +19,12 @@ import tempfile
 
 import numpy as np
 
+from yaml import load, dump
+try:
+    from yaml import CLoader as Loader, CDumper as Dumper
+except ImportError:  # pragma: no cover
+    from yaml import Loader, Dumper
+
 from scipy.stats import circmean
 
 from typing import Iterable, List, Set
@@ -147,7 +153,7 @@ class GrowClustConfig(_PluginConfig):
         "correlation_config": CorrelationConfig(),
     }
     readonly = []
-    __subclasses = {
+    _subclasses = {
         "projection": _GrowClustProj,
         "correlation_config": CorrelationConfig,
     }
@@ -155,11 +161,29 @@ class GrowClustConfig(_PluginConfig):
     def __init__(self, *args, **kwargs):
         attribs = dict()
         for key, value in kwargs.items():
-            if key in self.__subclasses.keys():
+            if key in self._subclasses.keys():
                 if isinstance(value, dict):
-                    value = self.__subclasses[key](**value)
+                    value = self._subclasses[key](**value)
             attribs.update({key: value})
         super().__init__(*args, **attribs)
+
+    @classmethod
+    def read(cls, config_file: str):
+        from rt_eqcorrscan.config.config import _recursive_replace_space_underscore
+
+        with open(config_file, "rb") as f:
+            configuration = load(f, Loader=Loader)
+        configuration = {key.replace(" ", "_"): value
+                         for key, value in configuration.items()}
+        # Cope with nested subclasses
+        config_dict = {}
+        for key, value in configuration.items():
+            if key.replace(" ", "_") in cls._subclasses.keys():
+                config_dict.update(
+                    _recursive_replace_space_underscore({key: value}))
+            else:
+                config_dict.update({key: value})
+        return cls(**config_dict)
 
     def to_yaml_dict(self):
         """ Overload. """

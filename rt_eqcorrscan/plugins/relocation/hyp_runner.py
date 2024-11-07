@@ -135,7 +135,7 @@ class VelocityModel(object):
                     top=float(parts[0]),
                     vp=float(parts[1]),
                     moho=parts[2] == "True"
-                    )
+                        )
                 )
             i += 1
         vpvs = float(line.split()[-1])
@@ -193,10 +193,16 @@ def seisan_hyp(
         warnings.simplefilter("ignore")
         write_select(catalog=Catalog([event_out]), high_accuracy=False,
                      filename="to_be_located")
-    loc_proc = subprocess.run(
-        ['hyp', "to_be_located"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT)
+    try:
+        loc_proc = subprocess.run(
+            ['hyp', "to_be_located"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=5.0)  # 5s is plenty for hyp to run, timeouts usually
+                          # result from errors in hyp
+    except subprocess.TimeoutExpired:
+        Logger.error(f"Could not locate - hyp timed out")
+        return None
     for line in loc_proc.stdout.decode().splitlines():
         Logger.info(">>> " + line.rstrip())
         # print(">>> " + line.rstrip())
