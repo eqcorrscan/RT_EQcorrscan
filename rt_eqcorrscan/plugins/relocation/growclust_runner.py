@@ -670,10 +670,14 @@ class GrowClust(_Plugin):
         mean_lat, mean_lon = get_catalog_mean_location(catalog)
         # Check that locations fall within ray-tracing bounds
         input_events = len(catalog)
-        catalog = check_events_within_bounds(
-            catalog=catalog, mean_lat=mean_lat, mean_lon=mean_lon,
-            tt_xmin=config.tt_xmin, tt_xmax=config.tt_xmax,
-            tt_zmin=config.tt_zmin, tt_zmax=config.tt_zmax)
+        inv = read_inventory(station_file)
+        for net in inv:
+            for sta in net:
+                catalog = check_events_within_bounds(
+                    catalog=catalog, mean_lat=sta.latitude, 
+                    mean_lon=sta.longitude,
+                    tt_xmin=config.tt_xmin, tt_xmax=config.tt_xmax,
+                    tt_zmin=config.tt_zmin, tt_zmax=config.tt_zmax)
         Logger.info(
             f"Of {input_events} input events, {input_events - len(catalog)} "
             f"were removed due to not being within bounds")
