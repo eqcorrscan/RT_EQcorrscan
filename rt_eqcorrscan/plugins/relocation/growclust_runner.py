@@ -352,7 +352,7 @@ def run_growclust(
     internal_config.projection.lat0 = mean_lat
     internal_config.projection.lon0 = mean_lon
 
-    internal_config.write_growclust(f"{WORKING_DIR}/.growclust_control.inp")
+    internal_config.write_growclust(f"growclust_control.inp")
 
     vmodel = VelocityModel.read(vmodel_file)
     vmodel.write(internal_config.fin_vzmdl, format="GROWCLUST")
@@ -364,7 +364,7 @@ def run_growclust(
         "julia",
         "--threads", str(workers),
         growclust_script,
-        "-c", f"{WORKING_DIR}/.growclust_control.inp"]
+        "-c", f"growclust_control.inp"]
     Logger.info(f"Running call: {' '.join(arg_string)}")
 
     loc_proc = subprocess.run(
