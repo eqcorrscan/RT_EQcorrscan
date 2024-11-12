@@ -54,8 +54,6 @@ Logger = logging.getLogger(__name__)
 
 # CORRELATION COMPUTATION PARAMETERS
 
-
-
 class _GrowClustProj(_PluginConfig):
     defaults = {
         "proj": "tmerc",
@@ -655,15 +653,20 @@ class GrowClust(_Plugin):
             return
         Logger.info(f"Prepping growclust files for {len(catalog)} events")
         # Do the mahi in a tempdir
-        working_dir = tempfile.TemporaryDirectory()
         cwd = os.path.abspath(os.path.curdir)
+        working_dir = os.path.join(cwd, ".growclust_working")
+        if os.path.isdir(working_dir):
+            Logger.warning(f"Planned working directory ({working_dir}) exists, "
+                           f"files will be overwritten")
+        else:
+            os.makedirs(working_dir)
         outdir, station_file = map(os.path.abspath, (outdir, station_file))
-        Logger.info(f"Working in {working_dir.name}")
+        Logger.info(f"Working in {working_dir}")
         shutil.copyfile(self._cc_file,
-                        os.path.join(working_dir.name, "dt.cc"))
+                        os.path.join(working_dir, "dt.cc"))
         Logger.info(f"Copied correlation file from {self._cc_file} to "
-                    f"{os.path.join(working_dir.name, 'dt.cc')}")
-        os.chdir(working_dir.name)
+                    f"{os.path.join(working_dir, 'dt.cc')}")
+        os.chdir(working_dir)
 
         # In temp dir
         # Find centroid
@@ -692,21 +695,6 @@ class GrowClust(_Plugin):
         endtime = max(p.time for ev in catalog for p in ev.picks)
         write_stations(seed_ids=seed_ids, starttime=starttime, endtime=endtime,
                        station_file=station_file)
-        # Write correlations
-        # Logger.info("Writing correlations")
-        # written_links = self.correlator.write_correlations(
-        #     outfile="dt.cc", min_cc=self.config.correlation_config.min_cc,
-        #     weight_by_square=self.config.correlation_config.weight_by_square)
-        # if written_links == 0:
-        #     Logger.warning(
-        #         f"No links above threshold "
-        #         f"({self.config.correlation_config.min_cc}), not running "
-        #         f"growclust")
-        #     os.chdir(cwd)
-        #
-        #     # Out of tempdir
-        #     working_dir.cleanup()
-        #     return
         # Run growclust
         Logger.info("Running growclust")
         outfile = run_growclust(
@@ -720,7 +708,9 @@ class GrowClust(_Plugin):
 
         # Out of tempdir
         if cleanup:
-            working_dir.cleanup()
+            self._cleanup()
+            Logger.info(f"Removing {working_dir} and all files therein")
+            shutil.rmtree(working_dir)
         if not os.path.isdir(outdir):
             os.makedirs(outdir)
         for ev in catalog_out:
@@ -731,7 +721,6 @@ class GrowClust(_Plugin):
             if not os.path.isdir(os.path.dirname(outpath)):
                 os.makedirs(os.path.dirname(outpath))
             ev.write(f"{outpath}", format="QUAKEML")
-        # catalog_out.write(f"{outdir}/relocated.xml", format="QUAKEML")
         return
 
 
