@@ -305,7 +305,7 @@ class StreamClient:
                         network=net, station=sta, channel=chan, location=loc,
                         starttime=starttime, endtime=endtime)
             if len(new_stream):
-                Logger.debug(f"Acquired new data for buffer: {new_stream}")
+                Logger.info(f"Acquired new data for buffer: {new_stream}")
                 new_stream += self.stream
                 new_stream.merge()
                 self.stream = new_stream

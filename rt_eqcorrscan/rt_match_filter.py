@@ -905,6 +905,7 @@ class RealTimeTribe(Tribe):
             self.expected_seed_ids))
         if backfill_client and backfill_to:
             backfill = Stream()
+            # Wait for the streamer to have some data
             _continue = self._wait()
             if not _continue:
                 return Party()
@@ -916,7 +917,9 @@ class RealTimeTribe(Tribe):
                     continue
                 # Overlap
                 endtime = tr_in_buffer.stats.endtime
-                Logger.info(f"Buffer for {tr.id} between {tr.stats.starttime} and {tr.stats.endtime}")
+                Logger.info(f"Buffer for {tr_in_buffer.id} between "
+                            f"{tr_in_buffer.stats.starttime} and "
+                            f"{tr_in_buffer.stats.endtime}")
                 if endtime - backfill_to > buffer_capacity:
                     starttime = endtime - buffer_capacity
                     Logger.info(
