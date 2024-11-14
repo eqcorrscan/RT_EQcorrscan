@@ -20,7 +20,6 @@ import numpy as np
 
 from typing import Union, List, Iterable
 
-from ipykernel.pickleutil import buffer
 from obspy import Stream, UTCDateTime, Inventory, Trace
 from obsplus import WaveBank
 from matplotlib.figure import Figure
