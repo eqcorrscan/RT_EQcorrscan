@@ -20,6 +20,7 @@ import numpy as np
 
 from typing import Union, List, Iterable
 
+from ipykernel.pickleutil import buffer
 from obspy import Stream, UTCDateTime, Inventory, Trace
 from obsplus import WaveBank
 from matplotlib.figure import Figure
@@ -914,13 +915,16 @@ class RealTimeTribe(Tribe):
                     tr_in_buffer = _buffer.select(id=tr_id)[0]
                 except IndexError:
                     continue
-                endtime = tr_in_buffer.stats.endtime
-                starttime = backfill_to
-                # if endtime - backfill_to > buffer_capacity:
-                #     Logger.info("Truncating backfill to buffer length")
-                #     starttime = endtime - buffer_capacity
-                # else:
-                #     starttime = backfill_to
+                # Overlap
+                endtime = tr_in_buffer.stats.starttime + (0.2 * buffer_capacity)
+                if endtime - backfill_to > buffer_capacity:
+                    starttime = endtime - buffer_capacity
+                    Logger.info(
+                        f"Truncating backfill to buffer length: "
+                        f"{buffer_capacity} (getting data between {starttime} "
+                        f"and {endtime}")
+                else:
+                    starttime = backfill_to
                 if starttime > endtime:
                     continue
                 try:
