@@ -26,6 +26,7 @@ from typing import Iterable, List
 REGISTERED_PLUGINS = {
     "picker": "rteqcorrscan-plugin-picker",
     "hyp": "rteqcorrscan-plugin-hyp",
+    "nll": "rteqcorrscan-plugin-nll",
     "plotter": "rteqcorrscan-plugin-plotter",
     "growclust": "rteqcorrscan-plugin-growclust",
 }
