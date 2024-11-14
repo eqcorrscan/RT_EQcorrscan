@@ -110,6 +110,7 @@ class InMemoryWaveBank:
         length: float,
         phases: set = None,
         check_new_files: bool = True,
+        same_starttimes: bool = True,
     ) -> Stream:
         # convenience pick named tuple
         if phases is None:
@@ -147,6 +148,13 @@ class InMemoryWaveBank:
         # Filter picks without useful times available
         used_picks = [p for p in used_picks if p.files]
 
+        # If we want all the same start times then set the starttime to the
+        # minimum start time
+        if same_starttimes:
+            min_picktime = min(p.time for p in used_picks)
+            for pick in used_picks:
+                pick.time = min_picktime
+
         # Read in waveforms
         st = Stream()
         for pick in used_picks:
@@ -156,6 +164,8 @@ class InMemoryWaveBank:
             for file in pick.files:
                 if file.filename is None:
                     continue
+                Logger.info(f"Getting data between {tr_start} - {tr_end} "
+                            f"from {file.filename}")
                 try:
                     st += read(file.filename, starttime=UTCDateTime(tr_start),
                                endtime=UTCDateTime(tr_end))

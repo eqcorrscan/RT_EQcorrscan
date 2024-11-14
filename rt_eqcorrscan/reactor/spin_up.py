@@ -123,7 +123,8 @@ def run(
     # TODO: How will this work? Currently notifiers are not implemented
     # real_time_tribe.notifier = None
 
-    backfill_to = event_time(triggering_event) - config.template.process_len
+    backfill_to = event_time(triggering_event) - (
+        4 * config.template.process_len)
     backfill_client = config.rt_match_filter.get_waveform_client()
 
     if backfill_client and real_time_tribe.wavebank:
