@@ -207,8 +207,8 @@ class RealTimeTribe(Tribe):
             ori = (template.event.preferred_origin() or
                    template.event.origins[-1])
             if ori.longitude is not None:
-                lats.append(ori.longitude)
-        return lats
+                lons.append(ori.longitude)
+        return lons
 
     @property
     def minlat(self):
