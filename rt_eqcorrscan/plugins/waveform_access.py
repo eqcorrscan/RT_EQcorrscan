@@ -186,7 +186,7 @@ class InMemoryWaveBank:
                 if filepath in scanned_files and not scan_all:
                     Logger.debug(f"Skipping {filepath} - already scanned")
                     continue
-                Logger.debug(f"Scanning {filepath}")
+                Logger.info(f"Scanning {filepath}")
                 st = None
                 try:  # Try to just read the header
                     st = read(filepath, headonly=True)
@@ -207,6 +207,7 @@ class InMemoryWaveBank:
                             tr.stats.starttime.datetime,  # these need to be datetimes to be hashable
                             tr.stats.endtime.datetime
                         ))
+                    Logger.info(seed_availability[-1])
                     self.data_availability.update({tr.id: seed_availability})
         return
 
