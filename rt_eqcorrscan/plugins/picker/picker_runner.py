@@ -295,7 +295,7 @@ class Picker(_Plugin):
                     d_party, in_memory_wavebank=self.in_memory_wavebank,
                     length=family.template.process_length * 3.1,
                     pre_pick=max(internal_config.shift_len * 2,
-                                 family.template.process_length))
+                                 family.template.process_length * 1.25))
                 # Get an excess of data to cope with missing "future" data
                 Logger.info(f"Have stream: \n{stream}")
                 if len(stream):
