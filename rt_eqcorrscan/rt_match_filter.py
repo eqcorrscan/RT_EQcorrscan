@@ -914,7 +914,7 @@ class RealTimeTribe(Tribe):
                     tr_in_buffer = _buffer.select(id=tr_id)[0]
                 except IndexError:
                     continue
-                endtime = tr_in_buffer.stats.starttime
+                endtime = tr_in_buffer.stats.endtime
                 if endtime - backfill_to > buffer_capacity:
                     Logger.info("Truncating backfill to buffer length")
                     starttime = endtime - buffer_capacity
