@@ -981,7 +981,7 @@ class RealTimeTribe(Tribe):
                     start_time = UTCDateTime.now()
                     st = self.rt_client.stream.split().merge()
                     # Add in past data if needed - will be trimmed later
-                    st = (st + past_st).merge()
+                    st = (st + past_st).merge(method=1)  # Keep overlapping data
                     past_st = st
                     # Warn if data are gappy
                     gappy = False
