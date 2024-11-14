@@ -153,7 +153,7 @@ class InMemoryWaveBank:
         if same_starttimes:
             min_picktime = min(p.time for p in used_picks)
             for pick in used_picks:
-                pick.time = min_picktime
+                pick._replace(time=min_picktime)
 
         # Read in waveforms
         st = Stream()
