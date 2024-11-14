@@ -290,13 +290,14 @@ class Picker(_Plugin):
                 Logger.info(f"Setting up picker for Detection: {detection.id}")
                 d_party = Party(
                     [Family(family.template, [detection])])
+                Logger.info(f"Getting stream from {self.in_memory_wavebank}")
                 stream = get_stream(
                     d_party, in_memory_wavebank=self.in_memory_wavebank,
                     length=family.template.process_length * 2.1,
                     pre_pick=min(internal_config.shift_len * 2,
                                  family.template.process_length))
                 # Get an excess of data to cope with missing "future" data
-                Logger.debug(f"Have stream: \n{stream}")
+                Logger.info(f"Have stream: \n{stream}")
                 if len(stream):
                     min_len = min([
                         tr.stats.endtime - tr.stats.starttime
@@ -305,7 +306,9 @@ class Picker(_Plugin):
                     min_len = 0.0
                 if min_len < family.template.process_length:
                     Logger.info(
-                        f"Insufficient data for {detection.id}, waiting.")
+                        f"Insufficient data ({min_len}s) for {detection.id} "
+                        f"which requires {family.template.process_length}s, "
+                        f"waiting.")
                     continue
                 # Run lag-calc
                 Logger.info(f"Running lag-calc for {detection.id}")
