@@ -1228,7 +1228,7 @@ class RealTimeTribe(Tribe):
         for template in new_tribe:
             _tout = f"{self.running_template_dir}/{template.name}.pkl"
             Logger.info(f"Writing template to {_tout}")
-            with open(tout, "wb") as f:
+            with open(_tout, "wb") as f:
                 pickle.dump(template, f)
         return new_tribe
 
