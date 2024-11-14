@@ -142,6 +142,7 @@ class InMemoryWaveBank:
             files.update({f for f in seed_availability
                           if tr_start <= f.starttime and tr_end <= f.endtime})
             # File completely within timespan
+            Logger.info(f"{tr_start} - {tr_end} found files: {files}")
             _used_picks.append(pick._replace(files=files))
         used_picks = _used_picks
         del _used_picks
