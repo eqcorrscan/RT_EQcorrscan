@@ -363,7 +363,13 @@ def run_nll(catalog: Catalog, control_file: str, verbose: bool = True) -> Catalo
     args = ["NLLoc", os.path.split(control_file)[-1]]
 
     Logger.info(f"Running call {' '.join(args)}")
-    loc_proc = subprocess.run(args)
+    loc_proc = subprocess.run(
+        args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+
+    for line in loc_proc.stdout.decode().splitlines():
+        Logger.info(">>> " + line.rstrip())
 
     try:
         loc_proc.check_returncode()
