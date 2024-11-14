@@ -198,7 +198,7 @@ class RealTimeTribe(Tribe):
         for network in self.inventory:
             for station in network:
                 if station.longitude is not None:
-                    lats.append(station.longitude)
+                    lons.append(station.longitude)
         for template in self.templates:
             if template.event is None:
                 continue
