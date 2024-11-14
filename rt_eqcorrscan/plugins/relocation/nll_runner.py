@@ -45,7 +45,7 @@ class NLLConfig(_PluginConfig):
         "maxdepth": None,  # All to be set by a call from the plugin master.
         "mindepth": -3.0,
         "nodespacing": 1.0,
-        "station_file": "stations.xml",
+        "station_file": os.path.abspath("stations.xml"),
         "sleep_interval": 10,
     }
     _readonly = []
@@ -54,6 +54,7 @@ class NLLConfig(_PluginConfig):
         super().__init__(*args, **kwargs)
         self.infile = os.path.abspath(self.infile)
         self.veldir = os.path.abspath(self.veldir)
+        self.station_file = os.path.abspath(self.station_file)
 
 
 PLUGIN_CONFIG_MAPPER.update({"nll": NLLConfig})
