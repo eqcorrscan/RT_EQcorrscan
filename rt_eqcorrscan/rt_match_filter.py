@@ -915,7 +915,8 @@ class RealTimeTribe(Tribe):
                 except IndexError:
                     continue
                 # Overlap
-                endtime = tr_in_buffer.stats.starttime + (0.2 * buffer_capacity)
+                endtime = tr_in_buffer.stats.endtime
+                Logger.info(f"Buffer for {tr.id} between {tr.stats.starttime} and {tr.stats.endtime}")
                 if endtime - backfill_to > buffer_capacity:
                     starttime = endtime - buffer_capacity
                     Logger.info(
