@@ -915,11 +915,12 @@ class RealTimeTribe(Tribe):
                 except IndexError:
                     continue
                 endtime = tr_in_buffer.stats.endtime
-                if endtime - backfill_to > buffer_capacity:
-                    Logger.info("Truncating backfill to buffer length")
-                    starttime = endtime - buffer_capacity
-                else:
-                    starttime = backfill_to
+                starttime = backfill_to
+                # if endtime - backfill_to > buffer_capacity:
+                #     Logger.info("Truncating backfill to buffer length")
+                #     starttime = endtime - buffer_capacity
+                # else:
+                #     starttime = backfill_to
                 if starttime > endtime:
                     continue
                 try:
@@ -936,7 +937,8 @@ class RealTimeTribe(Tribe):
                 backfill += tr
             for tr in backfill:
                 # Get the lock!
-                Logger.info(f"Adding {tr.id} to the buffer")
+                Logger.info(f"Adding {tr.id} {tr.stats.starttime} -- "
+                            f"{tr.stats.endtime} to the buffer")
                 self.rt_client.on_data(tr)
             Logger.info("Stream in buffer is now: {0}".format(
                 self.rt_client.stream))
