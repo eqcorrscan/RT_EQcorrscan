@@ -175,6 +175,58 @@ class RealTimeTribe(Tribe):
             self.__len__(), self.rt_client)
 
     @property
+    def _latitude(self):
+        lats = []
+        for network in self.inventory:
+            for station in network:
+                if station.latitude is not None:
+                    lats.append(station.latitude)
+        for template in self.templates:
+            if template.event is None:
+                continue
+            if len(template.event.origins) == 0:
+                continue
+            ori = (template.event.preferred_origin() or
+                   template.event.origins[-1])
+            if ori.latitude is not None:
+                lats.append(ori.latitude)
+        return lats
+
+    @property
+    def _longitude(self):
+        lons = []
+        for network in self.inventory:
+            for station in network:
+                if station.longitude is not None:
+                    lats.append(station.longitude)
+        for template in self.templates:
+            if template.event is None:
+                continue
+            if len(template.event.origins) == 0:
+                continue
+            ori = (template.event.preferred_origin() or
+                   template.event.origins[-1])
+            if ori.longitude is not None:
+                lats.append(ori.longitude)
+        return lats
+
+    @property
+    def minlat(self):
+        return min(self._latitude)
+
+    @property
+    def minlon(self):
+        return min(self._longitude)
+
+    @property
+    def maxlat(self):
+        return max(self._latitude)
+
+    @property
+    def maxlon(self):
+        return max(self._longitude)
+
+    @property
     def _killfile(self):
         return self.__killfile
 
@@ -828,6 +880,16 @@ class RealTimeTribe(Tribe):
                     config.out_dir = in_dir
                 else:
                     config.out_dir = f"{self.name}/{plugin_name}_out"
+                if plugin_name == "nll":
+                    # We need to set the bounds to be useful
+                    config.maxlat = (
+                        self.maxlat + (0.1 * (self.maxlat - self.minlat)))
+                    config.minlat = (
+                        self.minlat - (0.1 * (self.maxlat - self.minlat)))
+                    config.maxlon = (
+                        self.maxlon - (0.1 * (self.maxlon - self.minlon)))
+                    config.minlon = (
+                        self.minlon - (0.1 * (self.maxlon - self.minlon)))
                 config.wavebank_dir = self.wavebank.bank_path
                 config.template_dir = self.running_template_dir
                 # Output of previous plugin as input to next

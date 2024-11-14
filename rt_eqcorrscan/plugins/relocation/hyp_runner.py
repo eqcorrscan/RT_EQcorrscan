@@ -35,7 +35,7 @@ class HypConfig(_PluginConfig):
         "station_file": "stations.xml",
         "min_stations": 5,
         "max_rms": 2.0,
-        "sleep_interval": 600,
+        "sleep_interval": 10,
     }
     readonly = []
 
