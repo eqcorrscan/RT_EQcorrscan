@@ -851,9 +851,11 @@ class RealTimeTribe(Tribe):
         # dump templates to the record of templates running
         if not os.path.isfile(self.running_template_dir):
             os.makedirs(self.running_template_dir)
-            for template in self.templates:
-                with open(f"{self.running_template_dir}/{template.name}.pkl", "wb") as f:
-                    pickle.dump(template, f)
+        for template in self.templates:
+            _tout = f"{self.running_template_dir}/{template.name}.pkl"
+            Logger.info(f"Writing template to {_tout}")
+            with open(_tout, "wb") as f:
+                pickle.dump(template, f)
         # Get this locally before streaming starts
         buffer_capacity = self.rt_client.buffer_capacity  
         # Start the streamer
@@ -890,8 +892,9 @@ class RealTimeTribe(Tribe):
                         self.maxlon - (0.1 * (self.maxlon - self.minlon)))
                     config.minlon = (
                         self.minlon - (0.1 * (self.maxlon - self.minlon)))
-                config.wavebank_dir = self.wavebank.bank_path
-                config.template_dir = self.running_template_dir
+                config.wavebank_dir = os.path.abspath(self.wavebank.bank_path)
+                config.template_dir = os.path.abspath(
+                    self.running_template_dir)
                 # Output of previous plugin as input to next
                 in_dir = config.out_dir
 
@@ -1188,13 +1191,13 @@ class RealTimeTribe(Tribe):
         template_files = glob.glob(f"{self._template_dir}/*")
         if len(template_files) == 0:
             return []
-        Logger.debug(f"Checking for events in {self._template_dir}")
+        Logger.info(f"Checking for events in {self._template_dir}")
         new_tribe = Tribe()
         for template_file in template_files:
             if os.path.isdir(template_file):
                 # Can happen if the archive hasn't finished being created
                 continue
-            Logger.debug(f"Reading from {template_file}")
+            Logger.info(f"Reading from {template_file}")
             try:
                 template = Template().read(template_file)
             except Exception as e:
@@ -1222,9 +1225,11 @@ class RealTimeTribe(Tribe):
         # dump them to the record of templates running
         if not os.path.isdir(self.running_template_dir):
             os.makedirs(self.running_template_dir)
-            for template in new_tribe:
-                with open(f"{self.running_template_dir}/{template.name}.pkl", "wb") as f:
-                    pickle.dump(template, f)
+        for template in new_tribe:
+            _tout = f"{self.running_template_dir}/{template.name}.pkl"
+            Logger.info(f"Writing template to {_tout}")
+            with open(tout, "wb") as f:
+                pickle.dump(template, f)
         return new_tribe
 
     def _add_templates_from_disk(
