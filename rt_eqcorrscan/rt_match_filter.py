@@ -938,13 +938,17 @@ class RealTimeTribe(Tribe):
                     continue
                 Logger.debug("Downloaded backfill: {0}".format(tr))
                 backfill += tr
-            for tr in backfill:
-                # Get the lock!
-                Logger.info(f"Adding {tr.id} {tr.stats.starttime} -- "
-                            f"{tr.stats.endtime} to the buffer")
-                self.rt_client.on_data(tr)
-            Logger.info("Stream in buffer is now: {0}".format(
-                self.rt_client.stream))
+            # for tr in backfill:
+            #     # Get the lock!
+            #     Logger.info(f"Adding {tr.id} {tr.stats.starttime} -- "
+            #                 f"{tr.stats.endtime} to the buffer")
+            #     self.rt_client.on_data(tr)
+            # Logger.info("Stream in buffer is now: {0}".format(
+            #     self.rt_client.stream))
+            # Use this to get around adding to rt client from another thread
+            past_st = backfill
+        else:
+            past_st = Stream()
         if self.plot:  # pragma: no cover
             # Set up plotting thread
             self._plot()
@@ -975,6 +979,9 @@ class RealTimeTribe(Tribe):
                     self._running = True  # Lock tribe
                     start_time = UTCDateTime.now()
                     st = self.rt_client.stream.split().merge()
+                    # Add in past data if needed - will be trimmed later
+                    st = (st + past_st).merge()
+                    past_st = st
                     # Warn if data are gappy
                     gappy = False
                     for tr in st:
