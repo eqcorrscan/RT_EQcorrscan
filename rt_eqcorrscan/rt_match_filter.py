@@ -1000,6 +1000,8 @@ class RealTimeTribe(Tribe):
                         wb_retries, wb_max_retries, e = 0, 10, None
                         while wb_retries <= wb_max_retries:
                             try:
+                                Logger.info(f"Putting stream into wavebank: "
+                                            f"{st.__str__(extended=True)}")
                                 self._access_wavebank(
                                     method="put_waveforms", timeout=10.,
                                     stream=st)
