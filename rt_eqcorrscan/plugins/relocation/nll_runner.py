@@ -305,23 +305,21 @@ def setup_nll(
 
         for cmd in ["Vel2Grid3D", "Grid2Time"]:
             kwargs = dict(bufsize=0, stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE)
+                          stderr=subprocess.STDOUT)
             args = [cmd, os.path.split(control_file)[-1]]
-            print(f"Running {' '.join(args)} from {nlldir}")
+            Logger.info(f"Running {' '.join(args)} from {nlldir}")
 
-            with subprocess.Popen(args, **kwargs) as p:
-                _output, _err = [], []
-                for line in p.stdout:
-                    _out = line.decode('utf-8')
-                    if verbose:
-                        print(_out, end='', flush=True)
-                    _output.append(_out)
-                for line in p.stderr:
-                    _err.append(line.decode('utf-8'))
-                if p.returncode != 0:
-                    _err = "\n".join(_err)
-                    print(f"Could not run {cmd}: \n{_err}")
-                print(f"{cmd} successful")
+            proc = subprocess.run(*args, **kwargs)
+
+            for line in loc_proc.stdout.decode().splitlines():
+                Logger.info(">>> " + line.rstrip())
+
+                try:
+                    loc_proc.check_returncode()
+                except Exception as e:
+                    Logger.exception(e)
+                
+                Logger.info(f"{cmd} successful")
 
     os.chdir(cwd)
     return
