@@ -222,14 +222,13 @@ def seisan_hyp(
             p for p in event_out.picks
             if p.waveform_id.station_code == pick.waveform_id.station_code and
             p.waveform_id.channel_code[-1] == pick.waveform_id.channel_code[-1] and
-            abs(p.time - pick.time) < 0.1 and
-            p.phase_hint == pick.phase_hint]
+            abs(p.time - pick.time) < 0.1]
         if len(matched_pick) == 0:
             Logger.error("No picks matched")
             return None
         if len(set(p.waveform_id.get_seed_string() for p in matched_pick)) != 1:
-            Logger.error(
-                f"Multiple picks match to {pick}:\n"
+            Logger.warning(
+                f"Multiple picks match to {pick} (using zeroth):\n"
                 f"matched picks:\n{matched_pick}")
         Logger.info(f"Matched {pick.waveform_id.get_seed_string()} to "
                     f"{matched_pick[0].waveform_id.get_seed_string()}")
