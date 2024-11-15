@@ -318,7 +318,7 @@ def setup_nll(
                     loc_proc.check_returncode()
                 except Exception as e:
                     Logger.exception(e)
-                
+
                 Logger.info(f"{cmd} successful")
 
     os.chdir(cwd)

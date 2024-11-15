@@ -5,7 +5,7 @@ import logging
 import os
 import fnmatch
 
-from typing import Iterable, List
+from typing import Iterable, List, Union
 
 from collections import namedtuple
 
@@ -34,6 +34,22 @@ class InMemoryWaveBank:
             return {finfo.filename for value in self.data_availability.values()
                     for finfo in value}
         return set()
+
+    @property
+    def starttime(self) -> Union[UTCDateTime, None]:
+        if len(self.data_availability):
+            return min(
+                [finfo.starttime for value in self.data_availability.values()
+                 for finfo in value])
+        return None
+
+    @property
+    def endtime(self) -> Union[UTCDateTime, None]:
+        if len(self.data_availability):
+            return max(
+                [finfo.endtime for value in self.data_availability.values()
+                 for finfo in value])
+        return None
 
     def get_files(
         self,
@@ -142,7 +158,7 @@ class InMemoryWaveBank:
             files.update({f for f in seed_availability
                           if tr_start <= f.starttime and tr_end <= f.endtime})
             # File completely within timespan
-            Logger.info(f"{tr_start} - {tr_end} found files: {files}")
+            Logger.debug(f"{tr_start} - {tr_end} found files: {files}")
             _used_picks.append(pick._replace(files=files))
         used_picks = _used_picks
         del _used_picks
@@ -162,11 +178,12 @@ class InMemoryWaveBank:
             tr_start = pick.time - dt.timedelta(seconds=pre_pick)
             tr_end = ((pick.time - dt.timedelta(seconds=pre_pick))
                       + dt.timedelta(seconds=length))
+            Logger.info(f"Looking for data in {', '.join(pick.files)}")
             for file in pick.files:
                 if file.filename is None:
                     continue
-                Logger.info(f"Getting data between {tr_start} - {tr_end} "
-                            f"from {file.filename}")
+                Logger.debug(f"Getting data between {tr_start} - {tr_end} "
+                             f"from {file.filename}")
                 try:
                     st += read(file.filename, starttime=UTCDateTime(tr_start),
                                endtime=UTCDateTime(tr_end))
@@ -178,6 +195,7 @@ class InMemoryWaveBank:
     def get_data_availability(self, scan_all: bool = True):
         """ Scan a waveform dir and work out what is in it. """
         scanned_files = self.scanned_files  # Cache this
+        new_files = 0
         for root, dirs, files in os.walk(self.wavedir):
             for f in files:
                 if f == ".index.h5":
@@ -187,7 +205,7 @@ class InMemoryWaveBank:
                 if filepath in scanned_files and not scan_all:
                     Logger.debug(f"Skipping {filepath} - already scanned")
                     continue
-                Logger.info(f"Scanning {filepath}")
+                Logger.debug(f"Scanning {filepath}")
                 st = None
                 try:  # Try to just read the header
                     st = read(filepath, headonly=True)
@@ -210,6 +228,13 @@ class InMemoryWaveBank:
                         ))
                     Logger.info(seed_availability[-1])
                     self.data_availability.update({tr.id: seed_availability})
+                new_files += 1
+        if new_files > 0:
+            Logger.info(f"Scanned {new_files} new files")
+        else:
+            Logger.info("No new files found")
+        Logger.info(
+            f"Data available between {self.starttime} and {Self.endtime}")
         return
 
 
