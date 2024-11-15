@@ -985,7 +985,6 @@ class RealTimeTribe(Tribe):
                     st = self.rt_client.stream.split().merge()
                     # Add in past data if needed - will be trimmed later
                     st = (st + past_st).merge(method=1)  # Keep overlapping data
-                    past_st = st
                     # Warn if data are gappy
                     gappy = False
                     for tr in st:
@@ -1173,6 +1172,8 @@ class RealTimeTribe(Tribe):
                                 "stopping.".format(_rate))
                             self.stop()
                             break
+                    # Re-use this stream
+                    past_st = st
                     # Logger.info("Enforcing garbage collection")
                     # gc.collect()
                     # Memory output
