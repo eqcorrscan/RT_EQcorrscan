@@ -484,7 +484,7 @@ class RealTimeClient(_StreamingClient):
                 Logger.error(e)
                 query_passed = False
                 continue
-            st += _st
+            st = (st + _st).merge(method=1)
         return st, query_passed
 
     def run(self) -> None:
