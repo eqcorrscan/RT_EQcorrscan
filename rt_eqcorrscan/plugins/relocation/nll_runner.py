@@ -304,7 +304,7 @@ def setup_nll(
         shutil.copyfile(f"{veldir}/{v_file}", v_file)
 
         for cmd in ["Vel2Grid3D", "Grid2Time"]:
-            kwargs = dict(bufsize=0, stdout=subprocess.PIPE,
+            kwargs = dict(stdout=subprocess.PIPE,
                           stderr=subprocess.STDOUT)
             args = [cmd, os.path.split(control_file)[-1]]
             Logger.info(f"Running {' '.join(args)} from {nlldir}")
