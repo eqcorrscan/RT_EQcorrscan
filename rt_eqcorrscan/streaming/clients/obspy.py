@@ -307,7 +307,7 @@ class StreamClient:
             if len(new_stream):
                 Logger.info(f"Acquired new data for buffer: {new_stream}")
                 new_stream += self.stream
-                new_stream.merge()
+                new_stream.merge(method=1)
                 self.stream = new_stream
             # Sleep in small steps
             _sleep, sleep_duration, sleep_step = (
