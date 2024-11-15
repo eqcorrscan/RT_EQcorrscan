@@ -14,6 +14,8 @@ from typing import Union, List
 
 from pyproj import Transformer, CRS
 
+from scipy.interpolate import interp1d
+
 MODEL_FILE = "vlnzw2p2dnxyzltln.tbl.txt"  # NZ3D 2.2 from https://zenodo.org/record/3779523#.YCRFaOrRVhF
 
 Logger = logging.getLogger(__name__)
@@ -81,6 +83,7 @@ def extract_one_1_lat_lon_simulps(
         origin_lat: float,
         origin_lon: float,
         origin_rotation: float,
+        interpolate: float = None,
 ) -> pd.DataFrame:
     """
     Extract a one-d spatial average velocity model from a simulPS
@@ -93,6 +96,8 @@ def extract_one_1_lat_lon_simulps(
     max_lat
     min_lon
     max_lon
+    interpolate:
+        Interpolate to consistent spacing - if None, no interpolation is done.
 
     Returns
     -------
@@ -115,7 +120,7 @@ def extract_one_1_lat_lon_simulps(
     min_x, max_x = -1 * max_x, -1 * min_x
     return extract_one_d_simulps(
         model_file=model_file, min_x=min_x, min_y=min_y, max_x=max_x,
-        max_y=max_y)
+        max_y=max_y, interpolate=interpolate)
 
 
 def extract_one_d_simulps(
@@ -124,6 +129,7 @@ def extract_one_d_simulps(
         max_x: float = 110.0,
         min_y: float = -100.0,
         max_y: float = 80.0,
+        interpolate: float = None,
 ) -> pd.DataFrame:
     """
     Extract a one-d spatial average velocity model from a simulps grid.
@@ -138,6 +144,8 @@ def extract_one_d_simulps(
         Minimim Y value in NZ3D co-ordinate system
     max_y:
         Maximum Y value in NZ3D co-ordinate system
+    interpolate:
+        Interpolate to consistent spacing - if None, no interpolation is done.
 
     """
     v_model = pd.read_csv(model_file, header=1, delim_whitespace=True)
@@ -197,7 +205,58 @@ def extract_one_d_simulps(
         vp.append((region[region["Depth(km_BSL)"] == depth]).Vp.mean())
         vs.append((region[region["Depth(km_BSL)"] == depth]).Vs.mean())
     out = pd.DataFrame(data={"Depth": depths, "vp": vp, "vs": vs})
+    if interpolate:
+        out = vmodel_interpolate(out, interpolate=interpolate)
     return out
+
+
+def vmodel_interpolate(
+    vmodel_df: pd.DataFrame,
+    interpolate: float
+) -> pd.DataFrame:
+    """
+    Interpolate a velocity model every interpolate units in depth. Applies
+    simple piece-wise linear interpolate between boundaries.
+
+    Parameters
+    ----------
+    vmodel_df
+    interpolate
+
+    Returns
+    -------
+
+    """
+    depths_in, vp_in, vs_in = (
+        vmodel_df.Depth.to_list(), vmodel_df.vp.to_list(),
+        vmodel_df.vs.to_list())
+    depths, vp, vs = [], [], []
+    for i in range(len(depths_in) - 1):
+        top, bottom = depths_in[i], depths_in[i + 1]
+        vptop, vpbottom = vp_in[i], vp_in[i + 1]
+        vstop, vsbottom = vs_in[i], vs_in[i + 1]
+        vp_interp = interp1d(x=[top, bottom], y=[vptop, vpbottom])
+        vs_interp = interp1d(x=[top, bottom], y=[vstop, vsbottom])
+        new_depths = np.arange(top, bottom, interpolate)
+        new_vp = vp_interp(new_depths)
+        new_vs = vs_interp(new_depths)
+        depths.extend(new_depths)
+        vp.extend(new_vp)
+        vs.extend(new_vs)
+    # Put in the final boundary
+    depths.append(depths_in[-1])
+    vp.append(vp_in[-1])
+    vs.append(vs_in[-1])
+
+    interp_vmodel = pd.DataFrame(data={"Depth": depths, "vp": vp, "vs": vs})
+
+    # Sense check
+    for i, depth in enumerate(depths_in):
+        _ = interp_vmodel[interp_vmodel.Depth == depth]
+        assert _.vp.to_list()[0] == vp_in[i]
+        assert _.vs.to_list()[0] == vs_in[i]
+
+    return interp_vmodel
 
 
 def plot_region(corners):

@@ -1,0 +1,119 @@
+
+# =============================================================================
+#  NonLinLoc programs control file
+#
+#  NonLinLoc Version 7.0 - March 2018
+# =============================================================================
+
+# =============================================================================
+# =============================================================================
+# Generic control file statements
+# =============================================================================
+
+CONTROL 3 54321
+
+
+# output filename root
+# (VGOUT <output file root>)
+# Layer 2DGrid
+TRANS  TRANS_MERC GRS-80 -41.7638 172.9037  140
+# For NZ3D model.
+# Faultmap
+MAPTRANS TRANZ_MERC GRS-80 -41.7638 172.9037 140
+
+#NZ3D 2.2
+# NZ3D uses an East Negative co-ordinate system. The flags in the Vel2Grid3D.c
+# file need to be checked - none should be set.
+
+# =============================================================================
+# END of Generic control file statements
+# =============================================================================
+# =============================================================================
+
+# =============================================================================
+# =============================================================================
+# Vel2Grid3D control file statements
+# =============================================================================
+
+# output filename root
+# (VGOUT <output file root>)
+VGOUT  VEL/HK_3D
+
+# NZ3D
+# wave type (VGTYPE wave_type (P, S))
+VGTYPE P
+VGINP VEL/donna_nz3d_2.2_P.inp SIMUL2K 0 0 0 
+# VGTYPE S
+# VGINP VEL/donna_nz3d_2.2_S.inp SIMUL2K 0 0 0 
+
+# VGGRID xNum yNum zNum xOrig yOrig zOrig dx dy dz gridType
+VGGRID  550 800 100 -300.0 -700.0 -3.0 1.0 1.0 1.0 SLOW_LEN
+
+# =============================================================================
+# END of Vel2Grid control file statements
+# =============================================================================
+# =============================================================================
+
+# =============================================================================
+# =============================================================================
+# Grid2Time control file statements
+# =============================================================================
+
+# GTFILES  VEL/HK_3D TIME/HK_3D S
+GTFILES  VEL/HK_3D TIME/HK_3D P
+
+GTMODE GRID3D ANGLES_YES
+
+INCLUDE stations_nlloc.in
+
+GT_PLFD  1.0e-3  1
+
+# =============================================================================
+# END of Grid2Time control file statements
+# =============================================================================
+# =============================================================================
+
+# =============================================================================
+# =============================================================================
+# NLLoc control file statements
+# =============================================================================
+
+LOCSIG CJ Chamberlain VUW
+LOCCOM 2023 MBIE-SSE-Swarms
+
+LOCFILES IN/*.nll NLLOC_OBS TIME/HK_3D OUT/located
+
+# LOCHYPOUT SAVE_NLLOC_ALL SAVE_HYPOINV_SUM SAVE_HYPOELL_SUM
+LOCHYPOUT SAVE_NLLOC_ALL
+
+# LOCSEARCH OCT initNumCells_x initNumCells_y initNumCells_z minNodeSize maxNumNodes numScatter useStationsDensity stopOnMinNodeSize
+LOCSEARCH  OCT 30 30 30 0.001 500000 1000 1 0
+
+LOCGRID 550 800 100 -300.0 -700.0 -3.0 1.0 1.0 1.0 PROB_DENSITY SAVE
+
+# LOCMETH method maxDistStaGrid minNumberPhases maxNumberPhases minNumberSphases VpVsRatio maxNum3DGridMemory minDistStaGrid iRejectDuplicateArrivals
+# LOCMETH EDT_OT_WT 250.0 4 -1 -1 -1 100 -1.0 0
+LOCMETH EDT_OT_WT_ML 250.0 4 -1 -1 -1 20 -1.0 0
+
+# Setting corrlen to be ~station spacing (40km)
+LOCGAU 0.2 40.0
+
+# LOCGAU2 should probably be changed so that the minimum and maximum are larger. 
+#LOCGAU2 0.07 0. 0.5
+LOCGAU2 0.07 0.2 4.0
+
+LOCPHASEID  P   P p G PN PG
+LOCPHASEID  S   S s G SN SG
+
+LOCPHSTAT 9999.0 -1 9999.0 1.0 1.0 9999.9 -9999.9 9999.9
+
+LOCANGLES ANGLES_YES 5
+
+LOCMAG ML_HB 1.0 1.0 0.0029
+
+LOCQUAL2ERR 0.05 0.1 0.2 0.6 99999.9 99999.9 99999.9 99999.9 99999.9 99999.9
+
+# =============================================================================
+# END of NLLoc control file statements
+# =============================================================================
+# =============================================================================

@@ -84,7 +84,7 @@ def run(
             f"km of the trigger matching your templates, not running")
         return None, None
     inventory.write("inventory.xml", format="STATIONXML")
-    for plug in ['hyp', 'picker', 'growclust']:
+    for plug in ['hyp', 'picker', 'nll', 'growclust']:
         if config.plugins[plug]:
             # We need to handle the stationxml file and velocity file here
             config.plugins[plug].station_file = os.path.join(
@@ -123,7 +123,8 @@ def run(
     # TODO: How will this work? Currently notifiers are not implemented
     # real_time_tribe.notifier = None
 
-    backfill_to = event_time(triggering_event) - config.template.process_len
+    backfill_to = event_time(triggering_event) - (
+        4 * config.template.process_len)
     backfill_client = config.rt_match_filter.get_waveform_client()
 
     if backfill_client and real_time_tribe.wavebank:

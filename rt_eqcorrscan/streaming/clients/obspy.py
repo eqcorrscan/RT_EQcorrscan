@@ -305,9 +305,9 @@ class StreamClient:
                         network=net, station=sta, channel=chan, location=loc,
                         starttime=starttime, endtime=endtime)
             if len(new_stream):
-                Logger.debug(f"Acquired new data for buffer: {new_stream}")
+                Logger.info(f"Acquired new data for buffer: {new_stream}")
                 new_stream += self.stream
-                new_stream.merge()
+                new_stream.merge(method=1)
                 self.stream = new_stream
             # Sleep in small steps
             _sleep, sleep_duration, sleep_step = (
@@ -484,7 +484,7 @@ class RealTimeClient(_StreamingClient):
                 Logger.error(e)
                 query_passed = False
                 continue
-            st += _st
+            st = (st + _st).merge(method=1)
         return st, query_passed
 
     def run(self) -> None:
@@ -509,7 +509,8 @@ class RealTimeClient(_StreamingClient):
             _query_start = UTCDateTime.now()
             st, query_passed = self._collect_bulk(
                 last_query_start=last_query_start, now=now, executor=executor)
-            Logger.debug(f"Received stream from streamer: {st}")
+            Logger.info(f"Got data between {last_query_start} and {now}")
+            Logger.info(f"Received stream from streamer: \n{st.__str__(extended=True)}")
             a = UTCDateTime.now()
             Logger.debug(f"Getting data took {(a - _query_start) * self.speed_up}s")
             for tr in st:
@@ -548,8 +549,9 @@ class RealTimeClient(_StreamingClient):
             if query_passed:
                 # last_query_start = min(_bulk["endtime"] for _bulk in self.bulk)
                 if len(st):
-                    last_query_start = min(tr.stats.endtime for tr in st)
+                    last_query_start = min(tr.stats.starttime for tr in st)
                     # Don't update if we didn't get a stream!
+            Logger.info(f"After checks the stream is {self.stream}")
         self.streaming = False
         # shut down threadpool, we done.
         executor.shutdown(wait=False, cancel_futures=True)

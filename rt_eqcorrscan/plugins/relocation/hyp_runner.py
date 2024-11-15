@@ -35,7 +35,7 @@ class HypConfig(_PluginConfig):
         "station_file": "stations.xml",
         "min_stations": 5,
         "max_rms": 2.0,
-        "sleep_interval": 600,
+        "sleep_interval": 10,
     }
     readonly = []
 
@@ -223,10 +223,13 @@ def seisan_hyp(
             if p.waveform_id.station_code == pick.waveform_id.station_code and
             p.waveform_id.channel_code[-1] == pick.waveform_id.channel_code[-1] and
             abs(p.time - pick.time) < 0.1]
-        assert len(matched_pick) > 0, "No picks matched"
-        assert len(set(p.waveform_id.get_seed_string()
-                       for p in matched_pick)) == 1,\
-            f"Multiple seed ids for matched picks:\n{matched_pick}"
+        if len(matched_pick) == 0:
+            Logger.error("No picks matched")
+            return None
+        if len(set(p.waveform_id.get_seed_string() for p in matched_pick)) != 1:
+            Logger.warning(
+                f"Multiple picks match to {pick} (using zeroth):\n"
+                f"matched picks:\n{matched_pick}")
         Logger.info(f"Matched {pick.waveform_id.get_seed_string()} to "
                     f"{matched_pick[0].waveform_id.get_seed_string()}")
         pick.waveform_id.network_code = matched_pick[0].waveform_id.network_code
