@@ -933,7 +933,7 @@ class RealTimeTribe(Tribe):
                 try:
                     tr = backfill_client.get_waveforms(
                         *tr_id.split('.'), starttime=starttime,
-                        endtime=endtime).merge()[0]
+                        endtime=endtime).merge(method=1)[0]
                 except Exception as e:
                     Logger.error("Could not back fill due to: {0}".format(e),
                                  exc_info=True)
@@ -967,7 +967,7 @@ class RealTimeTribe(Tribe):
             if not _continue:
                 return Party()
         first_data = min([tr.stats.starttime
-                          for tr in self.rt_client.stream.merge()])
+                          for tr in self.rt_client.stream.merge(method=1)])
         detection_kwargs = dict(
             threshold=threshold, threshold_type=threshold_type,
             trig_int=trig_int, hypocentral_separation=hypocentral_separation,
@@ -982,7 +982,7 @@ class RealTimeTribe(Tribe):
                 try:
                     self._running = True  # Lock tribe
                     start_time = UTCDateTime.now()
-                    st = self.rt_client.stream.split().merge()
+                    st = self.rt_client.stream.split().merge(method=1)
                     # Add in past data if needed - will be trimmed later
                     st = (st + past_st).merge(method=1)  # Keep overlapping data
                     # Warn if data are gappy
@@ -994,7 +994,7 @@ class RealTimeTribe(Tribe):
                             Logger.warning(
                                 f"Masked data found on {tr.id}. Gaps: {gaps}")
                     if gappy:
-                        st = st.merge()  # Re-merge after gap checking
+                        st = st.merge(method=1)  # Re-merge after gap checking
                     if self.has_wavebank:
                         st = _check_stream_is_int(st)
                         wb_retries, wb_max_retries, e = 0, 10, None
@@ -1051,7 +1051,7 @@ class RealTimeTribe(Tribe):
                         Logger.info("Starting streamer")
                         self._start_streaming()
                         Logger.info("Streamer started")
-                        st = self.rt_client.stream.split().merge()  # Get data again.
+                        st = self.rt_client.stream.split().merge(method=1)  # Get data again.
                     Logger.info("Streaming client seems healthy")
                     # Remove any data that shouldn't be there - sometimes GeoNet's
                     # Seedlink client gives old data.
@@ -1081,7 +1081,7 @@ class RealTimeTribe(Tribe):
                         continue
                     Logger.info("Starting detection run")
                     # merge again - checking length can split the data?
-                    st = st.merge()
+                    st = st.merge(method=1)
                     Logger.info("Using data: \n{0}".format(
                         st.__str__(extended=True)))
                     try:
