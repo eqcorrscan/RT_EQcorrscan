@@ -178,7 +178,9 @@ class InMemoryWaveBank:
             tr_start = pick.time - dt.timedelta(seconds=pre_pick)
             tr_end = ((pick.time - dt.timedelta(seconds=pre_pick))
                       + dt.timedelta(seconds=length))
-            Logger.info(f"Looking for data in {', '.join(pick.files)}")
+            Logger.info(
+                f"Looking for data in "
+                f"{', '.join([f.filename for f in pick.files])}")
             for file in pick.files:
                 if file.filename is None:
                     continue
