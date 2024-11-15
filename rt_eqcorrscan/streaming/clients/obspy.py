@@ -551,6 +551,7 @@ class RealTimeClient(_StreamingClient):
                 if len(st):
                     last_query_start = min(tr.stats.endtime for tr in st)
                     # Don't update if we didn't get a stream!
+            Logger.info(f"After checks the stream is {self.stream}")
         self.streaming = False
         # shut down threadpool, we done.
         executor.shutdown(wait=False, cancel_futures=True)
