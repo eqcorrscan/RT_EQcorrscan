@@ -549,7 +549,7 @@ class RealTimeClient(_StreamingClient):
             if query_passed:
                 # last_query_start = min(_bulk["endtime"] for _bulk in self.bulk)
                 if len(st):
-                    last_query_start = min(tr.stats.endtime for tr in st)
+                    last_query_start = min(tr.stats.starttime for tr in st)
                     # Don't update if we didn't get a stream!
             Logger.info(f"After checks the stream is {self.stream}")
         self.streaming = False
