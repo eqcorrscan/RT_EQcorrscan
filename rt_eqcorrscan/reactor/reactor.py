@@ -108,6 +108,7 @@ class Reactor(object):
     sleep_step = 15
 
     # Fudge factors for past sequence simulation
+    _simulation = False  # Set to true to enable some extra simulation output
     _speed_up = 1
     _test_start_step = 0.0
 
@@ -403,6 +404,8 @@ class Reactor(object):
                  "-n", str(min(self.available_cores, self._max_detect_cores)),
                  "-s", str(self._speed_up),
                  "-o", str(self._test_start_step)]
+        if self._simulation:
+            _call.append("--simulation")
         Logger.info("Running `{call}`".format(call=" ".join(_call)))
         proc = subprocess.Popen(_call)
         self.detecting_processes.update({triggering_event_id: proc})

@@ -11,9 +11,30 @@ Steps:
 Designed to be run as continuously running subprocess managed by rt_eqcorrscan
 """
 
+from obspy.core.event import Event, Origin
 
-def local_magnitudes():
-    pass
+
+# --------------- Magnitude functions -----------------------------------------
+
+def mlnz20(event: Event) -> Event:
+    """
+
+    Parameters
+    ----------
+    event
+
+    Returns
+    -------
+
+    """
+    origin = event.preferred_origin() or event.origins[-1]
+    for arrival in origin.arrivals:
+        distance = arrival.distance
+        amplitude =
+
+# ----------------------- Management --------------------------------
+
+MAG_FUNCS = {}  # Cache of possible magnitude functions
 
 
 if __name__ == "__main__":

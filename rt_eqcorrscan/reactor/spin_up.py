@@ -39,6 +39,7 @@ def run(
     log_to_screen: bool = False,
     speed_up: float = 1.0,
     synthetic_time_offset: float = 0,
+    simulation: bool = False,
 ):
     os.chdir(working_dir)
     Logger.debug("Reading config")
@@ -101,6 +102,7 @@ def run(
         wavebank=config.rt_match_filter.local_wave_bank,
         notifier=config.notifier, plugin_config=config.plugins,
     )
+    real_time_tribe._simulation = simulation
 
     real_time_tribe._speed_up = speed_up
     if speed_up > 1:
@@ -306,9 +308,14 @@ if __name__ == "__main__":
         "-o", "--offset", type=float, default=0.0,
         help="Synthetic time offset from now in seconds - used for "
              "simulation")
+    parser.add_argument(
+        "--simulation", action="store_true",
+        help="Flag to notify if this is a simulation - extra output will be"
+             "provided in simulation mode.")
 
     args = parser.parse_args()
 
     run(working_dir=args.working_dir, cores=args.n_processors,
         log_to_screen=args.log_to_screen,
-        speed_up=args.speed_up, synthetic_time_offset=args.offset)
+        speed_up=args.speed_up, synthetic_time_offset=args.offset,
+        simulation=args.simulation)

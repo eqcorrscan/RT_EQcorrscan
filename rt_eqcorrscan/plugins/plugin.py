@@ -3,6 +3,7 @@ Default handling of rt_eqcorrscan plugins.
 """
 
 import fnmatch
+import glob
 import logging
 import subprocess
 import os
@@ -10,6 +11,9 @@ import time
 import shutil
 
 from abc import ABC, abstractmethod
+
+from obspy import UTCDateTime, Catalog, read_events
+from obsplus import cat_to_json
 
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
@@ -85,6 +89,7 @@ class _Plugin(ABC):
     """
     watch_pattern = "*.xml"
     name = "Plugin"
+    _write_sim_catalogues = False  # Flag to write time-stamped simulation cats
 
     def __init__(self, config_file: str, name: str = None):
         self.config = self._read_config(config_file=config_file)
@@ -111,6 +116,25 @@ class _Plugin(ABC):
     def _cleanup(self):
         """ Anything that needs to be done at the end of a run. """
         pass
+
+    def _summarise_state(self):
+        """ Summarise the events in the outdir and write a time-stamped json """
+        now = UTCDateTime.now()
+        out_files = glob.glob(f"{self.config.out_dir}/*.xml")
+        if len(out_files) == 0:
+            Logger.info(f"No output at {now} for {self.name}, "
+                        f"not writing a json")
+            return
+        cat = Catalog()
+        for f in out_files:
+            cat += read_events(f)
+        Logger.info(f"Read in {len(cat)} events at {now} for {self.name}")
+        json_str = cat_to_json(cat)
+        outjson = f"{self.name}_at_{now}.json"
+        with open(outjson, "w") as f:
+            f.write(json_str)
+        Logger.info(f"Written events to {outjson}")
+        return
 
     def run(self, loop: bool = True, cleanup: bool = True):
         """
@@ -190,6 +214,8 @@ class _Plugin(ABC):
                 continue
             else:
                 break
+            if self._write_sim_catalogues:
+                self._summarise_state()
         if cleanup:
             self._cleanup()
         return

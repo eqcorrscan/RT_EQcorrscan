@@ -29,6 +29,10 @@ def main():
         "--log-file", type=str, default="growclust.log")
     parser.add_argument(
         "--log-to-screen", "-s", action="store_true")
+    parser.add_argument(
+        "--simulation", action="store_true",
+        help="Flag to notify if this is a simulation - extra output will be"
+             "provided in simulation mode.")
 
     args = parser.parse_args()
 
@@ -37,6 +41,8 @@ def main():
         screen=args.log_to_screen, file=True, filename=args.log_file)
 
     growclust = GrowClust(config_file=args.config)
+    if args.simulation:
+        growclust._write_sim_catalogues = True
     growclust.run()
 
 
