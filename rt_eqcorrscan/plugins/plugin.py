@@ -70,17 +70,24 @@ class Watcher:
             self.history.add(event)
 
     def check_for_updates(self):
-        files = []
-        for head, dirs, _files in os.walk(self.top_directory):
-            if len(_files):
-                Logger.debug(f"Files: {_files}")
-            _files = fnmatch.filter(_files, self.watch_pattern)
-            if len(_files):
-                files.extend([os.path.join(head, f) for f in _files])
+        files = _scan_dir(top_dir=self.top_directory,
+                          watch_pattern=self.watch_pattern)
         new = {f for f in files if f not in self.history}
         Logger.debug(f"Found {len(new)} new events to process in "
                     f"{self.top_directory}[...]{self.watch_pattern}")
         self.new = new
+
+
+def _scan_dir(top_dir, watch_pattern):
+    files = []
+    for head, dirs, _files in os.walk(top_dir):
+        if len(_files):
+            Logger.debug(f"Files: {_files}")
+        _files = fnmatch.filter(_files, watch_pattern)
+        if len(_files):
+            files.extend([os.path.join(head, f) for f in _files])
+    return files
+
 
 
 class _Plugin(ABC):
@@ -120,7 +127,8 @@ class _Plugin(ABC):
     def _summarise_state(self):
         """ Summarise the events in the outdir and write a time-stamped json """
         now = UTCDateTime.now()
-        out_files = glob.glob(f"{self.config.out_dir}/*.xml")
+        out_files = _scan_dir(top_dir=self.config.out_dir,
+                              watch_pattern=self.watch_pattern)
         if len(out_files) == 0:
             Logger.info(f"No output at {now} for {self.name}, "
                         f"not writing a json")
