@@ -169,11 +169,6 @@ def setup_nll(
     node_spacing:
         Node spacing for vmodel in km
     """
-    if not os.path.isdir(nlldir):
-        os.makedirs(nlldir)
-
-    cwd = os.getcwd()
-
     # Read config file
     with open(control_file, "r") as f:
         control_lines = f.read().splitlines()
@@ -425,6 +420,10 @@ class NLL(_Plugin):
     def run_nll(self, catalog: Catalog, control_file: str,
                 verbose: bool = True) -> Catalog:
         cwd = os.getcwd()
+        if not os.path.isdir(self.working_dir):
+            os.makedirs(self.working_dir)
+
+        Logger.info(f"Changing to {self.working_dir} to run NLL commands")
         os.chdir(self.working_dir)
 
         cat_back = Catalog()
@@ -434,6 +433,7 @@ class NLL(_Plugin):
         except Exception as e:
             Logger.error(f"Location failed due to {e}")
         finally:
+            Logger.info(f"Moving back to {cwd} after NLL")
             os.chdir(cwd)
         return cat_back
 
@@ -453,13 +453,28 @@ class NLL(_Plugin):
         min_lat, max_lat, min_lon, max_lon, mindepth, maxdepth, nodespacing = (
             self._get_bounds())
         inv = read_inventory(self.config.station_file)
-        setup_nll(nlldir=self.working_dir, inv=inv, min_lat=min_lat,
-                  min_lon=min_lon, max_lat=max_lat, max_lon=max_lon,
-                  max_depth=maxdepth, node_spacing=nodespacing,
-                  min_depth=mindepth, verbose=True,
-                  control_file=self.config.infile,
-                  veldir=self.config.veldir)
-        self._setup = False
+
+        if not os.path.isdir(self.working_dir):
+            os.makedirs(self.working_dir)
+        cwd = os.getcwd()
+
+        Logger.info(f"Changing to {self.working_dir} to run NLL commands")
+        os.chdir(self.working_dir)
+
+        try:
+            setup_nll(nlldir=self.working_dir, inv=inv, min_lat=min_lat,
+                      min_lon=min_lon, max_lat=max_lat, max_lon=max_lon,
+                      max_depth=maxdepth, node_spacing=nodespacing,
+                      min_depth=mindepth, verbose=True,
+                      control_file=self.config.infile,
+                      veldir=self.config.veldir)
+        except Exception as e:
+            Logger.error(f"Could not setup nll due to {e}")
+        else:
+            self._setup = False
+        finally:
+            Logger.info(f"Moving back to {cwd} after NLL")
+            os.chdir(cwd)
         return
 
     def core(self, new_files: Iterable, cleanup: bool = False) -> List:
@@ -526,6 +541,7 @@ class NLL(_Plugin):
         Logger.info("Locations returned")
         cat_located_dict = {ev.resource_id.id.split('/')[-1]: ev
                             for ev in cat_located}
+        located_files = []
         for f, eids in event_file_mapper.items():
             subcat = Catalog()
             for eid in eids:
@@ -536,6 +552,7 @@ class NLL(_Plugin):
                     Logger.warning(f"Did not find {eid} in located output")
                     Logger.warning(f"Known keys:\n\t{cat_located_dict.keys()}")
             if len(subcat):
+                located_files.append(f)  # Add this to list of located files - we won't re-run this location
                 fname = os.path.split(f)[-1]
                 fname = fname.lstrip(os.path.sep)
                 outpath = os.path.join(out_dir, fname)
@@ -545,7 +562,7 @@ class NLL(_Plugin):
         if cleanup:
             self._cleanup()
 
-        return new_files
+        return located_files
 
 
 if __name__ == "__main__":
