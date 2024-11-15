@@ -226,7 +226,7 @@ class InMemoryWaveBank:
                             tr.stats.starttime.datetime,  # these need to be datetimes to be hashable
                             tr.stats.endtime.datetime
                         ))
-                    Logger.info(seed_availability[-1])
+                    Logger.debug(seed_availability[-1])
                     self.data_availability.update({tr.id: seed_availability})
                 new_files += 1
         if new_files > 0:
@@ -234,7 +234,7 @@ class InMemoryWaveBank:
         else:
             Logger.info("No new files found")
         Logger.info(
-            f"Data available between {self.starttime} and {Self.endtime}")
+            f"Data available between {self.starttime} and {self.endtime}")
         return
 
 
