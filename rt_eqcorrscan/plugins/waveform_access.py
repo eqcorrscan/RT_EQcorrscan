@@ -191,7 +191,8 @@ class InMemoryWaveBank:
                     st += read(file.filename, starttime=UTCDateTime(tr_start),
                                endtime=UTCDateTime(tr_end))
                 except Exception as e:
-                    Logger.error(f"Could not read from {file.filename} due to {e}")
+                    Logger.error(f"Could not read from "
+                                 f"{file.filename} due to {e}")
                     continue
         return st
 

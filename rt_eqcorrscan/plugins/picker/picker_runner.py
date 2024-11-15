@@ -296,6 +296,7 @@ class Picker(_Plugin):
                     length=family.template.process_length * 3.1,
                     pre_pick=max(internal_config.shift_len * 2,
                                  family.template.process_length * 1.25))
+                stream = stream.merge(method=1)
                 # Get an excess of data to cope with missing "future" data
                 Logger.info(f"Have stream: \n{stream}")
                 if len(stream):
