@@ -509,7 +509,8 @@ class RealTimeClient(_StreamingClient):
             _query_start = UTCDateTime.now()
             st, query_passed = self._collect_bulk(
                 last_query_start=last_query_start, now=now, executor=executor)
-            Logger.debug(f"Received stream from streamer: {st}")
+            Logger.info(f"Got data between {last_query_start} and {now}")
+            Logger.info(f"Received stream from streamer: \n{st.__str__(extended=True)}")
             a = UTCDateTime.now()
             Logger.debug(f"Getting data took {(a - _query_start) * self.speed_up}s")
             for tr in st:
