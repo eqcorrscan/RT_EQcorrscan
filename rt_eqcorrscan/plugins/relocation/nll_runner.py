@@ -465,7 +465,7 @@ class NLL(_Plugin):
         min_lon = min_lon or default_grid[2]
         max_lon = max_lon or default_grid[3]
         min_depth = min_depth or default_grid[4]
-        max_depth = max_depths or default_grid[5]
+        max_depth = max_depth or default_grid[5]
         node_spacing = node_spacing or default_grid[6]
 
         if not os.path.isdir(self.working_dir):
