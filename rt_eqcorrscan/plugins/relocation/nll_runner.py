@@ -175,7 +175,6 @@ def setup_nll(
 
     station_file = "stations.nll"
 
-    os.chdir(nlldir)
     # Write station file
     for n in inv:
         for s in n:
@@ -310,8 +309,6 @@ def setup_nll(
             except Exception as e:
                 Logger.exception(e)
             Logger.info(f"{cmd} successful")
-
-    os.chdir(cwd)
     return
 
 
@@ -449,10 +446,27 @@ class NLL(_Plugin):
         mindepth = internal_config.pop("mindepth", -3.0)
         return min_lat, max_lat, min_lon, max_lon, mindepth, maxdepth, nodespacing
 
-    def setup(self):
-        min_lat, max_lat, min_lon, max_lon, mindepth, maxdepth, nodespacing = (
-            self._get_bounds())
-        inv = read_inventory(self.config.station_file)
+    def setup(
+        self,
+        inv: Inventory = None,
+        min_lat: float = None,
+        min_lon: float = None,
+        max_lat: float = None,
+        max_lon: float = None,
+        min_depth: float = None,
+        max_depth: float = None,
+        node_spacing: float = None,
+    ):
+        default_grid = self._get_bounds()
+        inv = inv or read_inventory(self.config.station_file)
+        # min_lat, max_lat, min_lon, max_lon, mindepth, maxdepth, nodespacing
+        min_lat = min_lat or default_grid[0]
+        max_lat = max_lat or default_grid[1]
+        min_lon = min_lon or default_grid[2]
+        max_lon = max_lon or default_grid[3]
+        min_depth = min_depth or default_grid[4]
+        max_depth = max_depths or default_grid[5]
+        node_spacing = node_spacing or default_grid[6]
 
         if not os.path.isdir(self.working_dir):
             os.makedirs(self.working_dir)
@@ -464,8 +478,8 @@ class NLL(_Plugin):
         try:
             setup_nll(nlldir=self.working_dir, inv=inv, min_lat=min_lat,
                       min_lon=min_lon, max_lat=max_lat, max_lon=max_lon,
-                      max_depth=maxdepth, node_spacing=nodespacing,
-                      min_depth=mindepth, verbose=True,
+                      max_depth=max_depth, node_spacing=node_spacing,
+                      min_depth=min_depth, verbose=True,
                       control_file=self.config.infile,
                       veldir=self.config.veldir)
         except Exception as e:
@@ -526,14 +540,10 @@ class NLL(_Plugin):
 
         if self._setup:
             Logger.info("Running setup")
-            setup_nll(nlldir=self.working_dir, inv=inv, min_lat=min_lat,
-                      min_lon=min_lon, max_lat=max_lat, max_lon=max_lon,
-                      max_depth=maxdepth, node_spacing=nodespacing,
-                      min_depth=mindepth, verbose=True,
-                      control_file=internal_config.infile,
-                      veldir=internal_config.veldir)
-            # Run the setup only once.
-            self._setup = False
+            self.setup(
+                inv=inv, min_lat=min_lat, min_lon=min_lon, max_lat=max_lat,
+                max_lon=max_lon, max_depth=maxdepth, node_spacing=nodespacing,
+                min_depth=mindepth)
 
         Logger.info("Running locations")
         cat_located = self.run_nll(catalog=cat_to_locate,
