@@ -196,6 +196,7 @@ def synthesise_real_time(
         client=client,
         listener=listener, trigger_func=trigger_func,
         template_database=template_bank, config=config)
+    reactor._simulation = True
     reactor._speed_up = speed_up
     reactor._test_start_step = listener._test_start_step
     Logger.info("Starting reactor")
