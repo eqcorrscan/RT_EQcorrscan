@@ -178,6 +178,7 @@ class InMemoryWaveBank:
             tr_start = pick.time - dt.timedelta(seconds=pre_pick)
             tr_end = ((pick.time - dt.timedelta(seconds=pre_pick))
                       + dt.timedelta(seconds=length))
+            Logger.info(f"Looking for data between {tr_start} and {tr_end}")
             Logger.info(
                 f"Looking for data in "
                 f"{', '.join([f.filename for f in pick.files])}")
