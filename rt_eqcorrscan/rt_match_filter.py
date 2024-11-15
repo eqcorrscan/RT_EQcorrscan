@@ -32,6 +32,7 @@ from rt_eqcorrscan.event_trigger.triggers import average_rate
 from rt_eqcorrscan.config.mailer import Notifier
 from rt_eqcorrscan.plugins import (
     REGISTERED_PLUGINS, run_plugin, ORDERED_PLUGINS)
+from sqlalchemy.sql import True_
 
 Logger = logging.getLogger(__name__)
 
@@ -983,8 +984,11 @@ class RealTimeTribe(Tribe):
                     self._running = True  # Lock tribe
                     start_time = UTCDateTime.now()
                     st = self.rt_client.stream.split().merge(method=1)
+                    Logger.info(f"RTTribe received this stream from client:\n{st.__str__(extended=True)}")
                     # Add in past data if needed - will be trimmed later
+                    Logger.info(f"Past stream is:\n{past_st.__str__(extended=True)}")
                     st = (st + past_st).merge(method=1)  # Keep overlapping data
+                    Logger.info(f"Adding st to past_st results in:\n{st.__str__(extended=True)}")
                     # Warn if data are gappy
                     gappy = False
                     for tr in st:
