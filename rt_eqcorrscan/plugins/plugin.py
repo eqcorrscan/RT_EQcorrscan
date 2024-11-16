@@ -80,6 +80,9 @@ class Watcher:
 def _scan_dir(top_dir, watch_pattern):
     files = []
     for head, dirs, _files in os.walk(top_dir):
+        if head == "sim_out":
+            # Skip the simulation output.
+            continue
         if len(_files):
             Logger.debug(f"Files: {_files}")
         _files = fnmatch.filter(_files, watch_pattern)
@@ -136,7 +139,9 @@ class _Plugin(ABC):
         for f in out_files:
             cat += read_events(f)
         Logger.info(f"Read in {len(cat)} events at {now} for {self.name}")
-        outcat = f"{self.name}_at_{now}.xml"
+        if not os.path.isdir(f"{self.config.out_dir}/sim_out"):
+            os.makedirs(f"{self.config.out_dir}/sim_out")
+        outcat = f"{self.config.out_dir}/sim_out/{self.name}_at_{now}.xml"
         cat.write(outcat, format="QUAKEML")
         Logger.info(f"Written events to {outcat}")
         return
