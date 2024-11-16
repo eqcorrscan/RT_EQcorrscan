@@ -13,7 +13,6 @@ import shutil
 from abc import ABC, abstractmethod
 
 from obspy import UTCDateTime, Catalog, read_events
-from obsplus import cat_to_json
 
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
@@ -137,11 +136,9 @@ class _Plugin(ABC):
         for f in out_files:
             cat += read_events(f)
         Logger.info(f"Read in {len(cat)} events at {now} for {self.name}")
-        json_str = cat_to_json(cat)
-        outjson = f"{self.name}_at_{now}.json"
-        with open(outjson, "w") as f:
-            f.write(json_str)
-        Logger.info(f"Written events to {outjson}")
+        outcat = f"{self.name}_at_{now}.xml"
+        cat.write(outcat, format="QUAKEML")
+        Logger.info(f"Written events to {outcat}")
         return
 
     def run(self, loop: bool = True, cleanup: bool = True):
