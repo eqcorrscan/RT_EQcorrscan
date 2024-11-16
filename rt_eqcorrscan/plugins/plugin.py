@@ -80,9 +80,6 @@ class Watcher:
 def _scan_dir(top_dir, watch_pattern):
     files = []
     for head, dirs, _files in os.walk(top_dir):
-        if head == "sim_out":
-            # Skip the simulation output.
-            continue
         if len(_files):
             Logger.debug(f"Files: {_files}")
         _files = fnmatch.filter(_files, watch_pattern)
@@ -127,7 +124,7 @@ class _Plugin(ABC):
         pass
 
     def _summarise_state(self):
-        """ Summarise the events in the outdir and write a time-stamped json """
+        """ Summarise the events in the outdir and write a time-stamped tgz """
         now = UTCDateTime.now()
         out_files = _scan_dir(top_dir=self.config.out_dir,
                               watch_pattern=self.watch_pattern)
@@ -135,15 +132,12 @@ class _Plugin(ABC):
             Logger.info(f"No output at {now} for {self.name}, "
                         f"not writing a json")
             return
-        cat = Catalog()
-        for f in out_files:
-            cat += read_events(f)
-        Logger.info(f"Read in {len(cat)} events at {now} for {self.name}")
-        if not os.path.isdir(f"{self.config.out_dir}/sim_out"):
-            os.makedirs(f"{self.config.out_dir}/sim_out")
-        outcat = f"{self.config.out_dir}/sim_out/{self.name}_at_{now}.xml"
-        cat.write(outcat, format="QUAKEML")
-        Logger.info(f"Written events to {outcat}")
+
+        out_archive = f"{self.config.out_dir}/sim_{self.name}_at_{now}.tgz"
+        with tarfile.open(out_archive, "w:gz") as tar:
+            for f in out_files:
+                tar.add(f)
+        Logger.info(f"Written snapshot at {now} to {out_archive}")
         return
 
     def run(self, loop: bool = True, cleanup: bool = True):
