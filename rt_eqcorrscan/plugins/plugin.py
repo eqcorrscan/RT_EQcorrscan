@@ -219,11 +219,12 @@ class _Plugin(ABC):
                 Logger.info(f"{self.name} loop took {elapsed:.2f} s")
                 if elapsed < self.config.sleep_interval:
                     time.sleep(self.config.sleep_interval - elapsed)
+                if self._write_sim_catalogues:
+                    self._summarise_state()
                 continue
             else:
                 break
-            if self._write_sim_catalogues:
-                self._summarise_state()
+
         if cleanup:
             self._cleanup()
         return
