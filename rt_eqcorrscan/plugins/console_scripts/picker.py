@@ -42,6 +42,7 @@ def main():
 
     picker = Picker(config_file=args.config)
     if args.simulation:
+        Logger.info("Setting simulation to True")
         picker._write_sim_catalogues = True
     picker.run()
 

@@ -42,6 +42,7 @@ def main():
 
     growclust = GrowClust(config_file=args.config)
     if args.simulation:
+        Logger.info("Setting simulation to True")
         growclust._write_sim_catalogues = True
     growclust.run()
 

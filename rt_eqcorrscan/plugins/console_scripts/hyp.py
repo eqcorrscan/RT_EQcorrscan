@@ -42,6 +42,7 @@ def main():
 
     hyp = Hyp(config_file=args.config)
     if args.simulation:
+        Logger.info("Setting simulation to True")
         hyp._write_sim_catalogues = True
     hyp.run()
 

@@ -42,6 +42,7 @@ def main():
 
     nll = NLL(config_file=args.config)
     if args.simulation:
+        Logger.info("Setting simulation to True")
         nll._write_sim_catalogues = True
     nll.run()
 

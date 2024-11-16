@@ -217,10 +217,16 @@ class _Plugin(ABC):
                 toc = time.time()
                 elapsed = toc - tic
                 Logger.info(f"{self.name} loop took {elapsed:.2f} s")
+                if self._write_sim_catalogues:
+                    Logger.info("Summarising state")
+                    self._summarise_state()
+                else:
+                    Logger.info(
+                        f"Not in sim mode, not summarising: "
+                        f"{self._write_sim_catalogues}")
                 if elapsed < self.config.sleep_interval:
                     time.sleep(self.config.sleep_interval - elapsed)
-                if self._write_sim_catalogues:
-                    self._summarise_state()
+
                 continue
             else:
                 break
