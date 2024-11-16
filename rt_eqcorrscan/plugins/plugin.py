@@ -9,6 +9,7 @@ import subprocess
 import os
 import time
 import shutil
+import tarfile
 
 from abc import ABC, abstractmethod
 
