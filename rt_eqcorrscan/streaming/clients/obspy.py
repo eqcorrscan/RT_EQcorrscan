@@ -513,6 +513,8 @@ class RealTimeClient(_StreamingClient):
             Logger.debug(f"Received stream from streamer: \n{st.__str__(extended=True)}")
             a = UTCDateTime.now()
             Logger.debug(f"Getting data took {(a - _query_start) * self.speed_up}s")
+            # Trim to what we need - this will also limit the query duration
+            st.trim(starttime=now - (2 * self.buffer_capacity), endtime=now)
             for tr in st:
                 self.on_data(tr)
                 time.sleep(0.0001)
