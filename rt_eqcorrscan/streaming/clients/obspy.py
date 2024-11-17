@@ -501,59 +501,69 @@ class RealTimeClient(_StreamingClient):
         self.streaming = True
         # start threadpool executor
         executor = ThreadPoolExecutor(max_workers=min(len(self.bulk), self.max_threads))
-        now = deepcopy(self.starttime)
+        query_starttime = deepcopy(self.starttime)
         self.last_data = UTCDateTime.now()
         last_query_start = now - self.query_interval
         killed = False
+        elapsed = 0.0
         while not self._stop_called:
-            _query_start = UTCDateTime.now()
+            tic = time.perf_counter()
+            now = query_starttime + (elapsed * self.speed_up)
+            Logger.info(f"After {elapsed * self.speed_up} s, the time is now {now}")
+
             st, query_passed = self._collect_bulk(
                 last_query_start=last_query_start, now=now, executor=executor)
             Logger.info(f"Got data between {last_query_start} and {now}")
             Logger.debug(f"Received stream from streamer: \n{st.__str__(extended=True)}")
-            a = UTCDateTime.now()
-            Logger.debug(f"Getting data took {(a - _query_start) * self.speed_up}s")
+
+            Logger.debug(f"Getting data took {(time.perf_counter() - tic) * self.speed_up}s")
+
             # Trim to what we need - this will also limit the query duration
+            Logger.info(f"Trimming streaming data between "
+                        f"{now - (2 * self.buffer_capacity)} and {now}")
             st.trim(starttime=now - (2 * self.buffer_capacity), endtime=now)
+
             for tr in st:
                 self.on_data(tr)
                 time.sleep(0.0001)
-            b = UTCDateTime.now()
-            Logger.debug(f"on_data took {(b - a) * self.speed_up}s")
+
             # Put the data in the buffer
             self._add_data_from_queue()
-            Logger.debug(f"_add_data_from_queue took {(UTCDateTime.now() - b) * self.speed_up}s")
-            _query_duration = (UTCDateTime.now() - _query_start) * self.speed_up  # work in fake time
+
             Logger.debug(
                 "It took {0:.2f}s to query the database and sort data".format(
-                    _query_duration))
-            sleep_step = self.query_interval - _query_duration
+                    time.perf_counter() - tic))
+
+            sleep_step = self.query_interval - ((time.perf_counter() - tic) * self.speed_up)
             if sleep_step > 0:
                 Logger.debug("Waiting {0:.2f}s before next query".format(
                     sleep_step))  # Report fake time
                 _slept, _sleep_int = 0.0, min(1, (sleep_step / self.speed_up) / 100)
                 # Sleep in small steps to make death responsive
                 while _slept < sleep_step / self.speed_up:
-                    tic = time.perf_counter()
+                    toc = time.perf_counter()
                     time.sleep(_sleep_int)
                     killed = self._kill_check()
                     if killed:
                         break
-                    _slept += time.perf_counter() - tic
+                    _slept += time.perf_counter() - toc
                 Logger.debug("Waking up")
             else:
-                Logger.warning(f"Query ({_query_duration} took longer than query "
+                Logger.warning(f"Query took longer than query "
                                f"interval {self.query_interval}")
                 killed = self._kill_check()
             if killed:
                 break
-            now += max(self.query_interval, _query_duration)
             if query_passed:
                 # last_query_start = min(_bulk["endtime"] for _bulk in self.bulk)
                 if len(st):
                     last_query_start = min(tr.stats.starttime for tr in st)
                     # Don't update if we didn't get a stream!
+            else:
+                Logger.warning("Query failed, may end up with gappy data")
+                last_query_start += (time.perf_counter() - tic) * self.speed_up
             Logger.debug(f"After checks the stream is {self.stream}")
+            elapsed += time.perf_counter() - tic
         self.streaming = False
         # shut down threadpool, we done.
         executor.shutdown(wait=False, cancel_futures=True)
