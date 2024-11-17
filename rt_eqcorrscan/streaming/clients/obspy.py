@@ -510,7 +510,7 @@ class RealTimeClient(_StreamingClient):
             st, query_passed = self._collect_bulk(
                 last_query_start=last_query_start, now=now, executor=executor)
             Logger.info(f"Got data between {last_query_start} and {now}")
-            Logger.info(f"Received stream from streamer: \n{st.__str__(extended=True)}")
+            Logger.debug(f"Received stream from streamer: \n{st.__str__(extended=True)}")
             a = UTCDateTime.now()
             Logger.debug(f"Getting data took {(a - _query_start) * self.speed_up}s")
             for tr in st:
@@ -551,7 +551,7 @@ class RealTimeClient(_StreamingClient):
                 if len(st):
                     last_query_start = min(tr.stats.starttime for tr in st)
                     # Don't update if we didn't get a stream!
-            Logger.info(f"After checks the stream is {self.stream}")
+            Logger.debug(f"After checks the stream is {self.stream}")
         self.streaming = False
         # shut down threadpool, we done.
         executor.shutdown(wait=False, cancel_futures=True)
