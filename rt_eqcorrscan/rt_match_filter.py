@@ -917,11 +917,11 @@ class RealTimeTribe(Tribe):
             _buffer = self.rt_client.stream
             for tr_id in self.expected_seed_ids:
                 try:
-                    tr_in_buffer = _buffer.select(id=tr_id)[0]
+                    tr_in_buffer = _buffer.select(id=tr_id).merge()[0]
                 except IndexError:
                     continue
-                # Overlap
-                endtime = tr_in_buffer.stats.endtime
+                # Overlap - request more data than we are likely to get
+                endtime = tr_in_buffer.stats.endtime + 120
                 Logger.info(f"Buffer for {tr_in_buffer.id} between "
                             f"{tr_in_buffer.stats.starttime} and "
                             f"{tr_in_buffer.stats.endtime}")
