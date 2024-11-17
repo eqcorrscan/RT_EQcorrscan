@@ -131,7 +131,7 @@ class _Plugin(ABC):
                               watch_pattern=self.watch_pattern)
         if len(out_files) == 0:
             Logger.info(f"No output at {now} for {self.name}, "
-                        f"not writing a json")
+                        f"not writing snapshot")
             return
 
         out_archive = f"{self.config.out_dir}/sim_{self.name}_at_{now}.tgz"
