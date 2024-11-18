@@ -361,13 +361,13 @@ class _StreamingClient(ABC):
             New data.
         """
         self.last_data = UTCDateTime.now()
-        Logger.debug(f"Received trace: {trace}")
+        Logger.info(f"Received trace: {trace}")
         Logger.debug("Packet of {0} samples for {1}".format(
             trace.stats.npts, trace.id))
         # Put data into queue - get the run process to handle it!
         if self.streaming:
             self._incoming_queue.put(trace)
-            Logger.debug("Added trace to queue")
+            Logger.info("Added trace to queue")
         else:
             # If the streamer is not running somewhere else, then we have to
             # add data in this Process.
@@ -383,10 +383,10 @@ class _StreamingClient(ABC):
         while True:
             try:
                 trace = self._incoming_queue.get(block=False)
-                Logger.debug(f"Extracted trace from incoming queue: \n{trace}")
+                Logger.info(f"Extracted trace from incoming queue: \n{trace}")
                 traces.append(trace)
             except Empty:
-                Logger.debug("Incoming data queue is empty")
+                Logger.info("Incoming data queue is empty")
                 break
         if len(traces) == 0:
             Logger.debug("No traces extracted from incoming queue")
@@ -405,7 +405,7 @@ class _StreamingClient(ABC):
         """
 
         with self.lock:
-            Logger.debug(f"Adding data: Lock status: {self.lock}")
+            Logger.info(f"Adding data: Lock status: {self.lock}")
             try:
                 self.buffer.add_stream(trace)
             except Exception as e:
@@ -416,11 +416,11 @@ class _StreamingClient(ABC):
             # Cope with a windows error where data come in as
             # "int32" not np.int32. See https://github.com/obspy/obspy/issues/2683
             trace.data = trace.data.astype(np.int32)
-        Logger.debug("Buffer contains {0}".format(self.buffer))
-        Logger.debug(f"Finished adding data: Lock status: {self.lock}")
-        Logger.debug(f"Buffer stream: \n{self.buffer.stream}")
+        Logger.info("Buffer contains {0}".format(self.buffer))
+        Logger.info(f"Finished adding data: Lock status: {self.lock}")
+        Logger.info(f"Buffer stream: \n{self.buffer.stream}")
         self.stream = self.buffer.stream
-        Logger.debug(f"Stream: \n{self.stream}")
+        Logger.info(f"Stream: \n{self.stream}")
 
     def on_terminate(self) -> Stream:  # pragma: no cover
         """
