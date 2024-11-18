@@ -503,7 +503,7 @@ class RealTimeClient(_StreamingClient):
         executor = ThreadPoolExecutor(max_workers=min(len(self.bulk), self.max_threads))
         query_starttime = deepcopy(self.starttime)
         self.last_data = UTCDateTime.now()
-        last_query_start = now - self.query_interval
+        last_query_start = query_starttime - self.query_interval
         killed = False
         elapsed = 0.0
         while not self._stop_called:
