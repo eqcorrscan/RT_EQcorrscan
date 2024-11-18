@@ -509,7 +509,7 @@ class RealTimeClient(_StreamingClient):
         while not self._stop_called:
             tic = time.perf_counter()
             now = query_starttime + (elapsed * self.speed_up)
-            Logger.info(f"After {elapsed * self.speed_up} s, the time is now {now}")
+            Logger.info(f"After {elapsed * self.speed_up:.1f} s, the time is now {now}")
 
             st, query_passed = self._collect_bulk(
                 last_query_start=last_query_start, now=now, executor=executor)
