@@ -10,7 +10,6 @@ License
 import logging
 import os
 import time
-import copy
 from numpy import random
 import importlib
 
@@ -461,7 +460,7 @@ class RealTimeClient(_StreamingClient):
 
     def _collect_bulk(self, last_query_start, now, executor):
         query_passed, st = True, Stream()
-        bulk = copy.deepcopy(self.bulk)
+        bulk = deepcopy(self.bulk)
         for _bulk in bulk:
             # jitter = random.randint(int(self.query_interval / 10) or 1)
             jitter = 0
