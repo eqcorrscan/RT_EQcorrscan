@@ -474,21 +474,31 @@ class RealTimeClient(_StreamingClient):
                 [(b['network'], b['station'], b['location'], b['channel'],
                   b['starttime'], b['endtime'])
                  for b in self.bulk]), True
-        futures = {executor.submit(self.client.get_waveforms, **_bulk):
-                   _bulk for _bulk in self.bulk}
-        for future in as_completed(futures):
-            _bulk = futures[future]
-            try:
-                _st = future.result()
-            except Exception as e:
-                Logger.error("Failed (bulk={0})".format(_bulk))
-                Logger.error(e)
-                query_passed = False
-                continue
-            for tr in _st:
-                Logger.info(f"For bulk: {_bulk}")
-                Logger.info(f"Got {tr} from future")
-            st = (st + _st).merge(method=1)
+        if executor is None:
+            for _bulk in bulk:
+                try:
+                    st += self.client.get_waveforms(**_bulk)
+                except Exception as e:
+                    Logger.error(f"Failed (bulk={_bulk})")
+                    Logger.error(e)
+                    query_passed = False
+                    continue
+        else:
+            futures = {executor.submit(self.client.get_waveforms, **_bulk):
+                       _bulk for _bulk in self.bulk}
+            for future in as_completed(futures):
+                _bulk = futures[future]
+                try:
+                    _st = future.result()
+                except Exception as e:
+                    Logger.error("Failed (bulk={0})".format(_bulk))
+                    Logger.error(e)
+                    query_passed = False
+                    continue
+                for tr in _st:
+                    Logger.info(f"For bulk: {_bulk}")
+                    Logger.info(f"Got {tr} from future")
+                st = (st + _st).merge(method=1)
         return st, query_passed
 
     def run(self) -> None:
@@ -504,7 +514,8 @@ class RealTimeClient(_StreamingClient):
 
         self.streaming = True
         # start threadpool executor
-        executor = ThreadPoolExecutor(max_workers=min(len(self.bulk), self.max_threads))
+        # executor = ThreadPoolExecutor(max_workers=min(len(self.bulk), self.max_threads))
+        executor = None  # Debugging whether the threadpool is the issue with not getting new data?
         query_starttime = deepcopy(self.starttime)
         self.last_data = UTCDateTime.now()
         last_query_start = query_starttime - self.query_interval
