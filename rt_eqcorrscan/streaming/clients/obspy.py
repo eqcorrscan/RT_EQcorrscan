@@ -479,12 +479,17 @@ class RealTimeClient(_StreamingClient):
             for _bulk in bulk:
                 Logger.info(f"Getting data for {_bulk}")
                 try:
-                    st += self.client.get_waveforms(**_bulk)
+                    _st = self.client.get_waveforms(**_bulk)
                 except Exception as e:
                     Logger.error(f"Failed (bulk={_bulk})")
                     Logger.error(e)
                     query_passed = False
                     continue
+                else:
+                    for tr in _st:
+                        Logger.info(f"Got {tr}")
+                        st += tr
+            st = st.merge(method=1)
         else:
             futures = {executor.submit(self.client.get_waveforms, **_bulk):
                        _bulk for _bulk in bulk}
