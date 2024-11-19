@@ -461,21 +461,24 @@ class RealTimeClient(_StreamingClient):
 
     def _collect_bulk(self, last_query_start, now, executor):
         query_passed, st = True, Stream()
-        for _bulk in self.bulk:
+        bulk = copy.deepcopy(self.bulk)
+        for _bulk in bulk:
             # jitter = random.randint(int(self.query_interval / 10) or 1)
             jitter = 0
             _bulk.update({
                 "starttime": last_query_start,
                 "endtime": now - jitter})
+        self.bulk = bulk
         if self.pre_empt_data:
             # Use inbuilt bulk method - more efficient
             Logger.info("Using get_waveforms_bulk")
             return self.client.get_waveforms_bulk(
                 [(b['network'], b['station'], b['location'], b['channel'],
                   b['starttime'], b['endtime'])
-                 for b in self.bulk]), True
+                 for b in bulk]), True
         if executor is None:
             for _bulk in bulk:
+                Logger.info(f"Getting data for {_bulk}")
                 try:
                     st += self.client.get_waveforms(**_bulk)
                 except Exception as e:
@@ -485,7 +488,7 @@ class RealTimeClient(_StreamingClient):
                     continue
         else:
             futures = {executor.submit(self.client.get_waveforms, **_bulk):
-                       _bulk for _bulk in self.bulk}
+                       _bulk for _bulk in bulk}
             for future in as_completed(futures):
                 _bulk = futures[future]
                 try:
