@@ -486,6 +486,7 @@ class RealTimeClient(_StreamingClient):
                 query_passed = False
                 continue
             for tr in _st:
+                Logger.info(f"For bulk: {_bulk}")
                 Logger.info(f"Got {tr} from future")
             st = (st + _st).merge(method=1)
         return st, query_passed
