@@ -183,7 +183,7 @@ class StreamClient:
                 trimmed_st += trimmed.trim(starttime=endtime)
             # Put back into queue
             self.stream = trimmed_st
-        Logger.info(f"Returning stream from StreamClient for bulk: {bulk}:\n{st}")
+        Logger.debug(f"Returning stream from StreamClient for bulk: {bulk}:\n{st}")
         return st
 
     def initiate_buffer(self, seed_ids: Iterable[str], starttime: UTCDateTime):
@@ -205,7 +205,7 @@ class StreamClient:
         for _bulk in bulk:
             st += self.client.get_waveforms(*_bulk)
         self.stream = st
-        Logger.info(f"Collected hidden buffer:\n{st}")
+        Logger.debug(f"Collected hidden buffer:\n{st}")
         return
 
     def _clear_killer(self):
@@ -291,20 +291,20 @@ class StreamClient:
             Logger.debug(f"Hidden Streamer running for: {self.stats}")
             new_stream = Stream()
             for nslc, (starttime, endtime) in self.stats.items():
-                Logger.info(f"Hidden Streamer: {nslc} length: "
+                Logger.debug(f"Hidden Streamer: {nslc} length: "
                             f"{endtime - starttime}, min-length: "
                             f"{self._min_buffer_length}")
                 if endtime - starttime <= self._min_buffer_length:
                     endtime = starttime + self.buffer_length
                     net, sta, loc, chan = nslc
-                    Logger.info(
+                    Logger.debug(
                         f"Updating buffer for {net}.{sta}.{loc}.{chan} "
                         f"between {starttime} and {endtime}")
                     new_stream += self.client.get_waveforms(
                         network=net, station=sta, channel=chan, location=loc,
                         starttime=starttime, endtime=endtime)
             if len(new_stream):
-                Logger.info(f"Acquired new data for buffer: {new_stream}")
+                Logger.debug(f"Acquired new data for buffer: {new_stream}")
                 new_stream += self.stream
                 new_stream.merge(method=1)
                 self.stream = new_stream
@@ -470,14 +470,14 @@ class RealTimeClient(_StreamingClient):
         self.bulk = bulk
         if self.pre_empt_data:
             # Use inbuilt bulk method - more efficient
-            Logger.info("Using get_waveforms_bulk")
+            Logger.debug("Using get_waveforms_bulk")
             return self.client.get_waveforms_bulk(
                 [(b['network'], b['station'], b['location'], b['channel'],
                   b['starttime'], b['endtime'])
                  for b in bulk]), True
         if executor is None:
             for _bulk in bulk:
-                Logger.info(f"Getting data for {_bulk}")
+                Logger.debug(f"Getting data for {_bulk}")
                 try:
                     _st = self.client.get_waveforms(**_bulk)
                 except Exception as e:
@@ -487,7 +487,7 @@ class RealTimeClient(_StreamingClient):
                     continue
                 else:
                     for tr in _st:
-                        Logger.info(f"Got {tr}")
+                        Logger.debug(f"Got {tr}")
                         st += tr
             st = st.merge(method=1)
         else:
@@ -503,15 +503,15 @@ class RealTimeClient(_StreamingClient):
                     query_passed = False
                     continue
                 for tr in _st:
-                    Logger.info(f"For bulk: {_bulk}")
-                    Logger.info(f"Got {tr} from future")
+                    Logger.debug(f"For bulk: {_bulk}")
+                    Logger.debug(f"Got {tr} from future")
                 st = (st + _st).merge(method=1)
         return st, query_passed
 
     def run(self) -> None:
         assert len(self.bulk) > 0, "Select a stream first"
         if self.pre_empt_data:
-            Logger.info("Collecting pre-emptive data")
+            Logger.debug("Collecting pre-emptive data")
             _sids = [
                 f"{b['network']}.{b['station']}.{b['location']}.{b['channel']}"
                 for b in self.bulk]
@@ -531,17 +531,17 @@ class RealTimeClient(_StreamingClient):
         while not self._stop_called:
             tic = time.perf_counter()
             now = query_starttime + (elapsed * self.speed_up)
-            Logger.info(f"After {elapsed * self.speed_up:.1f} s, the time is now {now}")
+            Logger.debug(f"After {elapsed * self.speed_up:.1f} s, the time is now {now}")
 
-            Logger.info(f"Requesting data between {last_query_start} and {now}")
+            Logger.debug(f"Requesting data between {last_query_start} and {now}")
             st, query_passed = self._collect_bulk(
                 last_query_start=last_query_start, now=now, executor=executor)
-            Logger.info(f"Received stream from database: \n{st.__str__(extended=True)}")
+            Logger.debug(f"Received stream from database: \n{st.__str__(extended=True)}")
 
             Logger.debug(f"Getting data took {(time.perf_counter() - tic) * self.speed_up}s")
 
             # Trim to what we need - this will also limit the query duration
-            Logger.info(f"Trimming streaming data between "
+            Logger.debug(f"Trimming streaming data between "
                         f"{now - (2 * self.buffer_capacity)} and {now}")
             st.trim(starttime=now - (2 * self.buffer_capacity), endtime=now)
 
@@ -594,7 +594,7 @@ class RealTimeClient(_StreamingClient):
         return
 
     def stop(self) -> None:
-        Logger.info("STOP! obspy streamer")
+        Logger.debug("STOP! obspy streamer")
         if self.pre_empt_data:
             self.client.background_stop()
         self._stop_called, self.started = True, False
