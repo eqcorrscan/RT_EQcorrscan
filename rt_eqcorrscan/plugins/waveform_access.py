@@ -178,8 +178,8 @@ class InMemoryWaveBank:
             tr_start = pick.time - dt.timedelta(seconds=pre_pick)
             tr_end = ((pick.time - dt.timedelta(seconds=pre_pick))
                       + dt.timedelta(seconds=length))
-            Logger.info(f"Looking for data between {tr_start} and {tr_end}")
-            Logger.info(
+            Logger.debug(f"Looking for data between {tr_start} and {tr_end}")
+            Logger.debug(
                 f"Looking for data in "
                 f"{', '.join([f.filename for f in pick.files])}")
             for file in pick.files:
@@ -234,10 +234,10 @@ class InMemoryWaveBank:
                     self.data_availability.update({tr.id: seed_availability})
                 new_files += 1
         if new_files > 0:
-            Logger.info(f"Scanned {new_files} new files")
+            Logger.debug(f"Scanned {new_files} new files")
         else:
-            Logger.info("No new files found")
-        Logger.info(
+            Logger.debug("No new files found")
+        Logger.debug(
             f"Data available between {self.starttime} and {self.endtime}")
         return
 
