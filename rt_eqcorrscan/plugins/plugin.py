@@ -236,10 +236,6 @@ class _Plugin(ABC):
                 if self._write_sim_catalogues and len(processed_files):
                     Logger.info("Summarising state")
                     self._summarise_state()
-                else:
-                    Logger.info(
-                        f"Not in sim mode, not summarising: "
-                        f"{self._write_sim_catalogues}")
                 if elapsed < self.config.sleep_interval:
                     time.sleep(self.config.sleep_interval - elapsed)
 
