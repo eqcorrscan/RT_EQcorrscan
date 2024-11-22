@@ -63,7 +63,12 @@ class Plotter(_Plugin):
                 Logger.error(f"Could not read {infile} due to {e}")
                 continue
             # Retain sparse events rather than full catalog
-            self.full_catalog.extend(sparsify_catalog(_cat))
+            _sparse_cat = sparsify_catalog(_cat)
+            rids = {ev.resource_id for ev in self.full_catalog}
+            for ev in _sparse_cat:
+                if ev.resource_id not in rids:
+                    self.full_catalog.append(ev)
+            # self.full_catalog.extend(sparsify_catalog(_cat))
 
         Logger.info(f"Making plots for {len(self.full_catalog)} events")
         inter_fig = inter_event_plot(catalog=self.full_catalog)
