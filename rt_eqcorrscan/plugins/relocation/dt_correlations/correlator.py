@@ -590,6 +590,7 @@ class Correlator:
         max_event_links: int = None,
         outfile: str = "dt.cc",
         weight_by_square: bool = False,
+        tdifmax: float = 30.0,
         # correlation_cache: str = None
     ):
         self.minlink = minlink
@@ -615,6 +616,7 @@ class Correlator:
         self.event_mapper = dict()  # Key to map event ids to dt.cc ids
         self._wf_cache_dir = os.path.abspath(("./.dt_waveforms"))
         self._wf_naming = "{cache_dir}/{event_id}.ms"
+        self.tdifmax = tdifmax
 
     def _get_waveforms(
         self,
@@ -769,6 +771,12 @@ class Correlator:
         Logger.info("Got the following differential times:")
         for dt in differential_times:
             Logger.info(dt)
+            # Check for differential time observations less than tdifmax
+            retained_obs = [obs for obs in dt.obs if abs(obs.tt1 - obs.tt2) < self.tdifmax]
+            if len(retained_obs) < len(dt.obs):
+                Logger.info(f"Removed {len(dt.obs) - len(retained_obs)} links "
+                            f"that exceeded {self.tdifmax} s differential time")
+            dt.obs = retained_obs
         # Differential times is a list of _EventPairs
         # Logger.info("Updating the cache")
         # self.correlation_cache.update(differential_times)
