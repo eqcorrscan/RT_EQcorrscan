@@ -50,7 +50,7 @@ class Watcher:
         self.top_directory = top_directory
         self.watch_pattern = watch_pattern  # Pattern to glob for
         self.history = history  # Container for old, processed events
-        self._new = dict  # Container for new, unprocessed events
+        self._new = dict()  # Container for new, unprocessed events
 
     def __repr__(self):
         return (f"Watcher(watch_pattern={self.watch_pattern}, "
@@ -62,6 +62,12 @@ class Watcher:
     @property
     def new(self):
         return set(self._new.keys())
+
+    @new.setter
+    def new(self, value):
+        if not isinstance(value, dict):
+            raise TypeError(f"{value} must be dict")
+        self._new = value
 
     def processed(self, events: Iterable[str]):
         """ Move events into the history """
