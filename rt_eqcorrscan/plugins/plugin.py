@@ -44,13 +44,13 @@ Logger = logging.getLogger(__name__)
 # TODO: This could have a threaded watch method, but it seems like more effort
 #  than needed
 class Watcher:
-    def __init__(self, top_directory: str, watch_pattern: str, history: set = None):
+    def __init__(self, top_directory: str, watch_pattern: str, history: dict = None):
         if history is None:
-            history = set()
+            history = dict()
         self.top_directory = top_directory
         self.watch_pattern = watch_pattern  # Pattern to glob for
         self.history = history  # Container for old, processed events
-        self.new = set()  # Container for new, unprocessed events
+        self._new = dict  # Container for new, unprocessed events
 
     def __repr__(self):
         return (f"Watcher(watch_pattern={self.watch_pattern}, "
@@ -59,23 +59,36 @@ class Watcher:
     def __len__(self):
         return len(self.new)
 
-    def processed(self, events: Iterable):
+    @property
+    def new(self):
+        return set(self._new.keys())
+
+    def processed(self, events: Iterable[str]):
         """ Move events into the history """
         for event in events:
             if event in self.new:
-                self.new.discard(event)
+                mtime = self.new.pop(event, None)
             else:
                 Logger.warning(f"Putting {event} into history, but {event} was"
                                f" not in unprocessed set")
-            self.history.add(event)
+                mtime = None
+            self.history.update({event: mtime})
 
     def check_for_updates(self):
         files = _scan_dir(top_dir=self.top_directory,
                           watch_pattern=self.watch_pattern)
-        new = {f for f in files if f not in self.history}
+        new = dict()
+        for f in files:
+            if f not in self.history.keys():
+                # File is totally new to us, add it to new
+                new.update({f: os.path.getmtime(f)})
+            elif self.history[f] is None or os.path.getmtime(f) > self.history[f]:
+                # File has been updated since we last looked - reprocess
+                new.update({f: os.path.getmtime(f)})
+
         Logger.debug(f"Found {len(new)} new events to process in "
                     f"{self.top_directory}[...]{self.watch_pattern}")
-        self.new = new
+        self._new = new
 
 
 def _scan_dir(top_dir, watch_pattern):
@@ -214,7 +227,7 @@ class _Plugin(ABC):
                 toc = time.time()
                 elapsed = toc - tic
                 Logger.info(f"{self.name} loop took {elapsed:.2f} s")
-                if self._write_sim_catalogues:
+                if self._write_sim_catalogues and len(processed_files):
                     Logger.info("Summarising state")
                     self._summarise_state()
                 else:
