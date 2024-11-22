@@ -290,7 +290,7 @@ class TraceBuffer(object):
             return
         # Remove older data than our minimum starttime - faster to if this.
         if trace.stats.starttime < self.stats.starttime:
-            Logger.info(f"Discarding data older than {self.stats.starttime}")
+            Logger.debug(f"Discarding data older than {self.stats.starttime}")
             trace = trace.slice(starttime=self.stats.starttime)
             if len(trace) == 0:
                 return
@@ -299,7 +299,7 @@ class TraceBuffer(object):
             Logger.debug("New data to add to trace buffer")
             # If there is overlap
             if trace.stats.starttime <= self.stats.endtime:
-                Logger.info("Data overlap")
+                Logger.debug("Data overlap")
                 old_data = trace.slice(endtime=self.stats.endtime).data
                 insert_start = -len(old_data)
                 self.data.insert(old_data, insert_start)
@@ -320,7 +320,7 @@ class TraceBuffer(object):
                 new_data = np.ma.masked_array(new_data, mask=mask)
             # Otherwise just extend with the new data.
             else:
-                Logger.info("Extending data with new data")
+                Logger.debug("Extending data with new data")
                 new_data = trace.data
             self.data.extend(new_data)
             self.stats.endtime = trace.stats.endtime
