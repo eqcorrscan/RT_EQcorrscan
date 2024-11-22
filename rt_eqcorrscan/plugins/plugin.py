@@ -73,7 +73,7 @@ class Watcher:
         """ Move events into the history """
         for event in events:
             if event in self.new:
-                mtime = self.new.pop(event, None)
+                mtime = self._new.pop(event, None)
             else:
                 Logger.warning(f"Putting {event} into history, but {event} was"
                                f" not in unprocessed set")
