@@ -254,7 +254,7 @@ def iterate_over_event(
     clean: bool = True,
     remodel: bool = True,
 ) -> Event:
-    """ Iterataivly remove picks until quality criteria are met. """
+    """ Iteratively remove picks until quality criteria are met. """
     n_stations = len({p.waveform_id.station_code for p in event.picks})
     if n_stations < min_stations:
         Logger.info("{0} stations picked, returning None".format(n_stations))
@@ -458,17 +458,21 @@ class Hyp(_Plugin):
                     failed = False
                 else:
                     failed = True
-            fname = infile.split(in_dir)[-1]
-            fname = fname.lstrip(os.path.sep)  # Strip pathsep if it is there
-            outpath = os.path.join(out_dir, fname)
-            Logger.info(f"Writing located event to {outpath}")
-            if not os.path.isdir(os.path.dirname(outpath)):
-                os.makedirs(os.path.dirname(outpath))
             if len(cat_out):
-                cat_out.write(outpath, format="QUAKEML")
+                fname = infile.split(in_dir)[-1]
+                fname = fname.lstrip(os.path.sep)  # Strip pathsep if it is there
+                outpath = os.path.join(out_dir, fname)
+                Logger.info(f"Writing located event to {outpath}")
+                if not os.path.isdir(os.path.dirname(outpath)):
+                    os.makedirs(os.path.dirname(outpath))
+                if len(cat_out):
+                    cat_out.write(outpath, format="QUAKEML")
 
-            if not failed:
-                processed_files.append(infile)
+            # Add to processed regardless of failure - will rerun if the file changes
+            if failed:
+                Logger.info(f"Location failed for {infile}, but adding to processed to"
+                            f" avoid re-running until file changes")
+            processed_files.append(infile)
         return processed_files
 
 
