@@ -309,6 +309,7 @@ def setup_nll(
             except Exception as e:
                 Logger.exception(e)
             Logger.info(f"{cmd} successful")
+    Logger.info(f"{os.getcwd()} now contains: {glob.glob('*')}")
     return
 
 
@@ -465,7 +466,7 @@ class NLL(_Plugin):
         min_lon = min_lon or default_grid[2]
         max_lon = max_lon or default_grid[3]
         min_depth = min_depth or default_grid[4]
-        max_depth = max_depths or default_grid[5]
+        max_depth = max_depth or default_grid[5]
         node_spacing = node_spacing or default_grid[6]
 
         if not os.path.isdir(self.working_dir):
@@ -568,9 +569,6 @@ class NLL(_Plugin):
                 outpath = os.path.join(out_dir, fname)
                 Logger.info(f"Writing {len(subcat)} events to {outpath}")
                 subcat.write(outpath, format="QUAKEML")
-
-        if cleanup:
-            self._cleanup()
 
         return located_files
 

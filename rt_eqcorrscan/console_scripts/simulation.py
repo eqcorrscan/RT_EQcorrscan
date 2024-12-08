@@ -84,7 +84,10 @@ def synthesise_real_time(
 
     trigger_origin = (
             triggering_event.preferred_origin() or triggering_event.origins[0])
-    region = estimate_region(triggering_event)
+    region = estimate_region(
+        triggering_event,
+        multiplier=config.reactor.scaling_multiplier or 1.0,
+        min_length=config.reactor.minimum_lookup_radius or 50.0)
     database_starttime = trigger_origin.time - (database_duration * 86400)
     database_endtime = trigger_origin.time
 
@@ -196,6 +199,7 @@ def synthesise_real_time(
         client=client,
         listener=listener, trigger_func=trigger_func,
         template_database=template_bank, config=config)
+    reactor._simulation = True
     reactor._speed_up = speed_up
     reactor._test_start_step = listener._test_start_step
     Logger.info("Starting reactor")

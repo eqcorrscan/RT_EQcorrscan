@@ -89,6 +89,7 @@ class RealTimeTribe(Tribe):
 
     busy = False
 
+    _simulation = False  # Flag to get extra output for simulations
     _speed_up = 1.0  # For simulated runs - do not change for real-time!
     _stream_end = UTCDateTime(1970, 1, 1)  # End of real-time data - will be
     # updated in first loop. Used for keeping track of when templates are relative
@@ -689,7 +690,10 @@ class RealTimeTribe(Tribe):
             config_name = f"{key}-config-{self.name}.yml"
             Logger.info(f"Writing config file for {key} to {config_name}")
             value.write(config_name)
-            plugin_proc = run_plugin(key, ["-c", config_name])
+            plugin_args = ["-c", config_name]
+            if self._simulation:
+                plugin_args.append("--simulation")
+            plugin_proc = run_plugin(key, plugin_args)
             self._plugins.update({key: plugin_proc})
         return
 
@@ -913,11 +917,11 @@ class RealTimeTribe(Tribe):
             _buffer = self.rt_client.stream
             for tr_id in self.expected_seed_ids:
                 try:
-                    tr_in_buffer = _buffer.select(id=tr_id)[0]
+                    tr_in_buffer = _buffer.select(id=tr_id).merge()[0]
                 except IndexError:
                     continue
-                # Overlap
-                endtime = tr_in_buffer.stats.endtime
+                # Overlap - request more data than we are likely to get
+                endtime = tr_in_buffer.stats.endtime + 120
                 Logger.info(f"Buffer for {tr_in_buffer.id} between "
                             f"{tr_in_buffer.stats.starttime} and "
                             f"{tr_in_buffer.stats.endtime}")

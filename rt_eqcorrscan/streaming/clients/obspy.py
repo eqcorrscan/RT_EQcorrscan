@@ -10,7 +10,6 @@ License
 import logging
 import os
 import time
-import copy
 from numpy import random
 import importlib
 
@@ -184,7 +183,7 @@ class StreamClient:
                 trimmed_st += trimmed.trim(starttime=endtime)
             # Put back into queue
             self.stream = trimmed_st
-        Logger.debug(f"Returning stream for bulk: {bulk}:\n{st}")
+        Logger.debug(f"Returning stream from StreamClient for bulk: {bulk}:\n{st}")
         return st
 
     def initiate_buffer(self, seed_ids: Iterable[str], starttime: UTCDateTime):
@@ -206,7 +205,7 @@ class StreamClient:
         for _bulk in bulk:
             st += self.client.get_waveforms(*_bulk)
         self.stream = st
-        Logger.info(f"Collected hidden buffer:\n{st}")
+        Logger.debug(f"Collected hidden buffer:\n{st}")
         return
 
     def _clear_killer(self):
@@ -292,20 +291,20 @@ class StreamClient:
             Logger.debug(f"Hidden Streamer running for: {self.stats}")
             new_stream = Stream()
             for nslc, (starttime, endtime) in self.stats.items():
-                Logger.info(f"Hidden Streamer: {nslc} length: "
+                Logger.debug(f"Hidden Streamer: {nslc} length: "
                             f"{endtime - starttime}, min-length: "
                             f"{self._min_buffer_length}")
                 if endtime - starttime <= self._min_buffer_length:
                     endtime = starttime + self.buffer_length
                     net, sta, loc, chan = nslc
-                    Logger.info(
+                    Logger.debug(
                         f"Updating buffer for {net}.{sta}.{loc}.{chan} "
                         f"between {starttime} and {endtime}")
                     new_stream += self.client.get_waveforms(
                         network=net, station=sta, channel=chan, location=loc,
                         starttime=starttime, endtime=endtime)
             if len(new_stream):
-                Logger.info(f"Acquired new data for buffer: {new_stream}")
+                Logger.debug(f"Acquired new data for buffer: {new_stream}")
                 new_stream += self.stream
                 new_stream.merge(method=1)
                 self.stream = new_stream
@@ -461,36 +460,58 @@ class RealTimeClient(_StreamingClient):
 
     def _collect_bulk(self, last_query_start, now, executor):
         query_passed, st = True, Stream()
-        for _bulk in self.bulk:
+        bulk = deepcopy(self.bulk)
+        for _bulk in bulk:
             # jitter = random.randint(int(self.query_interval / 10) or 1)
             jitter = 0
             _bulk.update({
                 "starttime": last_query_start,
                 "endtime": now - jitter})
+        self.bulk = bulk
         if self.pre_empt_data:
             # Use inbuilt bulk method - more efficient
+            Logger.debug("Using get_waveforms_bulk")
             return self.client.get_waveforms_bulk(
                 [(b['network'], b['station'], b['location'], b['channel'],
                   b['starttime'], b['endtime'])
-                 for b in self.bulk]), True
-        futures = {executor.submit(self.client.get_waveforms, **_bulk):
-                   _bulk for _bulk in self.bulk}
-        for future in as_completed(futures):
-            _bulk = futures[future]
-            try:
-                _st = future.result()
-            except Exception as e:
-                Logger.error("Failed (bulk={0})".format(_bulk))
-                Logger.error(e)
-                query_passed = False
-                continue
-            st = (st + _st).merge(method=1)
+                 for b in bulk]), True
+        if executor is None:
+            for _bulk in bulk:
+                Logger.debug(f"Getting data for {_bulk}")
+                try:
+                    _st = self.client.get_waveforms(**_bulk)
+                except Exception as e:
+                    Logger.error(f"Failed (bulk={_bulk})")
+                    Logger.error(e)
+                    query_passed = False
+                    continue
+                else:
+                    for tr in _st:
+                        Logger.debug(f"Got {tr}")
+                        st += tr
+            st = st.merge(method=1)
+        else:
+            futures = {executor.submit(self.client.get_waveforms, **_bulk):
+                       _bulk for _bulk in bulk}
+            for future in as_completed(futures):
+                _bulk = futures[future]
+                try:
+                    _st = future.result()
+                except Exception as e:
+                    Logger.error("Failed (bulk={0})".format(_bulk))
+                    Logger.error(e)
+                    query_passed = False
+                    continue
+                for tr in _st:
+                    Logger.debug(f"For bulk: {_bulk}")
+                    Logger.debug(f"Got {tr} from future")
+                st = (st + _st).merge(method=1)
         return st, query_passed
 
     def run(self) -> None:
         assert len(self.bulk) > 0, "Select a stream first"
         if self.pre_empt_data:
-            Logger.info("Collecting pre-emptive data")
+            Logger.debug("Collecting pre-emptive data")
             _sids = [
                 f"{b['network']}.{b['station']}.{b['location']}.{b['channel']}"
                 for b in self.bulk]
@@ -500,58 +521,71 @@ class RealTimeClient(_StreamingClient):
 
         self.streaming = True
         # start threadpool executor
-        executor = ThreadPoolExecutor(max_workers=min(len(self.bulk), self.max_threads))
-        now = deepcopy(self.starttime)
+        # executor = ThreadPoolExecutor(max_workers=min(len(self.bulk), self.max_threads))
+        executor = None  # Debugging whether the threadpool is the issue with not getting new data?
+        query_starttime = deepcopy(self.starttime)
         self.last_data = UTCDateTime.now()
-        last_query_start = now - self.query_interval
+        last_query_start = query_starttime - self.query_interval
         killed = False
+        elapsed = 0.0
         while not self._stop_called:
-            _query_start = UTCDateTime.now()
+            tic = time.perf_counter()
+            now = query_starttime + (elapsed * self.speed_up)
+            Logger.debug(f"After {elapsed * self.speed_up:.1f} s, the time is now {now}")
+
+            Logger.debug(f"Requesting data between {last_query_start} and {now}")
             st, query_passed = self._collect_bulk(
                 last_query_start=last_query_start, now=now, executor=executor)
-            Logger.info(f"Got data between {last_query_start} and {now}")
-            Logger.info(f"Received stream from streamer: \n{st.__str__(extended=True)}")
-            a = UTCDateTime.now()
-            Logger.debug(f"Getting data took {(a - _query_start) * self.speed_up}s")
+            Logger.debug(f"Received stream from database: \n{st.__str__(extended=True)}")
+
+            Logger.debug(f"Getting data took {(time.perf_counter() - tic) * self.speed_up}s")
+
+            # Trim to what we need - this will also limit the query duration
+            Logger.debug(f"Trimming streaming data between "
+                        f"{now - (2 * self.buffer_capacity)} and {now}")
+            st.trim(starttime=now - (2 * self.buffer_capacity), endtime=now)
+
             for tr in st:
                 self.on_data(tr)
                 time.sleep(0.0001)
-            b = UTCDateTime.now()
-            Logger.debug(f"on_data took {(b - a) * self.speed_up}s")
+
             # Put the data in the buffer
             self._add_data_from_queue()
-            Logger.debug(f"_add_data_from_queue took {(UTCDateTime.now() - b) * self.speed_up}s")
-            _query_duration = (UTCDateTime.now() - _query_start) * self.speed_up  # work in fake time
+
             Logger.debug(
                 "It took {0:.2f}s to query the database and sort data".format(
-                    _query_duration))
-            sleep_step = self.query_interval - _query_duration
+                    time.perf_counter() - tic))
+
+            sleep_step = self.query_interval - ((time.perf_counter() - tic) * self.speed_up)
             if sleep_step > 0:
                 Logger.debug("Waiting {0:.2f}s before next query".format(
                     sleep_step))  # Report fake time
                 _slept, _sleep_int = 0.0, min(1, (sleep_step / self.speed_up) / 100)
                 # Sleep in small steps to make death responsive
                 while _slept < sleep_step / self.speed_up:
-                    tic = time.perf_counter()
+                    toc = time.perf_counter()
                     time.sleep(_sleep_int)
                     killed = self._kill_check()
                     if killed:
                         break
-                    _slept += time.perf_counter() - tic
+                    _slept += time.perf_counter() - toc
                 Logger.debug("Waking up")
             else:
-                Logger.warning(f"Query ({_query_duration} took longer than query "
+                Logger.warning(f"Query took longer than query "
                                f"interval {self.query_interval}")
                 killed = self._kill_check()
             if killed:
                 break
-            now += max(self.query_interval, _query_duration)
             if query_passed:
                 # last_query_start = min(_bulk["endtime"] for _bulk in self.bulk)
                 if len(st):
                     last_query_start = min(tr.stats.starttime for tr in st)
                     # Don't update if we didn't get a stream!
-            Logger.info(f"After checks the stream is {self.stream}")
+            else:
+                Logger.warning("Query failed, may end up with gappy data")
+                last_query_start += (time.perf_counter() - tic) * self.speed_up
+            Logger.debug(f"After checks the stream is {self.stream}")
+            elapsed += time.perf_counter() - tic
         self.streaming = False
         # shut down threadpool, we done.
         executor.shutdown(wait=False, cancel_futures=True)
@@ -560,7 +594,7 @@ class RealTimeClient(_StreamingClient):
         return
 
     def stop(self) -> None:
-        Logger.info("STOP! obspy streamer")
+        Logger.debug("STOP! obspy streamer")
         if self.pre_empt_data:
             self.client.background_stop()
         self._stop_called, self.started = True, False
