@@ -79,16 +79,20 @@ class Plotter(_Plugin):
         time_stamp = UTCDateTime().strftime("%Y-%m-%dT%H-%M-%S")
         for _format in ("png", "eps"):
             inter_fig.savefig(
-                f"{out_dir}/detection_time_series_{time_stamp}.{_format}")
-            shutil.copyfile(
-                f"{out_dir}/detection_time_series_{time_stamp}.{_format}",
                 f"{out_dir}/detection_time_series_latest.{_format}")
+            # inter_fig.savefig(
+            #     f"{out_dir}/detection_time_series_{time_stamp}.{_format}")
+            # shutil.copyfile(
+            #     f"{out_dir}/detection_time_series_{time_stamp}.{_format}",
+            #     f"{out_dir}/detection_time_series_latest.{_format}")
             if PYGMT_INSTALLED:
                 map_fig.savefig(
-                    f"{out_dir}/detection_map_{time_stamp}.{_format}")
-                shutil.copyfile(
-                    f"{out_dir}/detection_map_{time_stamp}.{_format}",
                     f"{out_dir}/detection_map_latest.{_format}")
+                # map_fig.savefig(
+                #     f"{out_dir}/detection_map_{time_stamp}.{_format}")
+                # shutil.copyfile(
+                #     f"{out_dir}/detection_map_{time_stamp}.{_format}",
+                #     f"{out_dir}/detection_map_latest.{_format}")
         return processed_files
 
 
