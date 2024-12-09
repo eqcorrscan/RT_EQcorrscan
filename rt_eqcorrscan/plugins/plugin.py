@@ -139,6 +139,10 @@ class _Plugin(ABC):
     def core(self, new_files: Iterable, cleanup: bool) -> List:
         """ The internal plugin code to actually run the plugin! """
 
+    def setup(self):
+        """ Run any setup here. """
+        pass
+
     def _cleanup(self):
         """ Anything that needs to be done at the end of a run. """
         pass
@@ -174,6 +178,9 @@ class _Plugin(ABC):
         """
         if not os.path.isdir(self.config.out_dir):
             os.makedirs(self.config.out_dir)
+        # Run pre-looping setup - this could be making files that just need to
+        # be made once or making output dirs etc.
+        self.setup()
         while True:
             tic = time.time()
 
@@ -200,6 +207,7 @@ class _Plugin(ABC):
             if new_config != self.config:
                 Logger.info(f"Updated configuration found: {new_config}")
                 self.config = new_config
+                Logger.warning("Not re-running setup!")
 
             self.kill_watcher.check_for_updates()
             if len(self.kill_watcher):
