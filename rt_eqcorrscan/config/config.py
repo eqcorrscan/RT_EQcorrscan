@@ -490,7 +490,7 @@ def _setup_logging(
     handlers = []
     if file:
         file_log_args = dict(filename=filename, mode='a',
-                             maxBytes=20*1024*1024, backupCount=10,
+                             maxBytes=100*1024*1024, backupCount=20,
                              encoding=None, delay=0)
         file_log_args.update(kwargs)
         rotating_handler = RotatingFileHandler(**file_log_args)

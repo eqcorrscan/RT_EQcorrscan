@@ -5,7 +5,10 @@ Functions for spinning up and running a real-time tribe based on trigger-events
 
 import os
 import logging
-import pickle
+import shutil
+
+import tqdm
+import glob
 
 from collections import Counter
 from typing import List, Union
@@ -15,12 +18,11 @@ from obspy.core.event import Event
 from obspy.clients.fdsn.client import FDSNNoDataException
 from obspy.geodetics import locations2degrees, kilometer2degrees
 
-from obsplus import WaveBank
-
 from eqcorrscan import Tribe
 
 from rt_eqcorrscan import read_config, RealTimeTribe
-from rt_eqcorrscan.database.database_manager import check_tribe_quality
+from rt_eqcorrscan.database.database_manager import (
+    check_tribe_quality, _lazy_template_read)
 from rt_eqcorrscan.event_trigger.listener import event_time
 
 
@@ -56,9 +58,16 @@ def run(
     Logger.debug(f"Triggered by {triggering_event}")
     min_stations = config.rt_match_filter.get("min_stations", None)
     Logger.info("Reading the Tribe")
-    tribe = Tribe().read("tribe.tgz")
-    # Remove file to avoid re-reading it
-    os.remove("tribe.tgz")
+    # tribe = Tribe().read("tribe.tgz")
+    # # Remove file to avoid re-reading it
+    # os.remove("tribe.tgz")
+    tribe = Tribe()
+    for tf in tqdm.tqdm(glob.glob("tribe/*")):
+        try:
+            tribe += Tribe().read(tf)
+        except Exception as e:
+            Logger.error(f"Could not read from {tf} due to {e}")
+    shutil.rmtree("tribe")
 
     Logger.info("Read in {0} templates".format(len(tribe)))
     if len(tribe) == 0:

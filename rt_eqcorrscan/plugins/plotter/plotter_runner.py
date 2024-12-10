@@ -63,7 +63,12 @@ class Plotter(_Plugin):
                 Logger.error(f"Could not read {infile} due to {e}")
                 continue
             # Retain sparse events rather than full catalog
-            self.full_catalog.extend(sparsify_catalog(_cat))
+            _sparse_cat = sparsify_catalog(_cat)
+            rids = {ev.resource_id for ev in self.full_catalog}
+            for ev in _sparse_cat:
+                if ev.resource_id not in rids:
+                    self.full_catalog.append(ev)
+            # self.full_catalog.extend(sparsify_catalog(_cat))
 
         Logger.info(f"Making plots for {len(self.full_catalog)} events")
         inter_fig = inter_event_plot(catalog=self.full_catalog)
@@ -74,16 +79,20 @@ class Plotter(_Plugin):
         time_stamp = UTCDateTime().strftime("%Y-%m-%dT%H-%M-%S")
         for _format in ("png", "eps"):
             inter_fig.savefig(
-                f"{out_dir}/detection_time_series_{time_stamp}.{_format}")
-            shutil.copyfile(
-                f"{out_dir}/detection_time_series_{time_stamp}.{_format}",
                 f"{out_dir}/detection_time_series_latest.{_format}")
+            # inter_fig.savefig(
+            #     f"{out_dir}/detection_time_series_{time_stamp}.{_format}")
+            # shutil.copyfile(
+            #     f"{out_dir}/detection_time_series_{time_stamp}.{_format}",
+            #     f"{out_dir}/detection_time_series_latest.{_format}")
             if PYGMT_INSTALLED:
                 map_fig.savefig(
-                    f"{out_dir}/detection_map_{time_stamp}.{_format}")
-                shutil.copyfile(
-                    f"{out_dir}/detection_map_{time_stamp}.{_format}",
                     f"{out_dir}/detection_map_latest.{_format}")
+                # map_fig.savefig(
+                #     f"{out_dir}/detection_map_{time_stamp}.{_format}")
+                # shutil.copyfile(
+                #     f"{out_dir}/detection_map_{time_stamp}.{_format}",
+                #     f"{out_dir}/detection_map_latest.{_format}")
         return processed_files
 
 

@@ -44,13 +44,13 @@ Logger = logging.getLogger(__name__)
 # TODO: This could have a threaded watch method, but it seems like more effort
 #  than needed
 class Watcher:
-    def __init__(self, top_directory: str, watch_pattern: str, history: set = None):
+    def __init__(self, top_directory: str, watch_pattern: str, history: dict = None):
         if history is None:
-            history = set()
+            history = dict()
         self.top_directory = top_directory
         self.watch_pattern = watch_pattern  # Pattern to glob for
         self.history = history  # Container for old, processed events
-        self.new = set()  # Container for new, unprocessed events
+        self._new = dict()  # Container for new, unprocessed events
 
     def __repr__(self):
         return (f"Watcher(watch_pattern={self.watch_pattern}, "
@@ -59,23 +59,42 @@ class Watcher:
     def __len__(self):
         return len(self.new)
 
-    def processed(self, events: Iterable):
+    @property
+    def new(self):
+        return set(self._new.keys())
+
+    @new.setter
+    def new(self, value):
+        if not isinstance(value, dict):
+            raise TypeError(f"{value} must be dict")
+        self._new = value
+
+    def processed(self, events: Iterable[str]):
         """ Move events into the history """
         for event in events:
             if event in self.new:
-                self.new.discard(event)
+                mtime = self._new.pop(event, None)
             else:
                 Logger.warning(f"Putting {event} into history, but {event} was"
                                f" not in unprocessed set")
-            self.history.add(event)
+                mtime = None
+            self.history.update({event: mtime})
 
     def check_for_updates(self):
         files = _scan_dir(top_dir=self.top_directory,
                           watch_pattern=self.watch_pattern)
-        new = {f for f in files if f not in self.history}
+        new = dict()
+        for f in files:
+            if f not in self.history.keys():
+                # File is totally new to us, add it to new
+                new.update({f: os.path.getmtime(f)})
+            elif self.history[f] is None or os.path.getmtime(f) > self.history[f]:
+                # File has been updated since we last looked - reprocess
+                new.update({f: os.path.getmtime(f)})
+
         Logger.debug(f"Found {len(new)} new events to process in "
                     f"{self.top_directory}[...]{self.watch_pattern}")
-        self.new = new
+        self._new = new
 
 
 def _scan_dir(top_dir, watch_pattern):
@@ -120,6 +139,10 @@ class _Plugin(ABC):
     def core(self, new_files: Iterable, cleanup: bool) -> List:
         """ The internal plugin code to actually run the plugin! """
 
+    def setup(self):
+        """ Run any setup here. """
+        pass
+
     def _cleanup(self):
         """ Anything that needs to be done at the end of a run. """
         pass
@@ -155,6 +178,9 @@ class _Plugin(ABC):
         """
         if not os.path.isdir(self.config.out_dir):
             os.makedirs(self.config.out_dir)
+        # Run pre-looping setup - this could be making files that just need to
+        # be made once or making output dirs etc.
+        self.setup()
         while True:
             tic = time.time()
 
@@ -181,6 +207,7 @@ class _Plugin(ABC):
             if new_config != self.config:
                 Logger.info(f"Updated configuration found: {new_config}")
                 self.config = new_config
+                Logger.warning("Not re-running setup!")
 
             self.kill_watcher.check_for_updates()
             if len(self.kill_watcher):
@@ -214,13 +241,9 @@ class _Plugin(ABC):
                 toc = time.time()
                 elapsed = toc - tic
                 Logger.info(f"{self.name} loop took {elapsed:.2f} s")
-                if self._write_sim_catalogues:
+                if self._write_sim_catalogues and len(processed_files):
                     Logger.info("Summarising state")
                     self._summarise_state()
-                else:
-                    Logger.info(
-                        f"Not in sim mode, not summarising: "
-                        f"{self._write_sim_catalogues}")
                 if elapsed < self.config.sleep_interval:
                     time.sleep(self.config.sleep_interval - elapsed)
 

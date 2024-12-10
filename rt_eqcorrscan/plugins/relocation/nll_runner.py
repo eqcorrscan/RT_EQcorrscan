@@ -447,7 +447,7 @@ class NLL(_Plugin):
         mindepth = internal_config.pop("mindepth", -3.0)
         return min_lat, max_lat, min_lon, max_lon, mindepth, maxdepth, nodespacing
 
-    def setup(
+    def nll_setup(
         self,
         inv: Inventory = None,
         min_lat: float = None,
@@ -492,9 +492,8 @@ class NLL(_Plugin):
             os.chdir(cwd)
         return
 
-    def core(self, new_files: Iterable, cleanup: bool = False) -> List:
+    def setup(self):
         internal_config = self.config.copy()
-        in_dir = internal_config.pop("in_dir")
         out_dir = internal_config.pop("out_dir")
         if not os.path.isdir(out_dir):
             os.makedirs(out_dir)
@@ -505,6 +504,17 @@ class NLL(_Plugin):
         Logger.info(
             f"Read in inventory of {len([s for n in inv for s in n])} "
             f"stations")
+        if self._setup:
+            Logger.info("Running setup")
+            self.nll_setup(
+                inv=inv, min_lat=min_lat, min_lon=min_lon, max_lat=max_lat,
+                max_lon=max_lon, max_depth=maxdepth, node_spacing=nodespacing,
+                min_depth=mindepth)
+        return
+
+    def core(self, new_files: Iterable, cleanup: bool = False) -> List:
+        internal_config = self.config.copy()
+        out_dir = internal_config.pop("out_dir")
 
         cat_to_locate, event_file_mapper = Catalog(), dict()
         Logger.info("Reading events")
@@ -514,37 +524,6 @@ class NLL(_Plugin):
             # Cope with possibility of multiple events in one file.
             event_file_mapper.update({f: [ev.resource_id.id.split('/')[-1]
                                           for ev in cat]})
-
-        lats, lons, depths = [], [], []
-        for ev in cat_to_locate:
-            if len(ev.origins):
-                lat = ev.origins[-1].get("latitude", None)
-                lon = ev.origins[-1].get("longitude", None)
-                depth = ev.origins[-1].get("depth", None)
-                if lat is not None:
-                    lats.append(lat)
-                if lon is not None:
-                    lons.append(lon)
-                if depth is not None:
-                    depths.append(depth / 1000.0)
-
-        if min_lat is None and len(lats):
-            min_lat = min(lats)
-        if max_lat is None and len(lats):
-            max_lat = max(lats)
-        if min_lon is None and len(lons):
-            min_lon = min(lons)
-        if max_lon is None and len(lons):
-            max_lon = max(lons)
-        if maxdepth is None and len(depths):
-            maxdepth = max(depths)
-
-        if self._setup:
-            Logger.info("Running setup")
-            self.setup(
-                inv=inv, min_lat=min_lat, min_lon=min_lon, max_lat=max_lat,
-                max_lon=max_lon, max_depth=maxdepth, node_spacing=nodespacing,
-                min_depth=mindepth)
 
         Logger.info("Running locations")
         cat_located = self.run_nll(catalog=cat_to_locate,

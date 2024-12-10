@@ -70,10 +70,12 @@ class SparseEvent:
     _preferred_origin_index = None
 
     def __init__(self,
+                 resource_id: str,
                  origins: Iterable[SparseOrigin],
                  magnitudes: Iterable[SparseMagnitude],
                  preferred_origin_index: int = None,
                  preferred_magnitude_index: int = None):
+        self.resource_id = resource_id
         self.origins = tuple(origins)
         self.magnitudes = tuple(magnitudes)
         if preferred_origin_index is not None:
@@ -83,7 +85,8 @@ class SparseEvent:
             self.preferred_magnitude_index = preferred_magnitude_index
 
     def __repr__(self):
-        return (f"SparseEvent(origins=[{len(self.origins)} origins], "
+        return (f"SparseEvent(resource_id={self.resource_id}, "
+                f"origins=[{len(self.origins)} origins], "
                 f"preferred_origin_index={self.preferred_origin_index},"
                 f"preferred_magnitude_index={self.preferred_magnitude_index})")
 
@@ -160,7 +163,8 @@ def _sparsify_magnitude(magnitude: Magnitude) -> SparseMagnitude:
 def _sparsify_event(event: Event) -> SparseEvent:
     origins = [_sparsify_origin(ori) for ori in event.origins]
     magnitudes = [_sparsify_magnitude(mag) for mag in event.magnitudes]
-    ev = SparseEvent(origins=origins, magnitudes=magnitudes)
+    ev = SparseEvent(resource_id=event.resource_id.id,
+                     origins=origins, magnitudes=magnitudes)
     pref_ind = None
     if event.preferred_origin_id:
         for i, ori in enumerate(event.origins):

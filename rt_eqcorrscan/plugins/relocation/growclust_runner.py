@@ -131,6 +131,9 @@ class GrowClustConfig(_PluginConfig):
         "tt_xmin": 0.0,
         "tt_xmax": 1000.0,
         "tt_xstep": 1.0,
+        "tdifmax": 30.0,
+        "hshiftmax": 2.0,
+        "vshiftmax": 2.0,
         "rmin": 0.6,
         "delmax": 80,
         "rmsmax": 0.2,
@@ -362,7 +365,10 @@ def run_growclust(
         "julia",
         "--threads", str(workers),
         growclust_script,
-        "-c", f"growclust_control.inp"]
+        "-c", f"growclust_control.inp",
+        "--tdifmax", f"{config.tdifmax}",
+        "--hshiftmax", f"{config.hshiftmax}",
+        "--vshiftmax", f"{config.vshiftmax}"]
     Logger.info(f"Running call: {' '.join(arg_string)}")
 
     loc_proc = subprocess.run(

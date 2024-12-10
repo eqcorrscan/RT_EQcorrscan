@@ -386,14 +386,20 @@ class Reactor(object):
         if len(event_ids) == 0:
             Logger.warning(f"Found no events in region: {region} - no detection to run.")
             return
-        tribe = self.template_database.get_templates(eventid=event_ids)
-        Logger.info(f"Found {len(tribe)} templates")
-        if len(tribe) == 0:
-            Logger.info("No templates, not running")
-            return
+        # tribe = self.template_database.get_templates(eventid=event_ids)
+        # Logger.info(f"Found {len(tribe)} templates")
+        # if len(tribe) == 0:
+        #     Logger.info("No templates, not running")
+        #     return
+        tribe_files = self.template_database.get_template_paths(
+            eventid=event_ids)
         working_dir = _get_triggered_working_dir(
             triggering_event_id, exist_ok=True)
-        tribe.write(os.path.join(working_dir, "tribe.tgz"))
+        # tribe.write(os.path.join(working_dir, "tribe.tgz"))
+        tribe_dir = os.path.join(working_dir, "tribe")
+        os.makedirs(tribe_dir, exist_ok=True)
+        for tf in tribe_files:
+            os.symlink(tf, os.path.join(tribe_dir, os.path.basename(tf)))
         self.config.write(
             os.path.join(working_dir, 'rt_eqcorrscan_config.yml'))
         triggering_event.write(
@@ -411,8 +417,7 @@ class Reactor(object):
         self.detecting_processes.update({triggering_event_id: proc})
         self._running_regions.update({triggering_event_id: region})
         self._running_templates.update(
-            {triggering_event_id:
-             {t.event.resource_id.id for t in tribe}})
+            {triggering_event_id: set(event_ids)})
         Logger.info("Started detector subprocess - continuing listening")
 
     def stop_tribe(self, triggering_event_id: str = None) -> None:

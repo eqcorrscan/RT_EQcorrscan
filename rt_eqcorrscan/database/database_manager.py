@@ -9,7 +9,7 @@ import threading
 from pathlib import Path
 from collections import Counter
 
-from typing import Optional, Union, Callable, Iterable
+from typing import Optional, Union, Callable, Iterable, List
 from concurrent.futures import Executor
 from functools import partial
 
@@ -243,9 +243,9 @@ class TemplateBank(EventBank):
         self.executor = executor or _SerialExecutor()
 
     @compose_docstring(get_events_params=get_events_parameters)
-    def get_templates(self, **kwargs) -> Tribe:
+    def get_template_paths(self, **kwargs) -> List[str]:
         """
-        Get template waveforms from the database
+        Get paths of templates from the database
 
         Supports passing an `concurrent.futures.Executor` using the `executor`
         keyword argument for parallel reading.
@@ -259,6 +259,19 @@ class TemplateBank(EventBank):
                 columns=["path", "latitude", "longitude"], **kwargs).path
         Logger.info(f"Found {len(paths)} templates to read")
         paths = [path.replace(self.ext, self.template_ext) for path in paths]
+        return paths
+
+    @compose_docstring(get_events_params=get_events_parameters)
+    def get_templates(self, **kwargs) -> Tribe:
+        """
+        Get templates from the database
+
+        Supports passing an `concurrent.futures.Executor` using the `executor`
+        keyword argument for parallel reading.
+
+        {get_event_params}
+        """
+        paths = self.get_template_paths(**kwargs)
         Logger.info("Reading templates")
         future = self.executor.map(_lazy_template_read, paths)
         return Tribe([t for t in future if t is not None])
