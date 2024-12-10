@@ -122,7 +122,7 @@ class GrowClustConfig(_PluginConfig):
         "ttabsrc": "trace",
         "fin_vzmdl": "vzmodel.txt",
         "fdir_ttab": "tt",
-        "projection": _GrowClustProj(),
+        "projection": _GrowClustProj(),  # TODO: For 3D, projection parameters must match the NLL Grid parameters.
         "vpvs_factor": 1.732,
         "rayparam_min": 0.0,
         "tt_zmin": -4.0,
@@ -130,6 +130,7 @@ class GrowClustConfig(_PluginConfig):
         "tt_zstep": 1.0,
         "tt_xmin": 0.0,
         "tt_xmax": 1000.0,
+        # TODO: For growclust3D we need to add in tt_ymin, tt_ymax and all travel time size params must match the NLL grids.
         "tt_xstep": 1.0,
         "tdifmax": 30.0,
         "hshiftmax": 2.0,
