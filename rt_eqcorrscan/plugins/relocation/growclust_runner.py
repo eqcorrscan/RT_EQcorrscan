@@ -130,7 +130,8 @@ class GrowClustConfig(_PluginConfig):
         "tt_zstep": 1.0,
         "tt_xmin": 0.0,
         "tt_xmax": 1000.0,
-        # TODO: For growclust3D we need to add in tt_ymin, tt_ymax and all travel time size params must match the NLL grids.
+        "tt_ymin": None,
+        "tt_ymax": None,
         "tt_xstep": 1.0,
         "tdifmax": 30.0,
         "hshiftmax": 2.0,
@@ -153,6 +154,7 @@ class GrowClustConfig(_PluginConfig):
         "growclust_script": GROWCLUST_SCRIPT,
         "sleep_interval": 600,
         "correlation_config": CorrelationConfig(),
+        "nll_config_file": None,
     }
     readonly = []
     _subclasses = {
@@ -204,6 +206,20 @@ class GrowClustConfig(_PluginConfig):
 
         The growclust file is fixed lines with comments between.
         """
+        if self.tt_ymin is not None and self.tt_ymax is not None and self.ttabsrc == "nllgrid":
+            tt_lines = [
+                "* tt_zmin  tt_zmax",
+                f"{self.tt_zmin}   {self.tt_zmax}",
+                "* tt_xmin  tt_xmax  tt_ymin  tt_ymax",
+                f"{self.tt_xmin}  {self.tt_xmax}  {self.tt_ymin}  {self.tt_ymax}",
+            ]
+        else:
+            tt_lines = [
+                "* tt_zmin  tt_zmax  tt_zstep",
+                f"{self.tt_zmin}   {self.tt_zmax}  {self.tt_zstep}",
+                "* tt_xmin  tt_xmax  tt_xstep",
+                f"{self.tt_xmin}  {self.tt_xmax}  {self.tt_xstep}",
+            ]
         lines = [
             "* Growclust parameter file written by RT-EQcorrscan",
             "* evlist_fmt",
@@ -231,10 +247,7 @@ class GrowClustConfig(_PluginConfig):
             str(self.projection),
             "* vpvs_factor  rayparam_min",
             f"{self.vpvs_factor}         {self.rayparam_min}",
-            "* tt_zmin  tt_zmax  tt_zstep",
-            f"{self.tt_zmin}   {self.tt_zmax}  {self.tt_zstep}",
-            "* tt_xmin  tt_xmax  tt_xstep",
-            f"{self.tt_xmin}  {self.tt_xmax}  {self.tt_xstep}",
+            tt_lines[0], tt_lines[1], tt_lines[2], tt_lines[3],
             "* rmin  delmax rmsmax",
             f"{self.rmin}  {self.delmax}  {self.rmsmax}",
             "* rpsavgmin, rmincut  ngoodmin   iponly",
@@ -351,16 +364,39 @@ def run_growclust(
     # Need to edit the projection origin for the events
 
     internal_config = config.copy()
-    internal_config.projection.lat0 = mean_lat
-    internal_config.projection.lon0 = mean_lon
+    if internal_config.ttabsrc == "trace":
+        internal_config.projection.lat0 = mean_lat
+        internal_config.projection.lon0 = mean_lon
 
     internal_config.write_growclust(f"growclust_control.inp")
 
-    vmodel = VelocityModel.read(vmodel_file)
-    vmodel.write(internal_config.fin_vzmdl, format="GROWCLUST")
+    if internal_config.ttabsrc == "trace":
+        vmodel = VelocityModel.read(vmodel_file)
+        vmodel.write(internal_config.fin_vzmdl, format="GROWCLUST")
+
+    elif internal_config.ttabsrc == "nllgrid":
+        with open(internal_config.nll_config_file, "r") as f:
+            nll_config = {l.split()[0]: l.split()[1:] for l in f}
+        # Match params to nllgrid
+        config.fin_vzmdl = os.path.split(nll_config["GTFILES"][2])[-1]
+        config.fdir_ttab = os.path.join(
+            os.path.dirname(os.path.abspath(internal_config.nll_config_file)),
+            os.path.split(nll_config["GTFILES"][2])[0])
+        config.projection = _GrowClustProj()
+        config.tt_zmin = float(nll_config["VGGRID"][5])
+        config.tt_zmax = float(nll_config["VGGRID"][5]) + (
+            float(nll_config["VGGRID"][2]) * float(nll_config["VGGRID"][8]))
+        config.tt_xmin = float(nll_config["VGGRID"][3])
+        config.tt_xmax = float(nll_config["VGGRID"][3]) + (
+            float(nll_config["VGGRID"][0]) * float(nll_config["VGGRID"][6]))
+        config.tt_ymin = float(nll_config["VGGRID"][4])
+        config.tt_ymax = float(nll_config["VGGRID"][4]) + (
+            float(nll_config["VGGRID"][1]) * float(nll_config["VGGRID"][7]))
 
     # TODO: Re-write Julia code to only do ray-tracing once?
-    # TODO: If caching travel-times then the lat and lon or the origin of the coord system must be preserved - global mutable variables?
+    # TODO: If caching travel-times then the lat and lon or the
+    #  origin of the coord system must be preserved - global mutable
+    #  variables?
 
     arg_string = [
         "julia",

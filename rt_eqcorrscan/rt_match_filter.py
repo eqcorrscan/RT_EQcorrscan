@@ -712,6 +712,50 @@ class RealTimeTribe(Tribe):
 
         return
 
+    def _configure_plugins(self, in_dir: str):
+        # Nuance of attribdict means that even key lookup doesn't work as
+        # expected, so need to do try/except
+        try:
+            # Need to pop this from configs so that order doesn't get
+            # run as a plugin
+            order = self.plugin_config.pop("order")
+        except KeyError:
+            order = ORDERED_PLUGINS
+        for plugin_name in order:
+            # If plugin name is plot then out_dir should be in_dir
+            config = self.plugin_config.get(plugin_name, None)
+            if config is None:
+                continue
+            config.in_dir = in_dir
+            if plugin_name in ["plotter"]:
+                config.out_dir = in_dir
+            else:
+                config.out_dir = f"{self.name}/{plugin_name}_out"
+            if plugin_name == "nll":
+                # We need to set the bounds to be useful
+                config.maxlat = (
+                        self.maxlat + (0.1 * (self.maxlat - self.minlat)))
+                config.minlat = (
+                        self.minlat - (0.1 * (self.maxlat - self.minlat)))
+                config.maxlon = (
+                        self.maxlon - (0.1 * (self.maxlon - self.minlon)))
+                config.minlon = (
+                        self.minlon - (0.1 * (self.maxlon - self.minlon)))
+            if plugin_name == "growclust" and "nll" in order:
+                # If we are running both growclust and nonlinloc we can use the nll 3D grids
+                if config.ttabsrc == "nllgrid":
+                    nll_config = self.plugin_config.get('nll')
+                    # Point to the location of the to-be-generated NonLinLoc config file.
+                    # The growclust plugin should read from this and set the appropriate values.
+                    config.nll_config_file = os.path.join(
+                        nll_config.working_dir, os.path.basename(nll_config.infile))
+            config.wavebank_dir = os.path.abspath(self.wavebank.bank_path)
+            config.template_dir = os.path.abspath(
+                self.running_template_dir)
+            # Output of previous plugin as input to next
+            in_dir = config.out_dir
+        return in_dir
+
     def _start_streaming(self):
         if not self.rt_client.started:
             self.rt_client.start()
@@ -869,40 +913,7 @@ class RealTimeTribe(Tribe):
         # Add config options for plugins as needed
         in_dir = detect_directory
         if self.plugin_config:
-            # Nuance of attribdict means that even key lookup doesn't work as
-            # expected, so need to do try/except
-            try:
-                # Need to pop this from configs so that order doesn't get
-                # run as a plugin
-                order = self.plugin_config.pop("order")
-            except KeyError:
-                order = ORDERED_PLUGINS
-            for plugin_name in order:
-                # If plugin name is plot then out_dir should be in_dir
-                config = self.plugin_config.get(plugin_name, None)
-                if config is None:
-                    continue
-                config.in_dir = in_dir
-                if plugin_name in ["plotter"]:
-                    config.out_dir = in_dir
-                else:
-                    config.out_dir = f"{self.name}/{plugin_name}_out"
-                if plugin_name == "nll":
-                    # We need to set the bounds to be useful
-                    config.maxlat = (
-                        self.maxlat + (0.1 * (self.maxlat - self.minlat)))
-                    config.minlat = (
-                        self.minlat - (0.1 * (self.maxlat - self.minlat)))
-                    config.maxlon = (
-                        self.maxlon - (0.1 * (self.maxlon - self.minlon)))
-                    config.minlon = (
-                        self.minlon - (0.1 * (self.maxlon - self.minlon)))
-                config.wavebank_dir = os.path.abspath(self.wavebank.bank_path)
-                config.template_dir = os.path.abspath(
-                    self.running_template_dir)
-                # Output of previous plugin as input to next
-                in_dir = config.out_dir
-
+            plugin_out_dir = self._configure_plugins(in_dir=in_dir)
             # Start any plugins
             self._start_plugins()
 
