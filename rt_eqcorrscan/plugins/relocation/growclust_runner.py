@@ -785,6 +785,7 @@ class GrowClust(_Plugin):
         vmodel_file = internal_config.pop(
             "vmodel_file", GROWCLUST_DEFAULT_VMODEL)
 
+        Logger.info(f"Reading new events: \n{new_files}")
         new_events = []
         for f in new_files:
             f = os.path.abspath(f)
