@@ -747,8 +747,10 @@ class RealTimeTribe(Tribe):
                     nll_config = self.plugin_config.get('nll')
                     # Point to the location of the to-be-generated NonLinLoc config file.
                     # The growclust plugin should read from this and set the appropriate values.
-                    config.nll_config_file = os.path.join(
-                        nll_config.working_dir, os.path.basename(nll_config.infile))
+                    config.nll_config_file = os.path.abspath(
+                        os.path.join(
+                            nll_config.working_dir,
+                            os.path.basename(nll_config.infile)))
             config.wavebank_dir = os.path.abspath(self.wavebank.bank_path)
             config.template_dir = os.path.abspath(
                 self.running_template_dir)
