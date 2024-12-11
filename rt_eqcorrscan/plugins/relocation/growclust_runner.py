@@ -368,8 +368,6 @@ def run_growclust(
         internal_config.projection.lat0 = mean_lat
         internal_config.projection.lon0 = mean_lon
 
-    internal_config.write_growclust(f"growclust_control.inp")
-
     if internal_config.ttabsrc == "trace":
         vmodel = VelocityModel.read(vmodel_file)
         vmodel.write(internal_config.fin_vzmdl, format="GROWCLUST")
@@ -392,6 +390,9 @@ def run_growclust(
         config.tt_ymin = float(nll_config["VGGRID"][4])
         config.tt_ymax = float(nll_config["VGGRID"][4]) + (
             float(nll_config["VGGRID"][1]) * float(nll_config["VGGRID"][7]))
+        Logger.info(f"Config edited to match nonlinloc:\n{config}")
+
+    internal_config.write_growclust(f"growclust_control.inp")
 
     # TODO: Re-write Julia code to only do ray-tracing once?
     # TODO: If caching travel-times then the lat and lon or the
