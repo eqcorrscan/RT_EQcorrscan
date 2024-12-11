@@ -711,6 +711,10 @@ class Correlator:
         self.event_mapper.update({event.resource_id.id: self._nexteid})
         # Check if there are any events nearby
         ordered_catalog = list(self._catalog)
+        if len(ordered_catalog) == 0:
+            Logger.info("No events in memory to compare to.")
+            self._append_event(event)
+            return 0
         Logger.info(f"Computing distance array for "
                     f"{len(ordered_catalog)} events")
         distance_array = dist_array_km(
