@@ -47,6 +47,17 @@ from rt_eqcorrscan.plugins.relocation.dt_correlations.correlator import (
 WORKING_DIR = os.path.dirname(os.path.abspath(__file__))
 GROWCLUST_DEFAULT_VMODEL = f"{WORKING_DIR}/vmodel.txt"
 GROWCLUST_SCRIPT = f"{WORKING_DIR}/run_growclust3D.jl"
+GROWCLUST_PROJECTIONS = {
+    "aeqd": ("AZIMUTHAL_EQUIDIST", ("ellps", "lat0", "lon0", "rotANG")),
+    "tmerc": ("TRANS_MERC", ("ellps", "lat0", "lon0", "rotANG")),
+    # "merc": ("", ("ellps", "lat0", "lon0", "rotANG")), # no known NLL proj
+    "lcc": ("LAMBERT", ("ellps", "lat0", "lon0", "latP1", "latP2", "rotANG")),
+}  # Mapping of growclust supported projections to NLL names
+GROWCLUST_ELLIPSOIDS = {
+    "WGS84": "WGS-84",
+    "GRS80": "GRS-80",
+    "WGS72": "WGS-72",
+}  # Mapping of growclust supported ellipsoids to NLL names
 
 _GC_TMP_FILES = []  # List of temporary files to remove
 
@@ -69,6 +80,30 @@ class _GrowClustProj(_PluginConfig):
         if not self.latP1 is None and not self.latP2 is None:
             _str += f" {self.latP1} {self.latP2}"
         return _str
+
+    @classmethod
+    def from_nll(cls, nll_proj: str):
+        assert nll_proj.startswith("TRANS")
+        nll_proj_parts = nll_proj.split()[1:]
+        gc_proj, gc_args = None, None
+        for key, mapping in GROWCLUST_PROJECTIONS.items():
+            if mapping[0] == nll_proj_parts[0]:
+                gc_proj, gc_args = key, mapping
+                break
+        if gc_proj is None:
+            raise NotImplementedError(
+                f"Unsupported projection: {nll_proj_parts[0]}")
+        nll_ellipsoids = {
+            value: key for key, value in GROWCLUST_ELLIPSOIDS.items()}
+        gc_ellipsoid = nll_ellipsoids.get(nll_proj_parts[1], None)
+        if gc_ellipsoid is None:
+            raise NotImplementedError(
+                f"Unsupported ellipsoid: {nll_proj_parts[1]}")
+        proj_numbers = [float(v) for v in nll_proj_parts[2:]]
+        kwargs = {"proj": gc_proj, "ellps": gc_ellipsoid}
+        for key, value in zip(gc_args[1][1:], proj_numbers):
+            kwargs.update({key: value})
+        return cls(**kwargs)
 
 
 class CorrelationConfig(_PluginConfig):
@@ -373,11 +408,12 @@ def run_growclust(
         with open(internal_config.nll_config_file, "r") as f:
             nll_config = {l.split()[0]: l.split()[1:] for l in f}
         # Match params to nllgrid
-        config.fin_vzmdl = os.path.split(nll_config["GTFILES"][2])[-1]
+        config.fin_vzmdl = os.path.split(nll_config["GTFILES"][1])[-1]
         config.fdir_ttab = os.path.join(
-            os.path.dirname(os.path.abspath(internal_config.nll_config_file)),
-            os.path.split(nll_config["GTFILES"][2])[0])
-        config.projection = _GrowClustProj()
+            os.path.dirname(internal_config.nll_config_file),
+            os.path.dirname(nll_config["GTFILES"][1]))
+        config.projection = _GrowClustProj.from_nll(
+            "TRANS " + " ".join(nll_config["TRANS"]))
         config.tt_zmin = float(nll_config["VGGRID"][5])
         config.tt_zmax = float(nll_config["VGGRID"][5]) + (
             float(nll_config["VGGRID"][2]) * float(nll_config["VGGRID"][8]))
