@@ -104,7 +104,7 @@ def _make_detection_from_event(event: Event) -> Detection:
                 f"Event is not an EQcorrscan detected event:\n{event}")
 
     # Get the detection ID from the event resource id
-    rid = event.resource_id.id
+    rid = event.resource_id.id.split('/')[-1]
     # Get the detect time from the rid
     d_time_str = rid.split(f"{t_name}_")[-1]
     if len(d_time_str) == 21:
@@ -274,11 +274,11 @@ class Picker(_Plugin):
                 processed_files.append(f)
                 continue
             new_events += event[0]
-            event_files.update({event[0].resource_id.id: f})
+            event_files.update({event[0].resource_id.id.split('/')[-1]: f})
             # Link event id to input filename so that we can reuse the filename
             # for output
 
-        # Convert to party
+        # Convert to party - detection ids are named by the events resource ids
         party = events_to_party(events=new_events, template_dir=template_dir)
 
         # Loop over detections - party.lag-calc works okay for longer
@@ -345,19 +345,18 @@ class Picker(_Plugin):
                                      exc_info=True)
 
                     lag_calced += event
-                    processed_files.append(
-                        event_files[detection.event.resource_id.id])
+                    processed_files.append(event_files[detection.id])
                 else:  # Keep all the events even if we don't re-pick them
                     Logger.info(
                         f"Unsuccessful lag-calc for "
-                        f"{event_files[detection.event.resource_id.id]}, will "
-                        f"retry")
+                        f"{event_files[detection.id]}, will retry")
                     # event = detection.event
                     # event.picks = []
                     # lag_calced += event
         # Write out
         for ev in lag_calced:
-            fname = event_files[ev.resource_id.id].split(detection_dir)[-1]
+            fname = event_files[ev.resource_id.id.split('/')[-1]].split(
+                detection_dir)[-1]
             fname = fname.lstrip(os.path.sep)  # Strip pathsep if it is there
             outpath = os.path.join(outdir, fname)
             Logger.info(f"Writing out to {outpath}")
