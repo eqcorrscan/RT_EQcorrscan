@@ -367,11 +367,8 @@ def run_growclust(
     if internal_config.ttabsrc == "trace":
         internal_config.projection.lat0 = mean_lat
         internal_config.projection.lon0 = mean_lon
-
-    if internal_config.ttabsrc == "trace":
         vmodel = VelocityModel.read(vmodel_file)
         vmodel.write(internal_config.fin_vzmdl, format="GROWCLUST")
-
     elif internal_config.ttabsrc == "nllgrid":
         with open(internal_config.nll_config_file, "r") as f:
             nll_config = {l.split()[0]: l.split()[1:] for l in f}
@@ -391,6 +388,10 @@ def run_growclust(
         config.tt_ymax = float(nll_config["VGGRID"][4]) + (
             float(nll_config["VGGRID"][1]) * float(nll_config["VGGRID"][7]))
         Logger.info(f"Config edited to match nonlinloc:\n{config}")
+    else:
+        raise NotImplementedError(
+            "Only ttabsrc in ['trace', 'nllgrid'] supported")
+
 
     internal_config.write_growclust(f"growclust_control.inp")
 
