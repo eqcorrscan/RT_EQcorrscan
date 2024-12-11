@@ -47,6 +47,7 @@ class NLLConfig(_PluginConfig):
         "nodespacing": 1.0,
         "station_file": os.path.abspath("stations.xml"),
         "sleep_interval": 10,
+        "working_dir": "nll_working",
     }
     _readonly = []
 
@@ -183,7 +184,7 @@ def setup_nll(
                     f"{s.code} has no channels and will not be used.")
             for c in s:
                 if c.elevation > 3000.0:
-                    Logger.warning(f"Non-sensical elevation ({c.elevation}), "
+                    Logger.warning(f"Nonsensical elevation ({c.elevation}), "
                                    f"setting to 0 for {s.code}")
                     c.elevation = 0.0
     nll_stations = inv_to_nll(inv=inv)
@@ -403,7 +404,6 @@ def run_nll(catalog: Catalog, control_file: str, verbose: bool = True) -> Catalo
 
 
 class NLL(_Plugin):
-    working_dir = "nll_working"
     _setup = True
     def __init__(self, config_file: str, name: str = "NLLRunner"):
         super().__init__(config_file=config_file, name=name)
@@ -412,17 +412,17 @@ class NLL(_Plugin):
         return NLLConfig.read(config_file)
 
     def _cleanup(self):
-        if os.path.isdir(self.working_dir):
-            shutil.rmtree(self.working_dir)
+        if os.path.isdir(self.config.working_dir):
+            shutil.rmtree(self.config.working_dir)
 
     def run_nll(self, catalog: Catalog, control_file: str,
                 verbose: bool = True) -> Catalog:
         cwd = os.getcwd()
-        if not os.path.isdir(self.working_dir):
-            os.makedirs(self.working_dir)
+        if not os.path.isdir(self.config.working_dir):
+            os.makedirs(self.config.working_dir)
 
-        Logger.info(f"Changing to {self.working_dir} to run NLL commands")
-        os.chdir(self.working_dir)
+        Logger.info(f"Changing to {self.config.working_dir} to run NLL commands")
+        os.chdir(self.config.working_dir)
 
         cat_back = Catalog()
         try:
@@ -469,15 +469,15 @@ class NLL(_Plugin):
         max_depth = max_depth or default_grid[5]
         node_spacing = node_spacing or default_grid[6]
 
-        if not os.path.isdir(self.working_dir):
-            os.makedirs(self.working_dir)
+        if not os.path.isdir(self.config.working_dir):
+            os.makedirs(self.config.working_dir)
         cwd = os.getcwd()
 
-        Logger.info(f"Changing to {self.working_dir} to run NLL commands")
-        os.chdir(self.working_dir)
+        Logger.info(f"Changing to {self.config.working_dir} to run NLL commands")
+        os.chdir(self.config.working_dir)
 
         try:
-            setup_nll(nlldir=self.working_dir, inv=inv, min_lat=min_lat,
+            setup_nll(nlldir=self.config.working_dir, inv=inv, min_lat=min_lat,
                       min_lon=min_lon, max_lat=max_lat, max_lon=max_lon,
                       max_depth=max_depth, node_spacing=node_spacing,
                       min_depth=min_depth, verbose=True,
