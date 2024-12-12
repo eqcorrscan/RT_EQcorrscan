@@ -412,6 +412,8 @@ def run_growclust(
         config.fdir_ttab = os.path.join(
             os.path.dirname(internal_config.nll_config_file),
             os.path.dirname(nll_config["GTFILES"][1]))
+        # Must have a trailing slash
+        config.fdir_ttab += os.path.sep
         config.projection = _GrowClustProj.from_nll(
             "TRANS " + " ".join(nll_config["TRANS"]))
         config.tt_zmin = float(nll_config["VGGRID"][5])
@@ -719,7 +721,7 @@ class GrowClust(_Plugin):
         config: GrowClustConfig = GrowClustConfig(),
         vmodel_file: str = GROWCLUST_DEFAULT_VMODEL,
         growclust_script: str = GROWCLUST_SCRIPT,
-        cleanup: bool = False,
+        cleanup: bool = True,
     ):
         catalog = Catalog()
         for value in event_files.values():
