@@ -709,20 +709,29 @@ class Correlator:
             self._append_event(event)
             return 0
         self.event_mapper.update({event.resource_id.id: self._nexteid})
-        Logger.info("Getting waveforms")
-        st_dict = self._get_waveforms(event=event)
-        if len(st_dict[event.resource_id.id]) == 0:
-            Logger.warning(
-                f"No waveforms for event {event.resource_id.id}: skipping")
+        # Check if there are any events nearby
+        ordered_catalog = list(self._catalog)
+        if len(ordered_catalog) == 0:
+            Logger.info("No events in memory to compare to.")
             self._append_event(event)
             return 0
-        Logger.info("Computing distance array")
-        ordered_catalog = list(self._catalog)
+        Logger.info(f"Computing distance array for "
+                    f"{len(ordered_catalog)} events")
         distance_array = dist_array_km(
             master=event, catalog=ordered_catalog)
         if (distance_array <= self.maxsep).sum() == 0:
             Logger.warning(
                 f"No events within {self.maxsep} km - no correlations.")
+            Logger.info(f"From {len(distance_array)} events, the closest is "
+                        f"{min(distance_array):.2f} km")
+            self._append_event(event)
+            return 0
+        # Get the waveforms for the core event
+        Logger.info("Getting waveform for core")
+        st_dict = self._get_waveforms(event=event)
+        if len(st_dict[event.resource_id.id]) == 0:
+            Logger.warning(
+                f"No waveforms for event {event.resource_id.id}: skipping")
             self._append_event(event)
             return 0
         # We need to retain the distances used for max_event_link
@@ -793,7 +802,7 @@ class Correlator:
     ) -> int:
         n, written_links = len(catalog), 0
         for i, event in enumerate(catalog):
-            Logger.info(f"Adding event {i} for {n}")
+            Logger.info(f"Adding event {i + 1} of {n}")
             written_links += self.add_event(event, max_workers=max_workers)
         return written_links
 
