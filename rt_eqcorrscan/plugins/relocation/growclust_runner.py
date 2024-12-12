@@ -719,7 +719,7 @@ class GrowClust(_Plugin):
         config: GrowClustConfig = GrowClustConfig(),
         vmodel_file: str = GROWCLUST_DEFAULT_VMODEL,
         growclust_script: str = GROWCLUST_SCRIPT,
-        cleanup: bool = True,
+        cleanup: bool = False,
     ):
         catalog = Catalog()
         for value in event_files.values():

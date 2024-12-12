@@ -723,7 +723,7 @@ class Correlator:
             Logger.warning(
                 f"No events within {self.maxsep} km - no correlations.")
             Logger.info(f"From {len(distance_array)} events, the closest is "
-                        f"{min(distance_array)}")
+                        f"{min(distance_array):.2f} km")
             self._append_event(event)
             return 0
         # Get the waveforms for the core event
