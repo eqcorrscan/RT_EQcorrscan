@@ -790,10 +790,10 @@ class GrowClust(_Plugin):
         os.chdir(cwd)
 
         # Out of tempdir
-        if cleanup:
-            self._cleanup()
-            Logger.info(f"Removing {working_dir} and all files therein")
-            shutil.rmtree(working_dir)
+        # if cleanup:
+        #     self._cleanup()
+        #     Logger.info(f"Removing {working_dir} and all files therein")
+        #     shutil.rmtree(working_dir)
         if not os.path.isdir(outdir):
             os.makedirs(outdir)
         for ev in catalog_out:
