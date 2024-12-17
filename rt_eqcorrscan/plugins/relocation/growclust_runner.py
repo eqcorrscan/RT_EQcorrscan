@@ -408,24 +408,25 @@ def run_growclust(
         with open(internal_config.nll_config_file, "r") as f:
             nll_config = {l.split()[0]: l.split()[1:] for l in f}
         # Match params to nllgrid
-        config.fin_vzmdl = os.path.split(nll_config["GTFILES"][1])[-1]
-        config.fdir_ttab = os.path.join(
+        internal_config.fin_vzmdl = os.path.split(
+            nll_config["GTFILES"][1])[-1]
+        internal_config.fdir_ttab = os.path.join(
             os.path.dirname(internal_config.nll_config_file),
             os.path.dirname(nll_config["GTFILES"][1]))
         # Must have a trailing slash
-        config.fdir_ttab += os.path.sep
-        config.projection = _GrowClustProj.from_nll(
+        internal_config.fdir_ttab += os.path.sep
+        internal_config.projection = _GrowClustProj.from_nll(
             "TRANS " + " ".join(nll_config["TRANS"]))
-        config.tt_zmin = float(nll_config["VGGRID"][5])
-        config.tt_zmax = float(nll_config["VGGRID"][5]) + (
+        internal_config.tt_zmin = float(nll_config["VGGRID"][5])
+        internal_config.tt_zmax = float(nll_config["VGGRID"][5]) + (
             float(nll_config["VGGRID"][2]) * float(nll_config["VGGRID"][8]))
-        config.tt_xmin = float(nll_config["VGGRID"][3])
-        config.tt_xmax = float(nll_config["VGGRID"][3]) + (
+        internal_config.tt_xmin = float(nll_config["VGGRID"][3])
+        internal_config.tt_xmax = float(nll_config["VGGRID"][3]) + (
             float(nll_config["VGGRID"][0]) * float(nll_config["VGGRID"][6]))
-        config.tt_ymin = float(nll_config["VGGRID"][4])
-        config.tt_ymax = float(nll_config["VGGRID"][4]) + (
+        internal_config.tt_ymin = float(nll_config["VGGRID"][4])
+        internal_config.tt_ymax = float(nll_config["VGGRID"][4]) + (
             float(nll_config["VGGRID"][1]) * float(nll_config["VGGRID"][7]))
-        Logger.info(f"Config edited to match nonlinloc:\n{config}")
+        Logger.info(f"Config edited to match nonlinloc:\n{internal_config}")
     else:
         raise NotImplementedError(
             "Only ttabsrc in ['trace', 'nllgrid'] supported")
@@ -790,10 +791,10 @@ class GrowClust(_Plugin):
         os.chdir(cwd)
 
         # Out of tempdir
-        if cleanup:
-            self._cleanup()
-            Logger.info(f"Removing {working_dir} and all files therein")
-            shutil.rmtree(working_dir)
+        # if cleanup:
+        #     self._cleanup()
+        #     Logger.info(f"Removing {working_dir} and all files therein")
+        #     shutil.rmtree(working_dir)
         if not os.path.isdir(outdir):
             os.makedirs(outdir)
         for ev in catalog_out:
