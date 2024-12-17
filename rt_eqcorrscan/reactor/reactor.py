@@ -239,6 +239,11 @@ class Reactor(object):
                             "{0} events".format(len(working_cat)))
                 self.process_new_events(new_events=working_cat)
                 Logger.debug("Finished processing new events")
+            # Check for manual triggers
+            manual_triggers = self.get_manual_triggers(clean=True)
+            if len(manual_triggers) > 0:
+                self.trigger(trigger_events=manual_triggers)
+            # Process old events
             previous_old_events = old_events  # Overload
             self.set_up_time(UTCDateTime.now())
             Logger.debug(f"Up-time: {self.up_time}")
@@ -270,17 +275,20 @@ class Reactor(object):
             if os.path.isfile(f"{working_dir}/.stopfile"):
                 self.stop_tribe(trigger_event_id)
 
-    def get_manual_triggers(self) -> Catalog:
+    def get_manual_triggers(self, clean=True) -> Catalog:
         manual_triggers, event_files = _scan_for_events(
             self._manual_trigger_dir)
         # Remove events that have been read in
-        for event_file in event_files:
-            Logger.debug(f"Removing trigger file {event_file}")
-            os.remove(event_file)
+        if clean:
+            for event_file in event_files:
+                Logger.debug(f"Removing trigger file {event_file}")
+                os.remove(event_file)
         return manual_triggers
 
-    def process_new_events(self, new_events: Union[Catalog, List[Event]]
-                           ) -> None:
+    def process_new_events(
+            self,
+            new_events: Union[Catalog, List[Event]]
+        ) -> None:
         """
         Process any new events in the system.
 
@@ -332,6 +340,9 @@ class Reactor(object):
         trigger_events = self.trigger_func(new_events)
         # Check for manually added trigger events
         trigger_events += self.get_manual_triggers()
+        self.trigger(trigger_events=trigger_events)
+
+    def trigger(self, trigger_events: Catalog) -> None:
         # Sanitize trigger-events - make sure that multiple events that would otherwise
         # run together do not all trigger - sort by magnitude
         for trigger_event in trigger_events:
