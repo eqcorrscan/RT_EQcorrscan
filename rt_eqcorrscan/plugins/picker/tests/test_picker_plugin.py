@@ -7,6 +7,7 @@ import shutil
 import unittest
 import pickle
 import time
+import traceback
 import logging
 
 from multiprocessing import Process
@@ -156,6 +157,8 @@ class TestLagCalcPlugin(unittest.TestCase):
             picker.run()
         except Exception as e:
             Logger.error(f"Failed due to {e}")
+            trace = traceback.format_exc()
+            Logger.exception(trace)
             failed = True
         finally:
             detection_writer.kill()

@@ -164,6 +164,9 @@ class InMemoryWaveBank:
         del _used_picks
         # Filter picks without useful times available
         used_picks = [p for p in used_picks if p.files]
+        if len(used_picks) == 0:
+            Logger.error("No useful picks")
+            return Stream()
 
         # If we want all the same start times then set the starttime to the
         # minimum start time

@@ -25,7 +25,7 @@ Logger = logging.getLogger(__name__)
 
 class PlotConfig(_PluginConfig):
     """
-    Configuration for the hyp plugin.
+    Configuration for the plotter plugin.
     """
     defaults = {
         "sleep_interval": 600,
