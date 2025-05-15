@@ -14,7 +14,7 @@ from multiprocessing import Process
 from obspy import Catalog, UTCDateTime, read_events
 
 from rt_eqcorrscan.plugins.relocation.hyp_runner import HypConfig, _cleanup
-from rt_eqcorrscan.plugins.relocation.hyp_runner import main as hyp_run_main
+from rt_eqcorrscan.plugins.relocation.hyp_runner import Hyp
 
 Logger = logging.getLogger(__name__)
 
@@ -115,11 +115,12 @@ class TestHypPlugin(unittest.TestCase):
             target=_write_detections_for_sim,
             args=(self.cat, in_dir, out_dir, 20.),
             name="EventWriter")
+        hyp = Hyp(config_file)
 
         event_writer.start()
         failed = False
         try:
-            hyp_run_main(config_file)
+            hyp.run()
         except Exception as e:
             Logger.error(f"Failed due to {e}")
             failed = True
@@ -131,6 +132,12 @@ class TestHypPlugin(unittest.TestCase):
         Logger.info("Reading the catalog back in")
         cat_back = read_events(f"{out_dir}/*.xml")
         Logger.info(f"Read in {len(cat_back)} events")
+        if not len(self.cat) == len(cat_back):
+            cat_dict = {ev.resource_id.id: ev for ev in self.cat}
+            cat_back_dict = {ev.resource_id.id: ev for ev in cat_back}
+            missing_events = set(cat_dict.keys()).difference(set(cat_back_dict.keys()))
+            for missing_ev in missing_events:
+                Logger.info(f"Missing event: \n{cat_dict[missing_ev]}")
         self.assertEqual(len(self.cat), len(cat_back))
 
     @classmethod
