@@ -274,7 +274,9 @@ class Picker(_Plugin):
                 processed_files.append(f)
                 continue
             new_events += event[0]
-            event_files.update({event[0].resource_id.id.split('/')[-1]: f})
+            rid = event[0].resource_id.id.split('/')[-1]
+            event_files.update({rid: f})
+            Logger.info(f"Linked event {rid} from file {f}")
             # Link event id to input filename so that we can reuse the filename
             # for output
 
@@ -343,7 +345,7 @@ class Picker(_Plugin):
                         Logger.error(f"Could not pick amplitudes for "
                                      f"{detection.id} due to {e}",
                                      exc_info=True)
-
+                    event.resource_id = detection.id
                     lag_calced += event
                     processed_files.append(event_files[detection.id])
                 else:  # Keep all the events even if we don't re-pick them
