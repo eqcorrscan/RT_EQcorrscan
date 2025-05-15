@@ -30,7 +30,7 @@ def mlnz20(event: Event) -> Event:
     origin = event.preferred_origin() or event.origins[-1]
     for arrival in origin.arrivals:
         distance = arrival.distance
-        amplitude =
+        # amplitude =
 
 # ----------------------- Management --------------------------------
 

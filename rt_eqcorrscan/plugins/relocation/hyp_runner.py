@@ -13,7 +13,7 @@ import time
 from typing import List, Iterable
 
 from obspy import read_events, Catalog, read_inventory
-from obspy.core.event import Event, Origin
+from obspy.core.event import Event, Origin, Pick
 from obspy.core.inventory import Inventory, Station
 from obspy.io.nordic.core import read_nordic, write_select
 
@@ -166,12 +166,12 @@ def seisan_hyp(
     velocities: List[Velocity],
     vpvs: float,
     remodel: bool = True,
-    clean: bool = True
+    clean: bool = True,
+    ignore_amplitudes: bool = True,
 ) -> Event:
     """
     Use SEISAN's Hypocentre program to locate an event.
     """
-
 
     # Write STATION0.HYP file
     _write_station0(inventory, velocities, vpvs)
@@ -189,6 +189,8 @@ def seisan_hyp(
             time=sorted(event.picks, key=lambda p: p.time)[0].time)
     event_out.origins = [origin]
     event_out.comments = []
+    if ignore_amplitudes:
+        event_out.amplitudes = []
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         write_select(catalog=Catalog([event_out]), high_accuracy=False,
@@ -243,6 +245,13 @@ def seisan_hyp(
         _cleanup()
     return event_out
 
+def locatable_picks(event: Event) -> List[Pick]:
+    """ Get picks for seismic phases """
+    useful_picks = [
+        p for p in event.picks if p.phase_hint.upper().startswith(("P", "S"))
+    ]
+    return useful_picks
+
 
 def iterate_over_event(
     event: Event,
@@ -255,7 +264,7 @@ def iterate_over_event(
     remodel: bool = True,
 ) -> Event:
     """ Iteratively remove picks until quality criteria are met. """
-    n_stations = len({p.waveform_id.station_code for p in event.picks})
+    n_stations = len({p.waveform_id.station_code for p in locatable_picks(event)})
     if n_stations < min_stations:
         Logger.info("{0} stations picked, returning None".format(n_stations))
         return None
@@ -268,14 +277,16 @@ def iterate_over_event(
         if event_located is None:
             Logger.error("Issue locating event, returning None")
             return None
-        if len(event_located.origins) == 0 or event_located.origins[0].latitude == None:
+        if len(event_located.origins) == 0 or event_located.origins[-1].latitude == None:
             Logger.warning("Issue locating event, returning None")
             return None
-        if event_located.origins[0].quality.standard_error <= max_rms:
+        if event_located.origins[-1].quality.standard_error <= max_rms:
             Logger.info("RMS below max_RMS, good enough!")
             event_to_be_located.origins.append(event_located.origins[0])
             return event_to_be_located
         # Remove least well fit pick and go again
+        Logger.info(f"There are {len(event_located.origins[-1].arrivals)} arrivals")
+        # worst_arrival = sorted(event_located.origins[-1].arrivals, key=lambda x: x.time_residual)[-1]
         worst_arrival = event_located.origins[0].arrivals[0]
         for arr in event_located.origins[0].arrivals[1:]:
             try:
@@ -291,13 +302,14 @@ def iterate_over_event(
                 break
         _picks = []
         for pick in event_to_be_located.picks:
-            if pick.waveform_id.station_code == worst_pick.waveform_id.station_code and abs(pick.time - worst_pick.time) < 0.01:
+            if (pick.waveform_id.station_code == worst_pick.waveform_id.station_code
+                    and abs(pick.time - worst_pick.time) < 0.01):
                 continue
             _picks.append(pick)
         assert len(_picks) < len(event_to_be_located.picks)
         event_to_be_located.picks = _picks
         n_stations = len({p.waveform_id.station_code
-                          for p in event_located.picks})
+                          for p in locatable_picks(event_located)})
 
 
     Logger.info("{0} stations picked, returning Not-located".format(n_stations))

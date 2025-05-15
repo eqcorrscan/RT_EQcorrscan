@@ -9,6 +9,7 @@ import subprocess
 import os
 import time
 import shutil
+import itertools
 import tarfile
 
 from abc import ABC, abstractmethod
@@ -41,8 +42,6 @@ ORDERED_PLUGINS = ["picker", "hyp", "growclust", "mag_calc", "plotter"]
 Logger = logging.getLogger(__name__)
 
 
-# TODO: This could have a threaded watch method, but it seems like more effort
-#  than needed
 class Watcher:
     def __init__(self, top_directory: str, watch_pattern: str, history: dict = None):
         if history is None:
@@ -90,7 +89,7 @@ class Watcher:
                 new.update({f: os.path.getmtime(f)})
             elif self.history[f] is None or os.path.getmtime(f) > self.history[f]:
                 # File has been updated since we last looked - reprocess
-                new.update({f: os.path.getmtime(f)})
+                new.update({os.path.abspath(f): os.path.getmtime(f)})
 
         Logger.debug(f"Found {len(new)} new events to process in "
                     f"{self.top_directory}[...]{self.watch_pattern}")
@@ -120,10 +119,16 @@ class _Plugin(ABC):
     def __init__(self, config_file: str, name: str = None):
         self.config = self._read_config(config_file=config_file)
         self._config_file = config_file
-        self.watcher = Watcher(
-            top_directory=self.config.in_dir,
-            watch_pattern=self.watch_pattern,
-            history=None)
+        self.watchers = {}  # Dict keyed by in_dir
+        if not isinstance(self.config.in_dir, list):
+            in_dirs = [self.config.in_dir]
+        else:
+            in_dirs = self.config.in_dir
+        for in_dir in in_dirs:
+            self.watchers.update({in_dir: Watcher(
+                top_directory=in_dir,
+                watch_pattern=self.watch_pattern,
+                history=None)})
         self.kill_watcher = Watcher(
             top_directory=self.config.out_dir,
             watch_pattern="poison",
@@ -190,13 +195,19 @@ class _Plugin(ABC):
             new_out_dir = new_config.get("out_dir")
 
             if new_config.in_dir != self.config.in_dir:
+                # Get rid of old watchers
+                self.watchers = dict()
                 Logger.info(f"Looking for events in a new in dir: "
                             f"{new_config.in_dir}")
-                in_dir = new_in_dir
-                self.watcher = Watcher(
-                    top_directory=in_dir,
-                    watch_pattern=self.watcher.watch_pattern,
-                    history=self.watcher.history)
+                if not isinstance(new_in_dir, list):
+                    in_dir = [new_in_dir]
+                else:
+                    in_dir = new_in_dir
+                for _in_dir in in_dir:
+                    self.watchers.update({_in_dir: Watcher(
+                        top_directory=_in_dir,
+                        watch_pattern=self.watcher.watch_pattern,
+                        history=self.watcher.history)})
             if new_config.out_dir != self.config.out_dir:
                 Logger.info(f"Using a new out dir: {new_config.out_dir}")
                 out_dir = new_out_dir
@@ -215,8 +226,13 @@ class _Plugin(ABC):
                 Logger.critical(f"Found files: {self.kill_watcher}")
                 break
 
-            self.watcher.check_for_updates()
-            if not len(self.watcher):
+            new_file_dict = dict()
+            for _in_dir, watcher in self.watchers.items():
+                watcher.check_for_updates()
+                if len(watcher):
+                    new_file_dict.update({_in_dir: watcher.new.copy()})
+
+            if not len(new_file_dict):
                 if loop:
                     Logger.debug(
                         f"No new events found, sleeping for "
@@ -227,11 +243,18 @@ class _Plugin(ABC):
                     Logger.info("No new events found, returning")
                     break
 
-            # We have some events to process!
-            new_files = self.watcher.new.copy()
+            # TODO: If input files are removed, remove the associated output
+            #  files as well - needs a database of input file linked to output file.
+            new_files = list(itertools.chain.from_iterable(new_file_dict.values()))
             processed_files = self.core(new_files=new_files, cleanup=cleanup)
 
-            self.watcher.processed(processed_files)
+            # Associate file with correct watcher
+            processed_files = {
+                _in_dir: [f for f in processed_files if f in new_file_dict[_in_dir]]
+                for _in_dir in self.watchers.keys()}
+            for _in_dir, files in processed_files.items():
+                self.watchers[_in_dir].processed(files)
+
             if loop:
                 # Check for poison again before sleeping
                 self.kill_watcher.check_for_updates()
