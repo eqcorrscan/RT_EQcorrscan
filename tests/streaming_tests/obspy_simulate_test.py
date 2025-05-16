@@ -13,9 +13,7 @@ from rt_eqcorrscan.streaming.clients.obspy import RealTimeClient, StreamClient
 
 SLEEP_STEP = 20
 
-logging.basicConfig(
-    level="INFO",
-    format="%(asctime)s\t[%(processName)s:%(threadName)s]: %(name)s\t%(levelname)s\t%(message)s")
+Logger = logging.getLogger(__name__)
 
 
 class TestStreamBuffer(unittest.TestCase):
@@ -82,11 +80,11 @@ class FDSNTest(unittest.TestCase):
         except Exception as e:
             rt_client.background_stop()
             raise e
-        print(f"Sleeping for {SLEEP_STEP}s")
+        Logger.info(f"Sleeping for {SLEEP_STEP}s")
         time.sleep(SLEEP_STEP)
-        print("Stopping buffer")
+        Logger.info("Stopping buffer")
         rt_client.background_stop()
-        print("Running checks")
+        Logger.info("Running checks")
         self.assertTrue(rt_client.buffer_full)
         self.assertEqual(rt_client.buffer_length,
                          rt_client.buffer_capacity)
