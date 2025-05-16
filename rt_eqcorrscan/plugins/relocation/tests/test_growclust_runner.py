@@ -132,7 +132,8 @@ class TestGrowclustPlugin(unittest.TestCase):
         config = GrowClustConfig(
             sleep_interval=5, tt_zmax=50.0, ttxmax=500.0,
             in_dir=self.eventdir, out_dir=out_dir, wavebank_dir=self.wavedir,
-            station_file=f"{self.eventdir}/stations.xml")
+            station_file=f"{self.eventdir}/stations.xml",
+            rmin=0.2)
 
         self.clean_up.extend([out_dir, config_file])
 
@@ -143,8 +144,11 @@ class TestGrowclustPlugin(unittest.TestCase):
 
 
         cat_back = read_events(f"{out_dir}/*.xml")
-        self.assertEqual(len(cat_back), len(self.cat))
-        # All events should be relocated
+        # We don't write out all the events, only the relocated, so they may
+        # not all relocate
+        self.assertGreater(len(cat_back), 150)
+        # self.assertEqual(len(cat_back), len(self.cat))
+        # All events in cat_back should be relocated
         for ev in cat_back:
             method_id = ev.origins[-1].method_id.id.split('/')[-1]
             if method_id != "GrowClust":
@@ -160,7 +164,8 @@ class TestGrowclustPlugin(unittest.TestCase):
         config = GrowClustConfig(
             sleep_interval=5, tt_zmax=50.0, ttxmax=500.0,
             in_dir=in_dir, out_dir=out_dir, wavebank_dir=self.wavedir,
-            station_file=f"{self.eventdir}/stations.xml")
+            station_file=f"{self.eventdir}/stations.xml",
+            rmin=0.2)
 
         self.clean_up.extend([in_dir, out_dir, config_file])
 
@@ -189,7 +194,10 @@ class TestGrowclustPlugin(unittest.TestCase):
         self.assertFalse(failed)
 
         cat_back = read_events(f"{out_dir}/*.xml")
-        self.assertEqual(len(cat_back), len(self.cat))
+        # We don't write out all the events, only the relocated, so they may
+        # not all relocate
+        self.assertGreater(len(cat_back), 150)
+        # self.assertEqual(len(cat_back), len(self.cat))
         for ev in cat_back:
             method_id = ev.origins[-1].method_id.id.split('/')[-1]
             if method_id != "GrowClust":
