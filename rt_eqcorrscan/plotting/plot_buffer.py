@@ -327,10 +327,10 @@ def define_plot(
     p1.add_layout(legend, 'right')
 
     datetick_formatter = DatetimeTickFormatter(
-        days=["%m/%d"], months=["%m/%d"],
-        hours=["%m/%d %H:%M:%S"], minutes=["%m/%d %H:%M:%S"],
-        seconds=["%m/%d %H:%M:%S"], hourmin=["%m/%d %H:%M:%S"],
-        minsec=["%m/%d %H:%M:%S"])
+        days="%m/%d", months="%m/%d",
+        hours="%m/%d %H:%M:%S", minutes="%m/%d %H:%M:%S",
+        seconds="%m/%d %H:%M:%S", hourmin="%m/%d %H:%M:%S",
+        minsec="%m/%d %H:%M:%S")
     p1.xaxis.formatter = datetick_formatter
 
     # Add detection lines

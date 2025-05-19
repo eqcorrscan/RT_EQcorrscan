@@ -321,7 +321,7 @@ class _StreamingClient(ABC):
             Logger.info("Adding trace to local buffer")
             self.buffer.add_stream(tr)
         # Wait until streaming has stopped
-        Logger.debug(
+        Logger.info(
             f"Waiting for streaming to stop: status = {self.streaming}")
         while self.streaming:
             try:
@@ -436,6 +436,7 @@ class _StreamingClient(ABC):
                 self.stop()
         else:
             Logger.info("Stop already called - not duplicating")
+        self.streaming = False
         self.stream = st
         return st
 

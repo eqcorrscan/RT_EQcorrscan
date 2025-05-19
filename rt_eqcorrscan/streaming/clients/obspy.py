@@ -263,7 +263,7 @@ class StreamClient:
                 pass
         Logger.debug("Streaming stopped")
         # Empty queues
-        for queue in [self._stream_queue, self._killer_queue]:
+        for queue in [self._stream_queue, self._killer_queue, self._dead_queue]:
             while True:
                 try:
                     queue.get(block=False)
@@ -281,6 +281,8 @@ class StreamClient:
             Logger.info("Process joined")
         self.processes = []
         self._maintain = False
+        Logger.info("Background stop completed")
+        return
 
     def run(self):
         """
@@ -598,6 +600,7 @@ class RealTimeClient(_StreamingClient):
         if self.pre_empt_data:
             self.client.background_stop()
         self._stop_called, self.started = True, False
+        self.streaming = False
 
 
 if __name__ == "__main__":

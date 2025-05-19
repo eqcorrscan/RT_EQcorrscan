@@ -118,17 +118,22 @@ class TestLagCalcPlugin(unittest.TestCase):
                 pickle.dump(f.template, fp)
 
         # Get a useful stream
-        bulk = []
+        bulk = set()
+        starttime = min(p.time for f in party for d in f
+                        for p in d.event.picks) - 120
+        endtime = max(p.time for f in party for d in f
+                      for p in d.event.picks) + 480
         for family in party:
             for detection in family:
                 for pick in detection.event.picks:
-                    bulk.append((
+                    bulk.update({(
                         pick.waveform_id.network_code or "*",
                         pick.waveform_id.station_code or "*",
                         pick.waveform_id.location_code or "*",
                         pick.waveform_id.channel_code or "*",
-                        pick.time - 120.,
-                        pick.time + 480))
+                        starttime.datetime, endtime.datetime)})
+        # Convert to UTCDateTime
+        bulk = [(b[0], b[1], b[2], b[3], starttime, endtime) for b in bulk]
         client = Client("GEONET")
         Logger.debug(f"Downloading streams for bulk:\n{bulk}")
         stream = Stream()
