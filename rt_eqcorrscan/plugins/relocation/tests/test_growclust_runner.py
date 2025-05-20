@@ -1,5 +1,5 @@
 """
-Test for groweclust runner
+Test for growclust runner
 """
 
 import unittest
@@ -66,7 +66,7 @@ def _get_bulk_for_cat(cat: Catalog) -> List[tuple]:
 def setup_testcase(
     wavedir: str,
     eventdir: str,
-):
+) -> Catalog:
     """
     Download some event files and a stationxml to run.
     """

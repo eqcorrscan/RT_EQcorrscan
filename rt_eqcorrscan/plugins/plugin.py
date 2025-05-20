@@ -34,10 +34,11 @@ REGISTERED_PLUGINS = {
     "nll": "rteqcorrscan-plugin-nll",
     "plotter": "rteqcorrscan-plugin-plotter",
     "growclust": "rteqcorrscan-plugin-growclust",
+    "outputter": "rteqcorrscan-plugin-outputter",
 }
 PLUGIN_CONFIG_MAPPER = dict()
 # Control order of plugins, outdir of previous plugin is input to plugin
-ORDERED_PLUGINS = ["picker", "hyp", "growclust", "mag_calc", "plotter"]
+ORDERED_PLUGINS = ["picker", "hyp", "growclust", "mag_calc", "outputter", "plotter"]
 
 Logger = logging.getLogger(__name__)
 
