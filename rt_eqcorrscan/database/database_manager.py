@@ -461,6 +461,8 @@ def _download_and_make_template(
     except IndexError as e:
         Logger.error(e)
         return None
+    # Require that our templates be named by the event id of the event that made them
+    ##### DO NOT CHANGE THIS NAMING CONVENTION!!!! THINGS WILL BREAK!!!!
     template.name = event.resource_id.id.split('/')[-1]
     # Edit comment to reflect new template_name
     for comment in template.event.comments:
