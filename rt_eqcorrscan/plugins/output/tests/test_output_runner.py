@@ -34,10 +34,16 @@ def _write_sim_info(
     for _dir in [template_dir, location_dir, relocation_dir, poison_dir]:
         if not os.path.isdir(_dir):
             os.makedirs(_dir)
+            Logger.debug(f"Making {_dir}")
+    Logger.debug("Simulation output dirs created")
 
     # Write all templates
     for template in templates:
-        template.write(f"{template_dir}/{template.resource_id.id.split('/')[-1]}.xml")
+        Logger.debug(
+            f"Writing template to {template_dir}/{template.resource_id.id.split('/')[-1]}.xml")
+        template.write(f"{template_dir}/{template.resource_id.id.split('/')[-1]}.xml",
+                       format="QUAKEML")
+    Logger.debug("Simulation templates written")
 
     # Write chunks of detections
     loc_slices = [slice(0, 1), slice(1, 5), slice(5, 50), slice(50, 125),
@@ -99,20 +105,24 @@ def setup_testcase() -> Tuple[Catalog, Catalog, Catalog]:
     return templates, cat, reloc_cat
 
 
+# TODO: Test self-detection matching
+
+
 class TestOutputPlugin(unittest.TestCase):
     clean_up = []
     @classmethod
     def setUpClass(cls) -> None:
-        cls.template_dir = "output_test_templates"
-        cls.location_dir = "output_test_locations"
-        cls.relocation_dir = "output_test_relocations"
+        cls.template_dir = os.path.abspath("./output_test_templates")
+        cls.location_dir = os.path.abspath("./output_test_locations")
+        cls.relocation_dir = os.path.abspath("./output_test_relocations")
 
         cls.templates, cls.located, cls.relocated = setup_testcase()
 
         cls.clean_up.extend([cls.template_dir, cls.location_dir, cls.relocation_dir])
 
     def test_updating(self):
-        config_file, out_dir = "test_output_config.yml", "test_output_output"
+        config_file, out_dir = "test_output_config.yml", os.path.abspath("./test_output_output")
+        self.clean_up.extend([config_file, out_dir])
         config = OutputConfig(
             output_templates=True, template_dir=self.template_dir,
             in_dir=[self.location_dir, self.relocation_dir],
@@ -139,7 +149,7 @@ class TestOutputPlugin(unittest.TestCase):
             failed = True
         finally:
             detection_writer.kill()
-
+        Logger.info("Output runner finished")
         self.assertFalse(failed)
 
         # Read back in the output - this should be one qml and one csv
@@ -157,11 +167,13 @@ class TestOutputPlugin(unittest.TestCase):
             for thing in cls.clean_up:
                 if os.path.isdir(thing):
                     try:
+                        Logger.debug(f"Removing {thing}")
                         shutil.rmtree(thing)
                     except Exception:
                         pass
                 else:
                     try:
+                        Logger.debug(f"Deleting {thing}")
                         os.remove(thing)
                     except Exception:
                         pass

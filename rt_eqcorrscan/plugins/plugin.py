@@ -136,6 +136,7 @@ class _Plugin(ABC):
             history=None)
         if name:
             self.name = name
+        Logger.info(f"Initialised {self.name} plugin")
 
     @abstractmethod
     def _read_config(self, config_file: str):

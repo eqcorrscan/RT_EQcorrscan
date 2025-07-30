@@ -8,18 +8,117 @@ growclust locations.
 
 import logging
 import glob
+import os
 
-from typing import List
+from typing import List, Union
+from collections import OrderedDict
 
-from obspy import read_events
+from obspy import read_events, Catalog, UTCDateTime
+from obspy.core.event import Event
 
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
     PLUGIN_CONFIG_MAPPER, _Plugin)
-from rt_eqcorrscan.plugins.plotter.helpers import sparsify_catalog
+from rt_eqcorrscan.plugins.plotter.helpers import sparsify_catalog, get_magnitude_attr, get_origin_attr
 
 
 Logger = logging.getLogger(__name__)
+
+def similar_picks(event1: Event, event2: Event, pick_tolerance: float) -> int:
+    """
+    Check if picks are similar.
+
+    Only checks picks that have matching waveform ids and phase hints. Checks time
+    if within pick_tolerance.
+
+
+    Parameters
+    ----------
+    event1:
+        First event to compare
+    event2:
+        Second event to compare
+    pick_tolerance:
+        Maximum time difference in seconds to consider picks similar
+
+    Returns
+    -------
+    Number of similar picks
+    """
+    matched_picks = 0
+    for pick1 in event1.picks:
+        matched_wids = [p for p in event2.picks
+                        if p.waveform_id.get_seed_string() == pick1.get_seed_string()]
+        matched_picks += len([p for p in matched_wids
+                              if abs(p.time - pick1.time) <= pick_tolerance])
+    return matched_picks
+
+
+def template_possible_self_dets(
+    template_event: Event,
+    catalog: Union[List[Event], Catalog],
+    origin_tolerence: float = 10.0,
+    pick_tolerance: float = 1.0,
+) -> List[Event]:
+    """
+    Find possible template self detections - match based on origin time first,
+    then pick time. If origins do not have times they will be considered similar
+    and picks will be checked.
+
+    Parameters
+    ----------
+    template:
+        Template to look for self detections of
+    catalog:
+        Catalog of events to check to see if they are self-detections
+    origin_tolerence:
+        Time difference in seconds to consider origins similar
+    pick_tolerance:
+        Time difference in seconds to consider picks similar
+
+    Returns
+    -------
+    List of possible self detections
+    """
+    t_ori_time = get_origin_attr(template_event, "time")
+    similar_origins = [ev for ev in catalog
+                       if abs(t_ori_time - (get_origin_attr(ev, "time") or t_ori_time)) <= origin_tolerence]
+    self_dets = [ev for ev in similar_origins if similar_picks(ev, t_event, pick_tolerance=pick_tolerance)]
+
+    return self_dets
+
+
+def catalog_to_csv(catalog: Catalog, csv_filename: str) -> None:
+    """
+    Write catalog to a csv file.
+
+    Parameters
+    ----------
+    catalog:
+        Catalog of events to write
+    csv_filename:
+        Filename to write csv to. Will overwrite existing files
+    """
+    # Columns should be column_name: thing to evaluate to get thing from variable named "event"
+    columns = OrderedDict({
+        "Resource ID": "event.resource_id.id",
+        "Origin Time (UTC)": "get_origin_attr(event, 'time')",
+        "Latitude": "get_origin_attr(event, 'latitude')",
+        "Longitude": "get_origin_attr(event, 'longitude')",
+        "Depth (km)": "get_origin_attr(event, 'depth') / 1000.0",
+        "Magnitude": "get_magnitude_attr(event, 'mag')",
+    })
+
+    lines = [", ".join(columns.keys())]
+    # Sort in increasing time, with any events without an origin time coming last
+    for event in sorted(catalog.events, key=lambda e: get_origin_attr(e, "time") or UTCDateTime(9999, 1, 1)):
+        lines.append(", ".join([str(eval(method)) for method in columns.values()]))
+
+    lines = "\n".join(lines)
+    with open(csv_filename, "w") as f:
+        f.write(lines)
+
+    return
 
 
 class OutputConfig(_PluginConfig):
@@ -49,12 +148,14 @@ class Outputter(_Plugin):
         return OutputConfig.read(config_file=config_file)
 
     def core(self, new_files: List[str], cleanup: bool) -> List:
+        Logger.info("Entered the core (its hot in here!)")
         internal_config = self.config.copy()
         if not isinstance(internal_config.in_dir, list):
             internal_config.in_dir = [internal_config.in_dir]
         out_dir = internal_config.pop("out_dir")
         if not os.path.isdir(out_dir):
             os.makedirs(out_dir)
+        Logger.info(f"Writing out to {out_dir}")
 
         # Get all templates
         if internal_config.output_templates:
@@ -63,40 +164,78 @@ class Outputter(_Plugin):
             else:
                 t_files = glob.glob(f"{internal_config.template_dir}/*.xml")
                 _tkeys = self.template_dict.keys()
-                self.template_dict.update(
-                    {t_file: sparsify_catalog(read_events(t_file))
-                     for t_file in t_files if t_file not in _tkeys})
+                for t_file in t_files:
+                    if t_file in _tkeys:
+                        continue
+                    template = read_events(t_file)
+                    assert len(template) == 1, f"Multiple templates found in {t_file}"
+                    self.template_dict.update({t_file: template[0]})
+        Logger.info(f"We have run {len(self.template_dict)} templates")
 
-        # Get all events - group by directory
+        # Get all events - group by directory (cope with events coming from multiple steps)
         event_groups = {in_dir: [] for in_dir in internal_config.in_dir}
         for file in new_files:
             dirname = os.path.dirname(file)
             event = read_events(file)
             for key, events in event_groups.items():
                 if key in dirname:
-                    events.append(sparsify_catalog(event))
+                    events.extend(event)
                     break
             else:
                 Logger.error(f"Event from {file} is not from an in-dir!?")
+        Logger.info(f"Collected events: {event_groups.keys()}")
 
         # Summarise - keep all templates unless they have located options -
-        # keep events in order of in_dirs
-        output_catalog = {}
+        # keep events in order of in_dirs - events will be overwritten in the
+        # dict by events from in_dirs with higher priority (appear later in
+        # the list of in_dirs).
+        event_dict = {}
         for in_dir in internal_config.in_dir[::-1]:
             events = event_groups[in_dir]
             for event in events:
-                if event.resource_id.id not in output_catalog.keys():
-                    output_catalog.update({event.resource_id.id: event})
-        output_catalog = [ev for v in output_catalog.values() for ev in v]
+                if event.resource_id.id not in event_dict.keys():
+                    event_dict.update({event.resource_id.id: event})
+
+        """
+        Event IDS are named as below in rt_match_filer _handle_detections
+        
+        d.event.resource_id = ResourceIdentifier(
+            id=d.template_name + '_' + d.time,
+            prefix='smi:local')
+            
+        Templates are named (see database_manager):
+        
+        template.name = event.resource_id.id.split('/')[-1]
+        """
 
         # Add in templates as needed
-        for template in templates:
-            pass
+        if internal_config.output_templates:
+            template_outputs = dict()
+            for t_file, t_event in self.template_dict.items():
+                t_name = t_event.resource_id.id.split('/')[-1]
+                # Look for a template detections
+                t_events = [ev for rid, ev in event_dict.items()
+                            if rid.lstrip("smi:local/").startswith(t_name)]
+                if len(t_events) == 0:
+                    # No detections, so we need to output the template
+                    Logger.info(f"No detections for {t_name}")
+                    template_outputs.update({t_name: t_event})
+                    continue
+                # Look for template self detections - slop in origin time? Then match picks?
+                if len(template_possible_self_dets(template_event=t_event, catalog=t_events)):
+                    Logger.info(f"Found likely self detections for template {t_name}")
+                    continue
+                Logger.info(f"No self detections for {t_name}")
+                template_outputs.update({t_name: t_event})
+            # Merge into main event dict
+            event_dict.update(template_outputs)
 
         # Output csv and QML
+        output_catalog = Catalog([ev for ev in event_dict.values()])
+        output_catalog.write(f"{out_dir}/catalog.xml", format="QUAKEML")
+        catalog_to_csv(catalog=output_catalog, csv_filename=f"{out_dir}/catalog.csv")
 
-
-        return
+        return []  # We need to process everything every time...
 
     def extras(self, *args, **kwargs):
         """ Do some extra work on the catalogue """

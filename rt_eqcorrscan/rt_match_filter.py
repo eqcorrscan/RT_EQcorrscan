@@ -512,6 +512,18 @@ class RealTimeTribe(Tribe):
                 continue
             for d in family:
                 d._calculate_event(template=family.template)
+                # EQcorrscan (as of v 0.5.0) names detections as below. We NEED this to cope
+                # with template retention at the end of the workflow
+                """
+                ev = Event(resource_id=ResourceIdentifier(
+                    id=self.template_name + '_' + det_time,
+                    prefix='smi:local'))
+                """
+                # Re-setting this here in case changes happen to EQcorrscan IDs
+                ##### DO NOT CHANGE THIS NAMING CONVENTION!!!! THINGS WILL BREAK!!!!
+                d.event.resource_id = ResourceIdentifier(
+                    id=d.template_name + '_' + d.time,
+                    prefix='smi:local')
                 Logger.debug(f"New detection at {d.detect_time}")
             # Cope with no picks and hence no origins - these events have to be removed
             family.detections = [d for d in family if len(d.event.origins)]
@@ -541,7 +553,7 @@ class RealTimeTribe(Tribe):
         # TODO: This is slow, and for Kaikoura, this is what stops it from running in real time
         for family in self.party:
             for detection in family:
-                # TODO: this check doesn't necassarily work well - detections may be the same physical detection, but different Detection objects
+                # TODO: this check doesn't necessarily work well - detections may be the same physical detection, but different Detection objects
                 if detection in self.detections:
                     continue
                 detect_file_base = _detection_filename(
