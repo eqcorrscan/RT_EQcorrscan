@@ -14,7 +14,7 @@ from typing import Union, Iterable
 
 from obspy.core.event import Catalog, Event
 
-from rt_eqcorrscan.plugins.plotter.helpers import (
+from rt_eqcorrscan.helpers.sparse_event import (
     get_origin_attr, get_magnitude_attr, SparseEvent)
 
 

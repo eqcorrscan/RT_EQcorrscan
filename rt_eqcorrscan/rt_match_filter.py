@@ -522,7 +522,7 @@ class RealTimeTribe(Tribe):
                 # Re-setting this here in case changes happen to EQcorrscan IDs
                 ##### DO NOT CHANGE THIS NAMING CONVENTION!!!! THINGS WILL BREAK!!!!
                 d.event.resource_id = ResourceIdentifier(
-                    id=d.template_name + '_' + d.time,
+                    id=d.template_name + '_' + d.time.strftime("%Y%m%dT%H%M%S"),
                     prefix='smi:local')
                 Logger.debug(f"New detection at {d.detect_time}")
             # Cope with no picks and hence no origins - these events have to be removed

@@ -10,7 +10,7 @@ import numpy as np
 
 from obspy.core.event import Catalog, Event
 
-from rt_eqcorrscan.plugins.plotter.helpers import get_origin_attr, SparseEvent
+from rt_eqcorrscan.helpers.sparse_event import get_origin_attr, SparseEvent
 
 
 def inter_event_plot(

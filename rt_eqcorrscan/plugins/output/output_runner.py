@@ -10,8 +10,9 @@ import logging
 import glob
 import os
 import time
+import shutil
 
-from typing import List, Union
+from typing import List, Union, Set
 from collections import OrderedDict
 
 from obspy import read_events, Catalog, UTCDateTime
@@ -20,12 +21,16 @@ from obspy.core.event import Event
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
     PLUGIN_CONFIG_MAPPER, _Plugin)
-from rt_eqcorrscan.plugins.plotter.helpers import sparsify_catalog, get_magnitude_attr, get_origin_attr
-
+from rt_eqcorrscan.helpers.sparse_event import (
+    sparsify_catalog, get_magnitude_attr, get_origin_attr, SparseOrigin, SparseEvent)
 
 Logger = logging.getLogger(__name__)
 
-def similar_picks(event1: Event, event2: Event, pick_tolerance: float) -> int:
+def similar_picks(
+    event1: Union[Event, SparseEvent],
+    event2: Union[Event, SparseEvent],
+    pick_tolerance: float
+) -> int:
     """
     Check if picks are similar.
 
@@ -57,11 +62,11 @@ def similar_picks(event1: Event, event2: Event, pick_tolerance: float) -> int:
 
 
 def template_possible_self_dets(
-    template_event: Event,
-    catalog: Union[List[Event], Catalog],
+    template_event: Union[Event, SparseEvent],
+    catalog: Union[List[Event], Catalog, List[SparseEvent]],
     origin_tolerence: float = 10.0,
     pick_tolerance: float = 1.0,
-) -> List[Event]:
+) -> List:
     """
     Find possible template self detections - match based on origin time first,
     then pick time. If origins do not have times they will be considered similar
@@ -69,7 +74,7 @@ def template_possible_self_dets(
 
     Parameters
     ----------
-    template:
+    template_event:
         Template to look for self detections of
     catalog:
         Catalog of events to check to see if they are self-detections
@@ -93,7 +98,10 @@ def template_possible_self_dets(
     return self_dets
 
 
-def catalog_to_csv(catalog: Catalog, csv_filename: str) -> None:
+def catalog_to_csv(
+    catalog: Union[Catalog, List[SparseEvent]],
+    csv_filename: str
+) -> None:
     """
     Write catalog to a csv file.
 
@@ -118,7 +126,7 @@ def catalog_to_csv(catalog: Catalog, csv_filename: str) -> None:
 
     lines = [", ".join(columns.keys())]
     # Sort in increasing time, with any events without an origin time coming last
-    for event in sorted(catalog.events, key=lambda e: get_origin_attr(e, "time") or UTCDateTime(9999, 1, 1)):
+    for event in sorted(catalog, key=lambda e: get_origin_attr(e, "time") or UTCDateTime(9999, 1, 1)):
         l = []
         # NB: Needs to be in loop rather than listcomp to get "event" defined
         for method in columns.values():
@@ -140,6 +148,7 @@ class OutputConfig(_PluginConfig):
         "sleep_interval": 20,
         "output_templates": True,
         "template_dir": None,
+        "retain_history": False,
     }
     readonly = []
 
@@ -152,22 +161,29 @@ PLUGIN_CONFIG_MAPPER.update({"output": OutputConfig})
 
 class Outputter(_Plugin):
     name = "Outputter"
-    template_dict = {}  # Dict of templates keyed by filename
-    full_catalog = []
+    template_dict = {}  # Dict of template SparseEvents keyed by filename
+    output_events = {}  # Dict of output (filename, SparseEvent) tuples keyed by event-id
+    _read_files = []  # List of files that we have already read. Used to avoid re-reading events
 
     def _read_config(self, config_file: str):
         return OutputConfig.read(config_file=config_file)
 
-    # TODO: Looks like we are being fed the same files on repeat.
+    def input_filenames(self) -> Set:
+        """ Get the input filenames used for events output thusfar. """
+        return {v[0] for v in self.output_events.values()}
+
+    def output_catalog(self) -> List[SparseEvent]:
+        """ Get the output events. """
+        return [v[1] for v in self.output_events.values()]
+
     def core(self, new_files: List[str], cleanup: bool) -> List:
         internal_config = self.config.copy()
+        retain_history = internal_config.get("retain_history", False)
         if not isinstance(internal_config.in_dir, list):
             internal_config.in_dir = [internal_config.in_dir]
         out_dir = internal_config.pop("out_dir")
         if not os.path.isdir(out_dir):
             os.makedirs(out_dir)
-        if not os.path.isdir(f"{out_dir}/catalog"):
-            os.makedirs(f"{out_dir}/catalog")
         Logger.debug(f"Writing out to {out_dir}")
 
         # Get all templates
@@ -181,59 +197,42 @@ class Outputter(_Plugin):
                 for t_file in t_files:
                     if t_file in _tkeys:
                         continue
-                    template = read_events(t_file)
+                    template = sparsify_catalog(read_events(t_file), include_picks=True)
                     assert len(template) == 1, f"Multiple templates found in {t_file}"
                     self.template_dict.update({t_file: template[0]})
         Logger.debug(f"We have run {len(self.template_dict)} templates")
         toc = time.perf_counter()
         Logger.info(f"Took {toc - tic:.2f} s to read templates")
 
-        # Get all events - group by directory (cope with events coming from multiple steps)
-        # TODO: We want to avoid re-reading events every time if we can? This is really slow
         tic = time.perf_counter()
-        event_groups = {in_dir: [] for in_dir in internal_config.in_dir}
-        Logger.info(f"Reading from {len(new_files)} event files")
         for file in new_files:
-            dirname = os.path.dirname(file)
+            if file in self._read_files:
+                Logger.debug(f"Already read from {file}, skipping.")
+                continue
+            # Note: reading events is the slow part of this loop.
             event = read_events(file)
-            for key, events in event_groups.items():
-                if key in dirname:
-                    events.extend(event)
-                    break
-            else:
-                Logger.error(f"Event from {file} is not from an in-dir!?")
-        Logger.debug(f"Collected events: {event_groups.keys()}")
+            event = sparsify_catalog(event, include_picks=True)
+            assert len(event) == 1, f"Multiple events in {file} - not supported"
+            event = event[0]
+            self._read_files.append(file)  # Keep track and don't read again
+            if event.resource_id.id in self.output_events.keys():
+                # Check the input directory. If the "new" event has an in-dir
+                # with higher priority, overload the old event
+                old_in_dir = os.path.dirname(
+                    self.output_events[event.resource_id.id][0])
+                new_in_dir = os.path.dirname(file)
+                assert old_in_dir in internal_config.in_dir, f"{old_in_dir} not in {internal_config.in_dir}"
+                assert new_in_dir in internal_config.in_dir, f"{new_in_dir} not in {internal_config.in_dir}"
+                if internal_config.in_dir.index(old_in_dir) <= internal_config.in_dir.index(new_in_dir):
+                    Logger.info(f"Event {event.resource_id.id} already in output. Updating original from "
+                                f"{old_in_dir.split('/')[-1]} to one from {new_in_dir.split('/')[-1]}.")
+                else:
+                    Logger.info(f"New file read, but with lower priority, not updating {event.resource_id.id}")
+                    continue
+            # If we got to hear, we either have a new event id, or an update
+            self.output_events.update({event.resource_id.id: (file, event)})
         toc = time.perf_counter()
-        Logger.info(f"Took {toc - tic:.2f} s to read events")
-
-        # Summarise - keep all templates unless they have located options -
-        # keep events in order of in_dirs - events will be overwritten in the
-        # dict by events from in_dirs with higher priority (appear later in
-        # the list of in_dirs).
-        event_dict = {}
-        tic = time.perf_counter()
-        for in_dir in internal_config.in_dir:
-            Logger.info(f"Checking {in_dir}")
-            events = event_groups[in_dir]
-            for event in events:
-                if event.resource_id.id in event_dict.keys():
-                    Logger.debug(f"Overloading {event.resource_id.id} "
-                                 f"with updated event from {in_dir}")
-                event_dict.update({event.resource_id.id: event})
-        toc = time.perf_counter()
-        Logger.info(f"Took {toc - tic:.2f} s to sort events")
-
-        """
-        Event IDS are named as below in rt_match_filer _handle_detections
-        
-        d.event.resource_id = ResourceIdentifier(
-            id=d.template_name + '_' + d.time,
-            prefix='smi:local')
-            
-        Templates are named (see database_manager):
-        
-        template.name = event.resource_id.id.split('/')[-1]
-        """
+        Logger.info(f"Reading new events took {toc - tic:.2f} s")
 
         tic = time.perf_counter()
         # Add in templates as needed
@@ -242,13 +241,13 @@ class Outputter(_Plugin):
             for t_file, t_event in self.template_dict.items():
                 t_name = t_event.resource_id.id.split('/')[-1]
                 # Look for a template detections
-                t_events = [ev for rid, ev in event_dict.items()
+                t_events = [ev[1] for rid, ev in self.output_events.items()
                             if rid.lstrip("smi:local/").startswith(t_name)]
                 if len(t_events) == 0:
                     # No detections, so we need to output the template
                     Logger.info(f"No detections for {t_name}, "
                                 f"adding template to output")
-                    template_outputs.update({t_name: t_event})
+                    template_outputs.update({t_name: (t_file, t_event)})
                     continue
                 # Look for template self detections - slop in origin time? Then match picks?
                 if len(template_possible_self_dets(template_event=t_event, catalog=t_events)):
@@ -257,28 +256,45 @@ class Outputter(_Plugin):
                     continue
                 Logger.info(f"No self detections for {t_name}, "
                             f"adding template to output")
-                template_outputs.update({t_name: t_event})
-            # Merge into main event dict
-            event_dict.update(template_outputs)
+                template_outputs.update({t_name: (t_file, t_event)})
         toc = time.perf_counter()
         Logger.info(f"Took {toc-tic:.2f} s to check for self detections")
 
-        # Output csv and QML
+        # Output csv and QMLs
         tic = time.perf_counter()
-        output_catalog = Catalog([ev for ev in event_dict.values()])
-        for event in output_catalog:
-            event.write(
-                f"{out_dir}/catalog/{event.resource_id.id.split('/')[-1]}.xml",
-                format="QUAKEML")
-        # output_catalog.write(f"{out_dir}/catalog.xml", format="QUAKEML")
+        # Clear old output
+        if os.path.isdir(f"{out_dir}/catalog"):
+            if retain_history:
+                shutil.move(
+                    f"{out_dir}/catalog",
+                    f"{out_dir}/catalog_{UTCDateTime.now().strftime("%Y%m%dT%H%M%S")}")
+                shutil.move(
+                    f"{out_dir}/catalog.csv",
+                    f"{out_dir}/catalog_{UTCDateTime.now().strftime("%Y%m%dT%H%M%S")}/catalog.csv")
+            else:
+                shutil.rmtree(f"{out_dir}/catalog")
+        os.makedirs(f"{out_dir}/catalog")
+
+        # Link events
+        output_events = []
+        for value in self.output_events.values():
+            ev_file, ev = value
+            output_events.append(ev)
+            ev_file_fname = os.path.basename(ev_file)
+            os.symlink(ev_file, f"{out_dir}/catalog/{ev_file_fname}")
+        if internal_config.output_templates:
+            for value in template_outputs.values():
+                ev_file, ev = value
+                output_events.append(ev)
+                ev_file_fname = os.path.basename(ev_file)
+                os.symlink(ev_file, f"{out_dir}/catalog/{ev_file_fname}")
         toc = time.perf_counter()
         Logger.info(f"Took {toc - tic:.2f}s to write catalog output")
         tic = time.perf_counter()
-        catalog_to_csv(catalog=output_catalog,
+        catalog_to_csv(catalog=output_events,
                        csv_filename=f"{out_dir}/catalog.csv")
         toc = time.perf_counter()
         Logger.info(f"Took {toc - tic:.2f}s to write csv output")
-
 
         return []  # We need to process everything every time...
 
