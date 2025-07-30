@@ -9,6 +9,7 @@ growclust locations.
 import logging
 import glob
 import os
+import time
 
 from typing import List, Union
 from collections import OrderedDict
@@ -47,8 +48,9 @@ def similar_picks(event1: Event, event2: Event, pick_tolerance: float) -> int:
     """
     matched_picks = 0
     for pick1 in event1.picks:
-        matched_wids = [p for p in event2.picks
-                        if p.waveform_id.get_seed_string() == pick1.get_seed_string()]
+        matched_wids = [
+            p for p in event2.picks
+            if p.waveform_id.get_seed_string() == pick1.waveform_id.get_seed_string()]
         matched_picks += len([p for p in matched_wids
                               if abs(p.time - pick1.time) <= pick_tolerance])
     return matched_picks
@@ -82,8 +84,11 @@ def template_possible_self_dets(
     """
     t_ori_time = get_origin_attr(template_event, "time")
     similar_origins = [ev for ev in catalog
-                       if abs(t_ori_time - (get_origin_attr(ev, "time") or t_ori_time)) <= origin_tolerence]
-    self_dets = [ev for ev in similar_origins if similar_picks(ev, t_event, pick_tolerance=pick_tolerance)]
+                       if abs(t_ori_time - (get_origin_attr(ev, "time")
+                       or t_ori_time)) <= origin_tolerence]
+    self_dets = [ev for ev in similar_origins
+                 if similar_picks(ev, template_event,
+                                  pick_tolerance=pick_tolerance)]
 
     return self_dets
 
@@ -99,7 +104,8 @@ def catalog_to_csv(catalog: Catalog, csv_filename: str) -> None:
     csv_filename:
         Filename to write csv to. Will overwrite existing files
     """
-    # Columns should be column_name: thing to evaluate to get thing from variable named "event"
+    # Columns should be column_name: thing to evaluate to get thing from
+    # variable named "event"
     columns = OrderedDict({
         "Resource ID": "event.resource_id.id",
         "Origin Time (UTC)": "get_origin_attr(event, 'time')",
@@ -107,12 +113,17 @@ def catalog_to_csv(catalog: Catalog, csv_filename: str) -> None:
         "Longitude": "get_origin_attr(event, 'longitude')",
         "Depth (km)": "get_origin_attr(event, 'depth') / 1000.0",
         "Magnitude": "get_magnitude_attr(event, 'mag')",
+        "Location Method ID": "get_origin_attr(event, 'method_id')",
     })
 
     lines = [", ".join(columns.keys())]
     # Sort in increasing time, with any events without an origin time coming last
     for event in sorted(catalog.events, key=lambda e: get_origin_attr(e, "time") or UTCDateTime(9999, 1, 1)):
-        lines.append(", ".join([str(eval(method)) for method in columns.values()]))
+        l = []
+        # NB: Needs to be in loop rather than listcomp to get "event" defined
+        for method in columns.values():
+            l.append(str(eval(method)))
+        lines.append(", ".join(l))
 
     lines = "\n".join(lines)
     with open(csv_filename, "w") as f:
@@ -147,17 +158,20 @@ class Outputter(_Plugin):
     def _read_config(self, config_file: str):
         return OutputConfig.read(config_file=config_file)
 
+    # TODO: Looks like we are being fed the same files on repeat.
     def core(self, new_files: List[str], cleanup: bool) -> List:
-        Logger.info("Entered the core (its hot in here!)")
         internal_config = self.config.copy()
         if not isinstance(internal_config.in_dir, list):
             internal_config.in_dir = [internal_config.in_dir]
         out_dir = internal_config.pop("out_dir")
         if not os.path.isdir(out_dir):
             os.makedirs(out_dir)
-        Logger.info(f"Writing out to {out_dir}")
+        if not os.path.isdir(f"{out_dir}/catalog"):
+            os.makedirs(f"{out_dir}/catalog")
+        Logger.debug(f"Writing out to {out_dir}")
 
         # Get all templates
+        tic = time.perf_counter()
         if internal_config.output_templates:
             if internal_config.template_dir is None:
                 Logger.error("Output templates requested, but template dir not set")
@@ -170,10 +184,15 @@ class Outputter(_Plugin):
                     template = read_events(t_file)
                     assert len(template) == 1, f"Multiple templates found in {t_file}"
                     self.template_dict.update({t_file: template[0]})
-        Logger.info(f"We have run {len(self.template_dict)} templates")
+        Logger.debug(f"We have run {len(self.template_dict)} templates")
+        toc = time.perf_counter()
+        Logger.info(f"Took {toc - tic:.2f} s to read templates")
 
         # Get all events - group by directory (cope with events coming from multiple steps)
+        # TODO: We want to avoid re-reading events every time if we can? This is really slow
+        tic = time.perf_counter()
         event_groups = {in_dir: [] for in_dir in internal_config.in_dir}
+        Logger.info(f"Reading from {len(new_files)} event files")
         for file in new_files:
             dirname = os.path.dirname(file)
             event = read_events(file)
@@ -183,18 +202,26 @@ class Outputter(_Plugin):
                     break
             else:
                 Logger.error(f"Event from {file} is not from an in-dir!?")
-        Logger.info(f"Collected events: {event_groups.keys()}")
+        Logger.debug(f"Collected events: {event_groups.keys()}")
+        toc = time.perf_counter()
+        Logger.info(f"Took {toc - tic:.2f} s to read events")
 
         # Summarise - keep all templates unless they have located options -
         # keep events in order of in_dirs - events will be overwritten in the
         # dict by events from in_dirs with higher priority (appear later in
         # the list of in_dirs).
         event_dict = {}
-        for in_dir in internal_config.in_dir[::-1]:
+        tic = time.perf_counter()
+        for in_dir in internal_config.in_dir:
+            Logger.info(f"Checking {in_dir}")
             events = event_groups[in_dir]
             for event in events:
-                if event.resource_id.id not in event_dict.keys():
-                    event_dict.update({event.resource_id.id: event})
+                if event.resource_id.id in event_dict.keys():
+                    Logger.debug(f"Overloading {event.resource_id.id} "
+                                 f"with updated event from {in_dir}")
+                event_dict.update({event.resource_id.id: event})
+        toc = time.perf_counter()
+        Logger.info(f"Took {toc - tic:.2f} s to sort events")
 
         """
         Event IDS are named as below in rt_match_filer _handle_detections
@@ -208,6 +235,7 @@ class Outputter(_Plugin):
         template.name = event.resource_id.id.split('/')[-1]
         """
 
+        tic = time.perf_counter()
         # Add in templates as needed
         if internal_config.output_templates:
             template_outputs = dict()
@@ -218,22 +246,39 @@ class Outputter(_Plugin):
                             if rid.lstrip("smi:local/").startswith(t_name)]
                 if len(t_events) == 0:
                     # No detections, so we need to output the template
-                    Logger.info(f"No detections for {t_name}")
+                    Logger.info(f"No detections for {t_name}, "
+                                f"adding template to output")
                     template_outputs.update({t_name: t_event})
                     continue
                 # Look for template self detections - slop in origin time? Then match picks?
                 if len(template_possible_self_dets(template_event=t_event, catalog=t_events)):
-                    Logger.info(f"Found likely self detections for template {t_name}")
+                    Logger.debug(f"Found likely self detections for template "
+                                 f"{t_name}, not including template to output")
                     continue
-                Logger.info(f"No self detections for {t_name}")
+                Logger.info(f"No self detections for {t_name}, "
+                            f"adding template to output")
                 template_outputs.update({t_name: t_event})
             # Merge into main event dict
             event_dict.update(template_outputs)
+        toc = time.perf_counter()
+        Logger.info(f"Took {toc-tic:.2f} s to check for self detections")
 
         # Output csv and QML
+        tic = time.perf_counter()
         output_catalog = Catalog([ev for ev in event_dict.values()])
-        output_catalog.write(f"{out_dir}/catalog.xml", format="QUAKEML")
-        catalog_to_csv(catalog=output_catalog, csv_filename=f"{out_dir}/catalog.csv")
+        for event in output_catalog:
+            event.write(
+                f"{out_dir}/catalog/{event.resource_id.id.split('/')[-1]}.xml",
+                format="QUAKEML")
+        # output_catalog.write(f"{out_dir}/catalog.xml", format="QUAKEML")
+        toc = time.perf_counter()
+        Logger.info(f"Took {toc - tic:.2f}s to write catalog output")
+        tic = time.perf_counter()
+        catalog_to_csv(catalog=output_catalog,
+                       csv_filename=f"{out_dir}/catalog.csv")
+        toc = time.perf_counter()
+        Logger.info(f"Took {toc - tic:.2f}s to write csv output")
+
 
         return []  # We need to process everything every time...
 
