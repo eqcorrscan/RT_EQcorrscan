@@ -252,7 +252,8 @@ class _Plugin(ABC):
 
             # Associate file with correct watcher
             processed_files = {
-                _in_dir: [f for f in processed_files if f in new_file_dict[_in_dir]]
+                _in_dir: [f for f in processed_files
+                          if f in new_file_dict[_in_dir]]
                 for _in_dir in self.watchers.keys()}
             for _in_dir, files in processed_files.items():
                 self.watchers[_in_dir].processed(files)

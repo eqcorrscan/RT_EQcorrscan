@@ -8,13 +8,13 @@ import time
 import os
 import shutil
 import pandas as pd
+import glob
 
-from typing import List, Tuple
+from itertools import cycle
+from typing import Tuple
 from multiprocessing import Process
 
 from obspy import Catalog, UTCDateTime, read_events
-
-from eqcorrscan.utils.catalog_utils import filter_picks
 
 from rt_eqcorrscan.plugins.output.output_runner import Outputter, OutputConfig
 
@@ -93,14 +93,21 @@ def setup_testcase() -> Tuple[Catalog, Catalog, Catalog]:
 
     # Don't use all the events as templates
     templates = cat[0:20].copy()
+    template_ids = [t.resource_id.id.split('/')[-1] for t in templates]
 
+    template_ids = cycle(template_ids)
     # Hack them to look like detections
     for event in cat:
-        event.resource_id.id = event.origins[-1].time.strftime("%Y%m%d%H%M%S")
+        tid = next(template_ids)
+        event.resource_id.id = f"{tid}_{event.origins[-1].time}"
+        event.preferred_origin().method_id.id = "NLL"
 
     # Don't take all the events through to relocation
     drop_ids = [5, 25, 30, 32, 100, 105, 106, 107, 108, 109, 110, 145, 167, 188]
-    reloc_cat = Catalog([ev for i, ev in enumerate(cat) if i not in drop_ids])
+    reloc_cat = Catalog([ev.copy() for i, ev in enumerate(cat)
+                         if i not in drop_ids])
+    for ev in reloc_cat:
+        ev.preferred_origin().method_id.id = "Growclust"
 
     return templates, cat, reloc_cat
 
@@ -153,9 +160,10 @@ class TestOutputPlugin(unittest.TestCase):
         self.assertFalse(failed)
 
         # Read back in the output - this should be one qml and one csv
-        self.assertEqual(len(glob.glob(f"{out_dir}/*.xml")), 1)
-        cat_back = read_events(f"{out_dir}/best_catalog.xml")
-        cat_back_csv = pd.read_csv(f"{out_dir}/best_catalog.csv")
+        self.assertEqual(len(glob.glob(f"{out_dir}/catalog/*.xml")),
+                         len(self.located))
+        cat_back = read_events(f"{out_dir}/catalog/*.xml")
+        cat_back_csv = pd.read_csv(f"{out_dir}/catalog.csv")
 
         self.assertEqual(len(cat_back), len(self.located))
 
@@ -167,13 +175,13 @@ class TestOutputPlugin(unittest.TestCase):
             for thing in cls.clean_up:
                 if os.path.isdir(thing):
                     try:
-                        Logger.debug(f"Removing {thing}")
+                        Logger.info(f"Removing {thing}")
                         shutil.rmtree(thing)
                     except Exception:
                         pass
                 else:
                     try:
-                        Logger.debug(f"Deleting {thing}")
+                        Logger.info(f"Deleting {thing}")
                         os.remove(thing)
                     except Exception:
                         pass
