@@ -147,7 +147,6 @@ class OutputConfig(_PluginConfig):
     defaults = {
         "sleep_interval": 20,
         "output_templates": True,
-        "template_dir": None,
         "retain_history": False,
     }
     readonly = []
