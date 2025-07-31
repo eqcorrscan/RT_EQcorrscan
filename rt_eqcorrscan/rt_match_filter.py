@@ -21,6 +21,7 @@ import numpy as np
 from typing import Union, List, Iterable
 
 from obspy import Stream, UTCDateTime, Inventory, Trace
+from obspy.core.event import ResourceIdentifier
 from obsplus import WaveBank
 from matplotlib.figure import Figure
 from multiprocessing import Lock
@@ -522,7 +523,9 @@ class RealTimeTribe(Tribe):
                 # Re-setting this here in case changes happen to EQcorrscan IDs
                 ##### DO NOT CHANGE THIS NAMING CONVENTION!!!! THINGS WILL BREAK!!!!
                 d.event.resource_id = ResourceIdentifier(
-                    id=d.template_name + '_' + d.time.strftime("%Y%m%dT%H%M%S"),
+                    id="_".join(
+                        [d.template_name,
+                         d.detect_time.strftime("%Y%m%dT%H%M%S.%f")]),
                     prefix='smi:local')
                 Logger.debug(f"New detection at {d.detect_time}")
             # Cope with no picks and hence no origins - these events have to be removed

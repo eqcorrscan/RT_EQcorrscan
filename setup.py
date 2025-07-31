@@ -113,6 +113,7 @@ def setup_package():
             'rt_eqcorrscan.reactor', 'rt_eqcorrscan.streaming',
             'rt_eqcorrscan.streaming.clients', 'rt_eqcorrscan.console_scripts',
             'rt_eqcorrscan.plugins', 'rt_eqcorrscan.plugins.console_scripts',
+            'rt_eqcorrscan.helpers',
             'rt_eqcorrscan.plugins.picker',
             'rt_eqcorrscan.plugins.magnitudes',
             'rt_eqcorrscan.plugins.plotter',
