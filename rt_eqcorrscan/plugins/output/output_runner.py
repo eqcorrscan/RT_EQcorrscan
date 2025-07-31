@@ -266,10 +266,10 @@ class Outputter(_Plugin):
             if retain_history:
                 shutil.move(
                     f"{out_dir}/catalog",
-                    f"{out_dir}/catalog_{UTCDateTime.now().strftime("%Y%m%dT%H%M%S")}")
+                    f"{out_dir}/catalog_{UTCDateTime.now().strftime('%Y%m%dT%H%M%S')}")
                 shutil.move(
                     f"{out_dir}/catalog.csv",
-                    f"{out_dir}/catalog_{UTCDateTime.now().strftime("%Y%m%dT%H%M%S")}/catalog.csv")
+                    f"{out_dir}/catalog_{UTCDateTime.now().strftime('%Y%m%dT%H%M%S')}/catalog.csv")
             else:
                 shutil.rmtree(f"{out_dir}/catalog")
         os.makedirs(f"{out_dir}/catalog")
