@@ -9,12 +9,15 @@ import os
 import shutil
 import pandas as pd
 import glob
+import pickle
 
 from itertools import cycle
-from typing import Tuple
+from typing import Tuple, List
 from multiprocessing import Process
 
 from obspy import Catalog, UTCDateTime, read_events
+
+from eqcorrscan import Template
 
 from rt_eqcorrscan.plugins.output.output_runner import Outputter, OutputConfig
 
@@ -22,7 +25,7 @@ Logger = logging.getLogger(__name__)
 
 
 def _write_sim_info(
-    templates: Catalog,
+    templates: List[Template],
     locations: Catalog,
     relocations: Catalog,
     template_dir: str,
@@ -39,10 +42,10 @@ def _write_sim_info(
 
     # Write all templates
     for template in templates:
-        Logger.debug(
-            f"Writing template to {template_dir}/{template.resource_id.id.split('/')[-1]}.xml")
-        template.write(f"{template_dir}/{template.resource_id.id.split('/')[-1]}.xml",
-                       format="QUAKEML")
+        Logger.info(
+            f"Writing template to {template_dir}/{template.name}.pkl")
+        with open(f"{template_dir}/{template.name}.pkl", "wb") as f:
+            pickle.dump(template, f)
     Logger.debug("Simulation templates written")
 
     # Write chunks of detections
@@ -72,7 +75,7 @@ def _write_sim_info(
     return
 
 
-def setup_testcase() -> Tuple[Catalog, Catalog, Catalog]:
+def setup_testcase() -> Tuple[List[Template], Catalog, Catalog]:
     """ Download some files and chuck em in. """
     from obspy.clients.fdsn import Client
 
@@ -94,6 +97,8 @@ def setup_testcase() -> Tuple[Catalog, Catalog, Catalog]:
     # Don't use all the events as templates
     templates = cat[0:20].copy()
     template_ids = [t.resource_id.id.split('/')[-1] for t in templates]
+    templates = [Template(event=t, name=t.resource_id.id.split('/')[-1])
+                 for t in templates]
 
     template_ids = cycle(template_ids)
     # Hack them to look like detections
