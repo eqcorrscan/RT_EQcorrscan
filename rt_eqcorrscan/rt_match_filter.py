@@ -21,6 +21,7 @@ import numpy as np
 from typing import Union, List, Iterable
 
 from obspy import Stream, UTCDateTime, Inventory, Trace
+from obspy.core.event import ResourceIdentifier
 from obsplus import WaveBank
 from matplotlib.figure import Figure
 from multiprocessing import Lock
@@ -522,7 +523,9 @@ class RealTimeTribe(Tribe):
                 # Re-setting this here in case changes happen to EQcorrscan IDs
                 ##### DO NOT CHANGE THIS NAMING CONVENTION!!!! THINGS WILL BREAK!!!!
                 d.event.resource_id = ResourceIdentifier(
-                    id=d.template_name + '_' + d.time,
+                    id="_".join(
+                        [d.template_name,
+                         d.detect_time.strftime("%Y%m%dT%H%M%S.%f")]),
                     prefix='smi:local')
                 Logger.debug(f"New detection at {d.detect_time}")
             # Cope with no picks and hence no origins - these events have to be removed
@@ -733,16 +736,22 @@ class RealTimeTribe(Tribe):
             order = self.plugin_config.pop("order")
         except KeyError:
             order = ORDERED_PLUGINS
+        outputter_in_dirs = [in_dir]
         for plugin_name in order:
             # If plugin name is plot then out_dir should be in_dir
             config = self.plugin_config.get(plugin_name, None)
             if config is None:
                 continue
-            config.in_dir = in_dir
+            if plugin_name in ["outputter"]:
+                # The outputter wants all the intermediate outputs
+                config.in_dir = outputter_in_dirs
+            else:
+                config.in_dir = in_dir
             if plugin_name in ["plotter"]:
                 config.out_dir = in_dir
             else:
                 config.out_dir = f"{self.name}/{plugin_name}_out"
+                outputter_in_dirs.append(config.out_dir)  # Add outputs to outputter, don't add plotting output
             if plugin_name == "nll":
                 # We need to set the bounds to be useful
                 config.maxlat = (

@@ -15,7 +15,7 @@ from obsplus.events.pd import events_to_df
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
     PLUGIN_CONFIG_MAPPER, _Plugin)
-from rt_eqcorrscan.plugins.plotter.helpers import sparsify_catalog
+from rt_eqcorrscan.helpers.sparse_event import sparsify_catalog
 from rt_eqcorrscan.plugins.plotter.map_plots import PYGMT_INSTALLED, plot_map
 from rt_eqcorrscan.plugins.plotter.time_series_plots import inter_event_plot
 

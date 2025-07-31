@@ -255,6 +255,7 @@ class PluginConfigs(_ConfigAttribDict):
     from rt_eqcorrscan.plugins.relocation.growclust_runner import \
         GrowClustConfig
     from rt_eqcorrscan.plugins.relocation.nll_runner import NLLConfig
+    from rt_eqcorrscan.plugins.output.output_runner import OutputConfig
 
     defaults = {
         "picker": None,
@@ -262,7 +263,8 @@ class PluginConfigs(_ConfigAttribDict):
         "plotter": None,
         "growclust": None,
         "nll": None,
-        "order": ["picker", "hyp", "nll", "growclust", "plotter"],
+        "output": None,
+        "order": ["picker", "hyp", "nll", "growclust", "plotter", "output"],
     }
     readonly = []
     __subclasses = {
@@ -271,6 +273,7 @@ class PluginConfigs(_ConfigAttribDict):
         "nll": NLLConfig,
         "growclust": GrowClustConfig,
         "plotter": PlotConfig,
+        "outputter": OutputConfig,
     }
 
     def __init__(self, *args, **kwargs):

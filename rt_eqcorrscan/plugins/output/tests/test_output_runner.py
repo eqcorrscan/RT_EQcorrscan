@@ -99,7 +99,7 @@ def setup_testcase() -> Tuple[Catalog, Catalog, Catalog]:
     # Hack them to look like detections
     for event in cat:
         tid = next(template_ids)
-        event.resource_id.id = f"{tid}_{event.origins[-1].time}"
+        event.resource_id.id = f"{tid}_{event.origins[-1].time.strftime("%Y%m%dT%H%M%S")}"
         event.preferred_origin().method_id.id = "NLL"
 
     # Don't take all the events through to relocation
