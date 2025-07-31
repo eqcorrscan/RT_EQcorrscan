@@ -220,9 +220,14 @@ class Outputter(_Plugin):
                 old_in_dir = os.path.dirname(
                     self.output_events[event.resource_id.id][0])
                 new_in_dir = os.path.dirname(file)
-                assert old_in_dir in internal_config.in_dir, f"{old_in_dir} not in {internal_config.in_dir}"
-                assert new_in_dir in internal_config.in_dir, f"{new_in_dir} not in {internal_config.in_dir}"
-                if internal_config.in_dir.index(old_in_dir) <= internal_config.in_dir.index(new_in_dir):
+                # NB: dirs could be nested
+                old_index, new_index = 0, 0
+                for i, _dir in enumerate(internal_config.in_dir):
+                    if _dir in old_in_dir:
+                        old_index = i
+                    if _dir in new_in_dir:
+                        new_index = i
+                if old_index <= new_index:
                     Logger.info(f"Event {event.resource_id.id} already in output. Updating original from "
                                 f"{old_in_dir.split('/')[-1]} to one from {new_in_dir.split('/')[-1]}.")
                 else:
