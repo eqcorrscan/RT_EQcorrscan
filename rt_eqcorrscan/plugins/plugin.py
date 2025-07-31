@@ -271,6 +271,9 @@ class _Plugin(ABC):
                     Logger.info("Summarising state")
                     self._summarise_state()
                 if elapsed < self.config.sleep_interval:
+                    Logger.info(
+                        f"Sleeping for "
+                        f"{self.config.sleep_interval - elapsed:.2f} s")
                     time.sleep(self.config.sleep_interval - elapsed)
 
                 continue

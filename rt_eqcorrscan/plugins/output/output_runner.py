@@ -240,8 +240,8 @@ class Outputter(_Plugin):
 
         tic = time.perf_counter()
         # Add in templates as needed
+        template_outputs = dict()
         if internal_config.output_templates:
-            template_outputs = dict()
             for t_file, t_event in self.template_dict.items():
                 t_name = t_event.resource_id.id.split('/')[-1]
                 # Look for a template detections
@@ -281,6 +281,10 @@ class Outputter(_Plugin):
 
         # Link events
         output_events = []
+        Logger.info(f"We have a total of {len(self.output_events)} detections "
+                    f"from {len(self.template_dict)} templates.")
+        Logger.info(f"Of these templates {len(template_outputs)} have no "
+                    f"self-detections")
         for value in self.output_events.values():
             ev_file, ev = value
             output_events.append(ev)
