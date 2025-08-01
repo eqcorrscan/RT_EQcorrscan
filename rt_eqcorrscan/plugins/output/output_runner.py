@@ -189,19 +189,7 @@ class Outputter(_Plugin):
         # Get all templates
         tic = time.perf_counter()
         if internal_config.output_templates:
-            if internal_config.template_dir is None:
-                Logger.error("Output templates requested, but template dir not set")
-            else:
-                t_files = glob.glob(f"{internal_config.template_dir}/*.pkl")
-                _tkeys = self.template_dict.keys()
-                for t_file in t_files:
-                    if t_file in _tkeys:
-                        continue
-                    with open(t_file, "rb") as f:
-                        t = pickle.load(f)
-                    template = sparsify_catalog([t.event], include_picks=True)
-                    assert len(template) == 1, f"Multiple templates found in {t_file}"
-                    self.template_dict.update({t_file: template[0]})
+            self.get_template_events()
         Logger.debug(f"We have run {len(self.template_dict)} templates")
         toc = time.perf_counter()
         Logger.info(f"Took {toc - tic:.2f} s to read templates")

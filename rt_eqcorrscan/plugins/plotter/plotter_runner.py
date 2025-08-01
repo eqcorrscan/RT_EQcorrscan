@@ -4,20 +4,17 @@ Runner for the plotting funcs.
 
 import os
 import logging
-import shutil
 from typing import Iterable, List
 
-import pandas as pd
 from obspy import read_events, UTCDateTime
-
-from obsplus.events.pd import events_to_df
 
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
     PLUGIN_CONFIG_MAPPER, _Plugin)
 from rt_eqcorrscan.helpers.sparse_event import sparsify_catalog
-from rt_eqcorrscan.plugins.plotter.map_plots import PYGMT_INSTALLED, plot_map
-from rt_eqcorrscan.plugins.plotter.time_series_plots import inter_event_plot
+from rt_eqcorrscan.plugins.plotter.rcet_plots import (
+    aftershock_map, check_catalog, mainshock_mags
+)
 
 
 Logger = logging.getLogger(__name__)
@@ -29,6 +26,23 @@ class PlotConfig(_PluginConfig):
     """
     defaults = {
         "sleep_interval": 600,
+        "mainshock_id": None,
+        "inventory": None,
+        "png_dpi": 300,
+        "eps_dpi": 300,
+        "scaled_mag_relation": 1, # What is this? Why is it an integer?
+        "faulting_type": None, # Should be a string ["NN", "SS", "RV", "DS", "SI"]
+        "rupture_area": "ellipse", # or "rectangle"
+        "Mw": None,
+        "Mw_unc": None,
+        "MT_NP1": None, # [strike, dip, rake]
+        "MT_NP2": None, # [strike, dip, rake]
+        "fabric_angle": 55,  # What is this?
+        "ellipse_std": 2,  # what is this?
+        "IQR_k": 1.5,
+        "lowess": True,
+        "lowess_f": 0.5,
+        "magcut": 3.0,
     }
     readonly = []
 
@@ -41,7 +55,7 @@ PLUGIN_CONFIG_MAPPER.update({"plotter": PlotConfig})
 
 class Plotter(_Plugin):
     name = "Plotter"
-    full_catalog = []
+    detected_events = {}  # dict of sparse events keyed by event id
 
     def _read_config(self, config_file: str):
         return PlotConfig.read(config_file=config_file)
@@ -53,46 +67,34 @@ class Plotter(_Plugin):
         if not os.path.isdir(out_dir):
             os.makedirs(out_dir)
 
-        processed_files = []
-        for i, infile in enumerate(new_files):
-            Logger.info(
-                f"Working on event-file {i}:\t{infile}")
-            try:
-                _cat = read_events(infile)
-            except Exception as e:
-                Logger.error(f"Could not read {infile} due to {e}")
-                continue
-            # Retain sparse events rather than full catalog
-            _sparse_cat = sparsify_catalog(_cat)
-            rids = {ev.resource_id for ev in self.full_catalog}
-            for ev in _sparse_cat:
-                if ev.resource_id not in rids:
-                    self.full_catalog.append(ev)
-            # self.full_catalog.extend(sparsify_catalog(_cat))
+        """
+        Things we need for the plots:
+        1. The real-time catalogue - ideally we could split this into different origins
+            This will come from config.in_dir - ideally identify our version of the mainshock in this.
+        2. The template catalogue
+            This will come from config.template_dir
+        3. The mainshock/trigger event
+            This needs to be set by rt_match_filter configure_plugins
+        4. The inventory
+            This needs to be set by rt_match_filter configure_plugins
+        5. Search radius
+            This needs to be set by rt_match_filter configure_plugins
+        
+        We want to be able to get the moment tensor from the config file, and 
+        the faulting type and rupture area type - these should be update-able 
+        in the config file.
+        """
+        # Load template events
+        self.get_template_events()
 
-        Logger.info(f"Making plots for {len(self.full_catalog)} events")
-        inter_fig = inter_event_plot(catalog=self.full_catalog)
-        Logger.info("Made time-series plot")
-        if PYGMT_INSTALLED:
-            map_fig = plot_map(catalog=self.full_catalog)
-            Logger.info("Made map plot")
-        time_stamp = UTCDateTime().strftime("%Y-%m-%dT%H-%M-%S")
-        for _format in ("png", "eps"):
-            inter_fig.savefig(
-                f"{out_dir}/detection_time_series_latest.{_format}")
-            # inter_fig.savefig(
-            #     f"{out_dir}/detection_time_series_{time_stamp}.{_format}")
-            # shutil.copyfile(
-            #     f"{out_dir}/detection_time_series_{time_stamp}.{_format}",
-            #     f"{out_dir}/detection_time_series_latest.{_format}")
-            if PYGMT_INSTALLED:
-                map_fig.savefig(
-                    f"{out_dir}/detection_map_latest.{_format}")
-                # map_fig.savefig(
-                #     f"{out_dir}/detection_map_{time_stamp}.{_format}")
-                # shutil.copyfile(
-                #     f"{out_dir}/detection_map_{time_stamp}.{_format}",
-                #     f"{out_dir}/detection_map_latest.{_format}")
+        # Read detected events
+        processed_files = []
+        for f in new_files:
+            cat = sparsify_catalog(read_events(f), include_picks=True)
+            for ev in cat:
+                self.detected_events.update({ev.resource_id.id: ev})
+            processed_files.append(f)
+
         return processed_files
 
 

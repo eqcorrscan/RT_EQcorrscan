@@ -231,7 +231,7 @@ def _sparsify_event(event: Event, include_picks: bool = False) -> SparseEvent:
 
 
 def sparsify_catalog(
-    catalog: Catalog,
+    catalog: Union[List[Event], Catalog],
     include_picks: bool = False
 ) -> List[SparseEvent]:
     """ Make a sparse verion of the catalog """
