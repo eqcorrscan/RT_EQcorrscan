@@ -554,7 +554,7 @@ def process_output_catalog(
             # catalog_out += ev
             continue
         ev.origins.append(gc_origin)
-        ev.preferred_origin_id = ev.origins[-1].resource_id
+        ev.preferred_origin_id = gc_origin.resource_id
         relocated += ev
         catalog_out += ev
     Logger.info(f"Of {len(catalog)}, {len(relocated)} were relocated, and "

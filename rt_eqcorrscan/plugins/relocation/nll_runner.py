@@ -17,7 +17,7 @@ from typing import Union, Iterable, List
 
 from pyproj import CRS, Transformer
 
-from obspy.core.event import Event
+from obspy.core.event import Event, ResourceIdentifier
 from obspy import read_events, Catalog, Inventory, read_inventory
 
 from rt_eqcorrscan.config.config import _PluginConfig
@@ -395,6 +395,7 @@ def run_nll(catalog: Catalog, control_file: str, verbose: bool = True) -> Catalo
             if len(original_pick) > 1:
                 original_pick.sort(key=lambda p: abs(p.time - nlloc_pick.time))
             arrival.pick_id = original_pick[0].resource_id
+        nlloc_origin.method_id = ResourceIdentifier("NLLoc")
         event_back.origins.append(nlloc_origin)
         event_back.preferred_origin_id = nlloc_origin.resource_id
     unlocated_events = set(cat_back.keys()).difference(nll_located_rids)
