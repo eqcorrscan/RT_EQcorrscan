@@ -280,7 +280,7 @@ class Outputter(_Plugin):
             ev_file, ev = value
             output_events.append(ev)
             ev_file_fname = os.path.basename(ev_file)
-            os.symlink(ev_file, f"{out_dir}/catalog/{ev_file_fname}")
+            shutil.copyfile(ev_file, f"{out_dir}/catalog/{ev_file_fname}")
         if internal_config.output_templates:
             for value in template_outputs.values():
                 ev_file, ev = value
@@ -298,7 +298,8 @@ class Outputter(_Plugin):
                         f"{os.path.splitext(ev_file_fname)[0]}.xml",
                         format="QUAKEML")
                 else:
-                    os.symlink(ev_file, f"{out_dir}/catalog/{ev_file_fname}")
+                    shutil.copyfile(
+                        ev_file, f"{out_dir}/catalog/{ev_file_fname}")
         toc = time.perf_counter()
         Logger.info(f"Took {toc - tic:.2f}s to write catalog output")
         tic = time.perf_counter()
