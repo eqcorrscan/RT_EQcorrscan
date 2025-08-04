@@ -153,6 +153,10 @@ class Plotter(_Plugin):
         self._aftershock_maps()
         self._ellipse_plots()
 
+        # TODO: Beachball plotting
+        # TODO: scaled magnitude plotting
+        # TODO: Refined plot for public output (logos should be somewhere useful)
+
         return []
 
     def _get_mainshock(self) -> Union[SparseEvent, Event, None]:
