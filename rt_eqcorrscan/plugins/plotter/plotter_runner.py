@@ -4,17 +4,21 @@ Runner for the plotting funcs.
 
 import os
 import logging
-from typing import Iterable, List
+from typing import Iterable, List, Union
 
-from obspy import read_events, UTCDateTime
+from obspy import read_events, UTCDateTime, Inventory, read_inventory
+from obspy.core.event import Event
 
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
     PLUGIN_CONFIG_MAPPER, _Plugin)
-from rt_eqcorrscan.helpers.sparse_event import sparsify_catalog
+from rt_eqcorrscan.helpers.sparse_event import sparsify_catalog, SparseEvent, \
+    get_origin_attr
 from rt_eqcorrscan.plugins.plotter.rcet_plots import (
-    aftershock_map, check_catalog, mainshock_mags
+    aftershock_map, check_catalog, mainshock_mags, ellipse_plots,
+    ellipse_to_rectangle
 )
+from rt_eqcorrscan.plugins.output.output_runner import template_possible_self_dets
 
 
 Logger = logging.getLogger(__name__)
@@ -27,7 +31,7 @@ class PlotConfig(_PluginConfig):
     defaults = {
         "sleep_interval": 600,
         "mainshock_id": None,
-        "inventory": None,
+        "station_file": None,
         "png_dpi": 300,
         "eps_dpi": 300,
         "scaled_mag_relation": 1, # What is this? Why is it an integer?
@@ -43,19 +47,34 @@ class PlotConfig(_PluginConfig):
         "lowess": True,
         "lowess_f": 0.5,
         "magcut": 3.0,
+        "search_radius": None,
     }
     readonly = []
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.station_file = os.path.abspath(self.station_file)
 
 
 PLUGIN_CONFIG_MAPPER.update({"plotter": PlotConfig})
 
 
+def _now_str():
+    return UTCDateTime.now().strftime('%Y-%m-%dT%H-%M-%S')
+
 class Plotter(_Plugin):
     name = "Plotter"
-    detected_events = {}  # dict of sparse events keyed by event id
+    event_cache = {}  # Dict of SparseEvents keyed by event id
+    event_files = {}  # Dict of (event-id, mtime) keyed by event-file
+    inventory_cache = (None, None, None)  # Tuple of (inventory, file, mtime)
+
+    @property
+    def events(self) -> List:
+        return [e for e in self.event_cache.values()]
+
+    @property
+    def inventory(self) -> Union[Inventory, None]:
+        return self.inventory_cache[0]
 
     def _read_config(self, config_file: str):
         return PlotConfig.read(config_file=config_file)
@@ -87,15 +106,184 @@ class Plotter(_Plugin):
         # Load template events
         self.get_template_events()
 
-        # Read detected events
-        processed_files = []
-        for f in new_files:
-            cat = sparsify_catalog(read_events(f), include_picks=True)
-            for ev in cat:
-                self.detected_events.update({ev.resource_id.id: ev})
-            processed_files.append(f)
+        # Load the stations
+        read_inv = False
+        if self.inventory_cache[2] is not None:
+            # We have read the inventory file, check if we need to re-read
+            if self.inventory_cache[1] != internal_config.station_file:
+                # Different file, we need to read
+                read_inv = True
+            elif os.path.getmtime(internal_config.station_file) > self.inventory_cache[2]:
+                # Updated, we need to read
+                read_inv = True
+        else:
+            # No file has been read previously
+            read_inv = True
+        if read_inv:
+            self.inventory_cache = (
+                read_inventory(internal_config.station_file),
+                internal_config.station_file,
+                os.path.getmtime(internal_config.station_file))
 
-        return processed_files
+        # Remove expired events (e.g. those in our cache that do not appear
+        # in new_files)
+        expired_files = set(self.event_files.keys()).difference(set(new_files))
+        for expired_file in expired_files:
+            # Remove from file cache
+            expired_id, _ = self.event_cache.pop(expired_file)
+            # Remove from event cache
+            self.event_cache.pop(expired_id)
+
+        # Read detected events - we need to re-check all events everytime to
+        # cope with updates
+        for f in new_files:
+            if f in self.event_files.keys():
+                # Check if the file has changed since we last read from it
+                if os.path.getmtime(f) <= self.event_files[f][1]:
+                    # File has not been updated. Skip reading
+                    continue
+            # File is either new or updated. Read
+            cat = sparsify_catalog(read_events(f), include_picks=True)
+            assert len(cat) == 1, f"More than one event in {f}"
+            ev = cat[0]
+            self.event_cache.update({ev.resource_id.id: ev})
+            self.event_files.update(
+                {f: (ev.resource_id.id, os.path.getmtime(f))})
+
+        self._aftershock_maps()
+        self._ellipse_plots()
+
+        return []
+
+    def _get_mainshock(self) -> Union[SparseEvent, Event, None]:
+        # Get the mainshock
+        mainshock = self.template_dict.get(self.config.mainshock_id, None)
+        if mainshock is None:
+            Logger.error(
+                f"Mainshock ({self.config.mainshock_id} not found in "
+                f"templates")
+        return mainshock
+
+    def _get_relocated_mainshock(self) -> Union[SparseEvent, Event, None]:
+        """ Try to find our detection of the mainshock """
+        mainshock = self._get_mainshock()
+        if mainshock == None:
+            return None
+        t_name = mainshock.resource_id.id.split('/')[-1]
+        # Look for a template detections
+        t_events = [ev[1] for rid, ev in self.events
+                    if rid.lstrip("smi:local/").startswith(t_name)]
+        if len(t_events) == 0:
+            # No detections, so we need to output the template
+            Logger.info(f"No self-detections for mainshock: {t_name}")
+            return None
+        # Look for template self detections
+        self_dets = template_possible_self_dets(
+            template_event=mainshock, catalog=t_events)
+        if len(self_dets) == 0:
+            Logger.info(f"No self-detections for mainshock: {t_name}")
+            return None
+        if len(self_dets) > 1:
+            Logger.info(
+                f"Multiple possible self-dets found for mainshock: {t_name}")
+            # Now we need for find the "best" match - simple way would be sort by
+            # origin time differences, not robust at all, but it is "something"
+            deltas = [(ev, abs(get_origin_attr(mainshock, "time") -
+                               get_origin_attr(ev, "time")))
+                      for ev in self_dets]
+            deltas.sort(key=lambda tup: tup[1])
+            return deltas[0][0]
+        else:
+            return self_dets[0]
+
+
+    def _ellipse_plots(self):
+        """ Work out the ellipses and make plots """
+        mainshock = self._get_mainshock()
+        (ellipse_stats, catalog_outliers, ellipse_map,
+         ellipse_xsection) = ellipse_plots(
+            catalog_origins=self.events,
+            mainshock=mainshock,
+            relocated_mainshock=self._get_relocated_mainshock(),
+            fabric_angle=self.config.fabric_angle,
+            IQR_k=self.config.IQR_k,
+            ellipse_std=self.config.ellipse_std,
+            lowess=self.config.lowess,
+            lowess_f=self.config.lowess_f,
+            radius_km=self.config.search_radius)
+
+        ellipse_map.savefig(
+            f'{self.config.out_dir}/confidence_ellipsoid_{_now_str()}.png',
+            dpi=self.config.png_dpi)
+        ellipse_map.savefig(
+            f'{self.config.out_dir}/confidence_ellipsoid_{_now_str()}.pdf',
+            dpi=self.config.eps_dpi)
+
+        ellipse_xsection.savefig(
+            f'{self.config.out_dir}/confidence_ellipsoid_'
+            f'vertical{_now_str()}.png',
+            dpi=self.config.png_dpi)
+        ellipse_xsection.savefig(
+            f'{self.config.out_dir}/confidence_ellipsoid_'
+            f'vertical{_now_str()}.pdf',
+            dpi=self.config.eps_dpi)
+
+        corners = ellipse_to_rectangle(
+            latitude=(mainshock.preferred_origin() or
+                      mainshock.origins[-1]).latitude,
+            longitude=(mainshock.preferred_origin() or
+                       mainshock.origins[-1]).longitude,
+            offset_x=ellipse_stats['x_mean'],
+            offset_y=ellipse_stats['y_mean'],
+            length=ellipse_stats['length'],
+            width=ellipse_stats['width'],
+            azimuth=ellipse_stats['azimuth'])
+
+        corners_3d = []  # TODO include depths of corners to be fed into json writeout
+        # need to calculate the dip direction robustly to ensure correct
+        # corners are assigned depths
+
+        # TODO: Output corners to json?
+        return
+
+    def _aftershock_maps(self):
+        """ Make core aftershock maps. """
+        now = UTCDateTime.now()
+        mainshock = self._get_mainshock()
+
+        template_map = aftershock_map(
+            catalog=self.template_dict.values(),
+            mainshock=mainshock,
+            inventory=self.inventory,
+            topo_res="03s",
+            topo_cmap="grayC",
+            hillshade=False,
+        )
+
+        template_map.savefig(
+            f"{self.config.out_dir}/catalog_templates_{_now_str()}.png",
+            dpi=self.config.png_dpi)
+        template_map.savefig(
+            f"{self.config.out_dir}/catalog_templates_{_now_str()}.pdf",
+            dpi=self.config.eps_dpi)
+        
+        detected_map = aftershock_map(
+            catalog=self.events,
+            mainshock=mainshock,
+            inventory=self.inventory,
+            topo_res="03s",
+            topo_cmap="grayC",
+            hillshade=False,
+        )
+
+        detected_map.savefig(
+            f"{self.config.out_dir}/catalog_RT_{_now_str()}.png",
+            dpi=self.config.png_dpi)
+        detected_map.savefig(
+            f"{self.config.out_dir}/catalog_RT_{_now_str()}.pdf",
+            dpi=self.config.eps_dpi)
+
+        return
 
 
 if __name__ == "__main__":

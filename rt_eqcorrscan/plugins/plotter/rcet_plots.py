@@ -1164,8 +1164,7 @@ def plot_confidence_ellipsoid_vertical(catalog, x, z, xo, yo, xrm, zrm, z_m, t, 
 
 
 def ellipse_plots(catalog_origins, mainshock, relocated_mainshock, fabric_angle, 
-                 IQR_k, ellipse_std, output_dir, lowess, lowess_f, radius_km, 
-                 png_dpi, eps_dpi, current_time, geonet_mainshock_depth):
+                 IQR_k, ellipse_std, lowess, lowess_f, radius_km):
 
     #Calculate metrics 
     x, y = extract_xy(catalog=catalog_origins, mainshock=mainshock)
@@ -1179,14 +1178,14 @@ def ellipse_plots(catalog_origins, mainshock, relocated_mainshock, fabric_angle,
     x_o, y_o, x_no, y_no, catalog, catalog_outliers = find_outliers(x=x, y=y, x1=x1, y1=y1, k=IQR_k, catalog_origins=catalog_origins)
 
     length, azimuth, cov, width, Ds, db, x_mean, y_mean = get_len_theta(x=x_no, y=y_no, sd=ellipse_std)
-    fig=plot_confidence_ellipsoid(catalog=catalog, x=x_no, y=y_no, xo=x_o, yo=y_o, xrm=x_rm, yrm=y_rm, LOWESS=lowess, 
-                                  frac=lowess_f, mainshock=mainshock, sd=ellipse_std, radius_km=radius_km, 
-                                  t=catalog[-1].origins[-1].time.datetime-mainshock.origins[-1].time.datetime)
+    ellipse_map_plot = plot_confidence_ellipsoid(
+        catalog=catalog, x=x_no, y=y_no, xo=x_o, yo=y_o, xrm=x_rm, yrm=y_rm,
+        LOWESS=lowess, frac=lowess_f, mainshock=mainshock, sd=ellipse_std,
+        radius_km=radius_km,
+        t=catalog[-1].origins[-1].time.datetime - mainshock.origins[-1].time.datetime)
     #len_lowess=get_len_LOWESS(x=x_no, y=y_no, frac=lowess_f)
     #write figure to file
     #need to colour by depth
-    fig.savefig(output_dir + 'confidence_ellipsoid_' + str(current_time).split('.')[0] + '.png', dpi=png_dpi)
-    fig.savefig(output_dir + 'confidence_ellipsoid_' + str(current_time).split('.')[0] + '.pdf', dpi=eps_dpi)
 
     ###### VERTICAL X-SEC #####
     depths_good=[]
@@ -1206,13 +1205,26 @@ def ellipse_plots(catalog_origins, mainshock, relocated_mainshock, fabric_angle,
 
     length_z, azimuth_z, cov_z, width_z, Ds_z, db_z, x_mean_z, y_mean_z = get_len_theta(x=y_z, y=z_z, sd=ellipse_std)
     dip=90-azimuth_z
-    fig=plot_confidence_ellipsoid_vertical(catalog=catalog_good_depths, x=y_z, z=z_z, xo=[], yo=[], xrm=y_zrm[0], zrm=z_rm*-1,
-                                           z_m=geonet_mainshock_depth, mainshock=mainshock, sd=ellipse_std, LOWESS=True, frac=lowess_f,  
-                                           t=catalog[-1].origins[-1].time.datetime-mainshock.origins[-1].time.datetime, w=width)
-    fig.savefig(output_dir + 'confidence_ellipsoid_vertical_' + str(current_time).split('.')[0] + '.png', dpi=eps_dpi)
-    fig.savefig(output_dir + 'confidence_ellipsoid_vertical_' + str(current_time).split('.')[0] + '.pdf', dpi=eps_dpi)
+    ellipse_xsection = plot_confidence_ellipsoid_vertical(
+        catalog=catalog_good_depths, x=y_z, z=z_z, xo=[], yo=[], xrm=y_zrm[0],
+        zrm=z_rm * -1, z_m=mainshock.preferred_origin().depth, mainshock=mainshock,
+        sd=ellipse_std,
+        LOWESS=True,  # TODO: Emily has this hard-coded to True rather than the var?
+        frac=lowess_f,
+        t=catalog[-1].origins[-1].time.datetime - mainshock.origins[-1].time.datetime,
+        w=width)
 
-    return length, azimuth, width, length_z, dip, catalog_outliers, x_mean, y_mean
+    ellipse_output = {
+        "length": length,
+        "azimuth": azimuth,
+        "width": width,
+        "length_z": length_z,
+        "dip": dip,
+        "x_mean": x_mean,
+        "y_mean": y_mean,
+    }
+
+    return ellipse_output, catalog_outliers, ellipse_map_plot, ellipse_xsection
         
     
 def make_scaled_mag_list(length, width, rupture_area, scaled_mag_relation):
