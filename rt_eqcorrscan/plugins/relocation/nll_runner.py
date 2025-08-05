@@ -10,6 +10,7 @@ import shutil
 import tempfile
 import platform
 import logging
+import pickle
 
 from math import radians, sin, cos
 
@@ -48,6 +49,8 @@ class NLLConfig(_PluginConfig):
         "station_file": os.path.abspath("stations.xml"),
         "sleep_interval": 10,
         "working_dir": "nll_working",
+        "template_dir": None,
+        "relocate_templates": False,
     }
     _readonly = []
 
@@ -406,6 +409,7 @@ def run_nll(catalog: Catalog, control_file: str, verbose: bool = True) -> Catalo
 
 class NLL(_Plugin):
     _setup = True
+    located_templates = []  # List of template files already located
     def __init__(self, config_file: str, name: str = "NLLRunner"):
         super().__init__(config_file=config_file, name=name)
 
@@ -525,6 +529,22 @@ class NLL(_Plugin):
             # Cope with possibility of multiple events in one file.
             event_file_mapper.update({f: [ev.resource_id.id.split('/')[-1]
                                           for ev in cat]})
+
+        if internal_config.relocate_templates:
+            Logger.info("Reading templates for relocation")
+            t_files = glob.glob(f"{internal_config.template_dir}/*.pkl")
+            i = 0
+            for t_file in t_files:
+                if t_file in self.located_templates:
+                    continue
+                with open(t_file, "rb") as f:
+                    t = pickle.load(f)
+                cat_to_locate += t.event
+                event_file_mapper.update(
+                    {f: [t.event.resource_id.id.split('/')[-1]]})
+                self.located_templates.append(t_file)
+                i += 1
+            Logger.info(f"Will relocate {i} templates")
 
         Logger.info("Running locations")
         cat_located = self.run_nll(catalog=cat_to_locate,

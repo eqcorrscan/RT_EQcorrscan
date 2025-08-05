@@ -8,7 +8,7 @@ Code for making maps and other plots for aftershock detection.
 import pygmt
 import numpy as np
 
-from typing import Union
+from typing import Union, Tuple
 
 from pyproj import CRS, Transformer
 
@@ -306,6 +306,7 @@ def mainshock_mags(mainshock, RT_mainshock):
 
 ###########################################################
 
+# TODO: Is this used?
 def _eq_map_test(
     catalog: Catalog,
     reference_catalog: Catalog,
@@ -690,7 +691,6 @@ def output_aftershock_map(
     inventory: Inventory = None,
     pad: float = 1, 
     width: float = 15.,
-    mainshock_size: float = 1,
     inset_multiplier: float = 8,
     topo_res: str = None,
     topo_cmap: str = "geo",
@@ -1432,10 +1432,94 @@ def plot_scaled_magnitudes(mag_list, scaled_mag, slip_list, ref_list, Mw, mainsh
         plt.text(0, max_mag-0.3, 'Moment Magnitude (Mw) = N/A', color='black', fontsize=11.0, horizontalalignment='left')
     plt.legend(bbox_to_anchor=(1.1, 1.0))
     return fig
-                 
+
+
+def focal_sphere_plots(
+    azimuth: float,
+    dip: float,
+    MT_NP1: Tuple[float, float, float],
+    MT_NP2: Tuple[float, float, float],
+):
+    """
+    Plot focal sphere solutions.
+
+    Parameters
+    ----------
+    azimuth
+        Azimuth of plane to compare to moment tensor
+    dip
+        Dip of plane to compare to moment tensor
+    MT_NP1
+        Strike, dip, rake of preferred moment tensor nodal plane 1
+    MT_NP2
+        Strike, dip, rake of preferred moment tensor nodal plane 2
+
+    Returns
+    -------
+    Figure.
+    """
+    import matplotlib.pyplot as plt
+    import mplstereonet
+    from obspy.imaging.beachball import beach
+
+    # plot stereonet of fault plane
+    fig, axs = plt.subplot_mosaic(
+        [["s", "s", "b"], ["s", "s", "."]],
+        per_subplot_kw={"s": {"projection": "stereonet"}},
+        figsize=(8, 8))
+    ax = axs["s"]
+    ax.plane(azimuth + 180, dip, c='b', label='Best fit aftershock plane %03d/%02d' % (azimuth + 180, dip))
+    if MT_NP1:
+        ax.plane(MT_NP1[0], MT_NP1[1], c='r', label='Moment Tensor  %03d/%02d' % (MT_NP1[0], MT_NP1[1]))
+        ax.plane(MT_NP2[0], MT_NP2[1], c='r')
+    ax.grid()
+    ax.legend()
+
+    # Focal mechanism parameters (strike, dip, rake)
+    if MT_NP1:
+        focal_mechanism_1 = (MT_NP1[0], MT_NP1[1], MT_NP1[2])  # Example values
+        bb_ax = axs["b"]
+        # Plot the first beachball
+        bb1 = beach(focal_mechanism_1, xy=(0.3, 0.5), width=0.2, facecolor='grey', edgecolor='k', axes=None)
+        bb_ax.add_collection(bb1)
+
+        # Set plot limits and remove axis ticks
+        bb_ax.set_xlim(0, 1)
+        bb_ax.set_ylim(0, 1)
+        bb_ax.set_xticks([])
+        bb_ax.set_yticks([])
+        bb_ax.axis('equal')
+        bb_ax.axis("off")
+
+        # Add title and show the plot
+        bb_ax.set_title('GeoNet Moment Tensor')
+
+    return fig
+
 ################################################     
 
-def summary_files(eventid, current_time, elapsed_secs, catalog_RT, cat_counts, catalog_geonet, catalog_outliers, length, azimuth, dip, length_z, scaled_mag, geonet_mainshock_mag, geonet_mainshock_mag_uncertainty, mean_depth, RT_mainshock_depth, RT_mainshock_depth_uncertainty,     geonet_mainshock_depth, geonet_mainshock_depth_uncertainty, output_dir):
+def summary_files(
+    eventid,
+    current_time,
+    elapsed_secs,
+    catalog_RT,
+    cat_counts,
+    catalog_geonet,
+    catalog_outliers,
+    length,
+    azimuth,
+    dip,
+    length_z,
+    scaled_mag,
+    geonet_mainshock_mag,
+    geonet_mainshock_mag_uncertainty,
+    mean_depth,
+    RT_mainshock_depth,
+    RT_mainshock_depth_uncertainty,
+    geonet_mainshock_depth,
+    geonet_mainshock_depth_uncertainty,
+    output_dir
+):
 
     # list of column names
     field_names = ['Trigger_ID', 'Timestamp', 'Elapsed_secs',
@@ -1922,7 +2006,5 @@ def ellipse_to_rectangle(
     return corners[0:-1]
     
 
-
-
-
-
+if __name__ == "__main__":
+    print("Nothing to see here.")

@@ -149,6 +149,7 @@ class OutputConfig(_PluginConfig):
         "sleep_interval": 20,
         "output_templates": True,
         "retain_history": False,
+        "mainshock_id": None,
     }
     readonly = []
 
@@ -176,6 +177,22 @@ class Outputter(_Plugin):
         """ Get the output events. """
         return [v[1] for v in self.output_events.values()]
 
+    @property
+    def _mainshock_time(self) -> UTCDateTime:
+        if self.config.mainshock_id is None:
+            return UTCDateTime(0)
+        mainshock = [ev for ev in self.template_dict.values()
+                     if self.config.mainshock_id in ev.resource_id.id]
+        if len(mainshock) == 0:
+            Logger.error(f"Did not find mainshock ({self.config.mainshock_id}) "
+                         f"in templates")
+            return UTCDateTime(0)
+        elif len(mainshock) > 1:
+            Logger.error(f"Found multiple matches for mainshock "
+                         f"({self.config.mainshock_id}) in templates")
+        mainshock.sort(key=lambda ev: get_origin_attr(ev, "time"))
+        return get_origin_attr(mainshock[0], "time")
+
     def core(self, new_files: List[str], cleanup: bool) -> List:
         internal_config = self.config.copy()
         retain_history = internal_config.get("retain_history", False)
@@ -184,6 +201,8 @@ class Outputter(_Plugin):
         out_dir = internal_config.pop("out_dir")
         if not os.path.isdir(out_dir):
             os.makedirs(out_dir)
+        if not os.path.isdir(f"{out_dir}/history"):
+            os.makedirs(f"{out_dir}/history")
         Logger.debug(f"Writing out to {out_dir}")
 
         # Get all templates
@@ -201,6 +220,11 @@ class Outputter(_Plugin):
                 continue
             # Note: reading events is the slow part of this loop.
             event = read_events(file)
+            # We don't want to output events from before our mainshock
+            if get_origin_attr(event, "time") < self._mainshock_time:
+                # Don't output template events before our trigger event
+                self._read_files.append(file)  # Don't re-read this file.
+                continue
             event = sparsify_catalog(event, include_picks=True)
             assert len(event) == 1, f"Multiple events in {file} - not supported"
             event = event[0]
@@ -234,6 +258,15 @@ class Outputter(_Plugin):
         template_outputs = dict()
         if internal_config.output_templates:
             for t_file, t_event in self.template_dict.items():
+                if get_origin_attr(t_event, "time") < self._mainshock_time:
+                    # Don't output template events before our trigger event
+                    continue
+                # If we have read in a relocated version of the template then we
+                # should use that as the original template
+                if t_event.resource_id.id in self.output_events.keys():
+                    # Get the event from the relocated version and remove it from
+                    # the output events so that we don't output it and its self detection.
+                    _, t_event = self.output_events.pop(t_event.resource_id.id)
                 t_name = t_event.resource_id.id.split('/')[-1]
                 # Look for a template detections
                 t_events = [ev[1] for rid, ev in self.output_events.items()
@@ -253,7 +286,7 @@ class Outputter(_Plugin):
                             f"adding template to output")
                 template_outputs.update({t_name: (t_file, t_event)})
         toc = time.perf_counter()
-        Logger.info(f"Took {toc-tic:.2f} s to check for self detections")
+        Logger.info(f"Took {toc - tic:.2f} s to check for self detections")
 
         # Output csv and QMLs
         tic = time.perf_counter()
@@ -261,20 +294,16 @@ class Outputter(_Plugin):
         if os.path.isdir(f"{out_dir}/catalog"):
             if retain_history:
                 shutil.move(
-                    f"{out_dir}/catalog",
-                    f"{out_dir}/catalog_{UTCDateTime.now().strftime('%Y%m%dT%H%M%S')}")
-                shutil.move(
                     f"{out_dir}/catalog.csv",
-                    f"{out_dir}/catalog_{UTCDateTime.now().strftime('%Y%m%dT%H%M%S')}/catalog.csv")
-            else:
-                shutil.rmtree(f"{out_dir}/catalog")
+                    f"{out_dir}/history/catalog_{UTCDateTime.now().strftime('%Y%m%dT%H%M%S')}.csv")
+            shutil.rmtree(f"{out_dir}/catalog")
         os.makedirs(f"{out_dir}/catalog")
 
         # Link events
         output_events = []
         Logger.info(f"We have a total of {len(self.output_events)} detections "
                     f"from {len(self.template_dict)} templates.")
-        Logger.info(f"Of these templates {len(template_outputs)} have no "
+        Logger.info(f"Of these templates, {len(template_outputs)} have no "
                     f"self-detections")
         for value in self.output_events.values():
             ev_file, ev = value
