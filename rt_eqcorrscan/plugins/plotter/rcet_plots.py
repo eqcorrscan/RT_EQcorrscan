@@ -8,7 +8,7 @@ Code for making maps and other plots for aftershock detection.
 import pygmt
 import numpy as np
 
-from typing import Union
+from typing import Union, Tuple
 
 from pyproj import CRS, Transformer
 
