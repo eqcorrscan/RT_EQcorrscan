@@ -4,7 +4,7 @@ Runner for the plotting funcs.
 
 import os
 import logging
-from typing import Iterable, List, Union
+from typing import Iterable, List, Union, Tuple
 
 from obspy import read_events, UTCDateTime, Inventory, read_inventory
 from obspy.core.event import Event
