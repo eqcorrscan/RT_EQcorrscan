@@ -41,7 +41,15 @@ REGISTERED_PLUGINS = {
 }
 PLUGIN_CONFIG_MAPPER = dict()
 # Control order of plugins, outdir of previous plugin is input to plugin
-ORDERED_PLUGINS = ["picker", "hyp", "growclust", "mag_calc", "outputter", "plotter"]
+ORDERED_PLUGINS = [
+    "picker",
+    "hyp",
+    "nll",
+    "growclust",
+    "mag_calc",
+    "outputter",
+    "plotter"
+]
 
 Logger = logging.getLogger(__name__)
 
