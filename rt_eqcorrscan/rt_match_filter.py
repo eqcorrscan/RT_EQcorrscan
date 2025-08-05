@@ -695,7 +695,9 @@ class RealTimeTribe(Tribe):
         if self.plugin_config is None:
             Logger.debug("No plugins configured")
             return
-        for key in self.plugin_config["order"]:
+        Logger.info(
+            f"Setting up plugins according to {self._plugin_order}")
+        for key in self._plugin_order:
             value = self.plugin_config.get(key, None)
             if value is None:
                 continue
@@ -734,11 +736,11 @@ class RealTimeTribe(Tribe):
         try:
             # Need to pop this from configs so that order doesn't get
             # run as a plugin
-            order = self.plugin_config.pop("order")
+            self._plugin_order = self.plugin_config.pop("order")
         except KeyError:
-            order = ORDERED_PLUGINS
+            self._plugin_order = ORDERED_PLUGINS
         outputter_in_dirs = [in_dir]
-        for plugin_name in order:
+        for plugin_name in self._plugin_order:
             # If plugin name is plot then out_dir should be in_dir
             config = self.plugin_config.get(plugin_name, None)
             if config is None:
@@ -766,7 +768,7 @@ class RealTimeTribe(Tribe):
                         self.maxlon - (0.1 * (self.maxlon - self.minlon)))
                 config.minlon = (
                         self.minlon - (0.1 * (self.maxlon - self.minlon)))
-            if plugin_name == "growclust" and "nll" in order:
+            if plugin_name == "growclust" and "nll" in self._plugin_order:
                 # If we are running both growclust and nonlinloc we can use the nll 3D grids
                 if config.ttabsrc == "nllgrid":
                     nll_config = self.plugin_config.get('nll')
