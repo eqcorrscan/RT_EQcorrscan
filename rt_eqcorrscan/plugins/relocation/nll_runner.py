@@ -10,6 +10,7 @@ import shutil
 import tempfile
 import platform
 import logging
+import pickle
 
 from math import radians, sin, cos
 
