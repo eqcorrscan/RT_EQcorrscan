@@ -66,14 +66,15 @@ Logger = logging.getLogger(__name__)
 # CORRELATION COMPUTATION PARAMETERS
 
 class _GrowClustProj(_PluginConfig):
-    defaults = {
+    defaults = _PluginConfig.defaults.copy()
+    defaults.update({
         "proj": "tmerc",
         "ellps": "WGS84",
         "lon0": 0.0,
         "lat0": 0.0,
         "rotANG": 0.0,
         "latP1": None,
-        "latP2": None}
+        "latP2": None})
 
     def __str__(self):
         _str = f"{self.proj} {self.ellps} {self.lon0} {self.lat0} {self.rotANG}"

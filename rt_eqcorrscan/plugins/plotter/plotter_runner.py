@@ -15,7 +15,7 @@ from rt_eqcorrscan.plugins.plugin import (
 from rt_eqcorrscan.helpers.sparse_event import sparsify_catalog, SparseEvent, \
     get_origin_attr
 from rt_eqcorrscan.plugins.plotter.rcet_plots import (
-    aftershock_map, check_catalog, mainshock_mags, ellipse_plots,
+    aftershock_map, summary_files, ellipse_plots,
     ellipse_to_rectangle, focal_sphere_plots, plot_scaled_magnitudes,
     make_scaled_mag_list,
 )
@@ -29,7 +29,8 @@ class PlotConfig(_PluginConfig):
     """
     Configuration for the plotter plugin.
     """
-    defaults = {
+    defaults = _PluginConfig.defaults.copy()
+    defaults.update({
         "sleep_interval": 600,
         "mainshock_id": None,
         "station_file": None,
@@ -49,7 +50,7 @@ class PlotConfig(_PluginConfig):
         "lowess_f": 0.5,
         "magcut": 3.0,
         "search_radius": None,
-    }
+    })
     readonly = []
 
     def __init__(self, *args, **kwargs):

@@ -29,14 +29,15 @@ class HypConfig(_PluginConfig):
     """
     Configuration for the hyp plugin.
     """
-    defaults = {
+    defaults = _PluginConfig.defaults.copy()
+    defaults.update({
         "vmodel_file": os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                     "vmodel.txt"),
         "station_file": "stations.xml",
         "min_stations": 5,
         "max_rms": 2.0,
         "sleep_interval": 10,
-    }
+    })
     readonly = []
 
     def __init__(self, *args, **kwargs):

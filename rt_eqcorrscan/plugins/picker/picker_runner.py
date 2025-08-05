@@ -38,7 +38,8 @@ class PickerConfig(_PluginConfig):
     """
     Configuration holder for the picker plugin
     """
-    defaults = {
+    defaults = _PluginConfig.defaults.copy()
+    defaults.update({
         "shift_len": 0.2,
         "min_cc": 0.4,
         "min_cc_from_mean_cc_factor": None,
@@ -56,7 +57,7 @@ class PickerConfig(_PluginConfig):
         "winlen": 0.5,
         "ps_multiplier": 0.15,
         "station_file": "stations.xml",
-    }
+    })
     readonly = []
 
     def __init__(self, *args, **kwargs):

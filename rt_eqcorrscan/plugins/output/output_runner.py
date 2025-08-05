@@ -145,12 +145,13 @@ class OutputConfig(_PluginConfig):
     """
     Configuration for the output plugin
     """
-    defaults = {
+    defaults = _PluginConfig.defaults.copy()
+    defaults.update({
         "sleep_interval": 20,
         "output_templates": True,
         "retain_history": False,
         "mainshock_id": None,
-    }
+    })
     readonly = []
 
     def __init__(self, *args, **kwargs):

@@ -36,7 +36,8 @@ Logger = logging.getLogger(__name__)
 # NonLinLoc configuration
 
 class NLLConfig(_PluginConfig):
-    defaults = {
+    defaults = _PluginConfig.defaults.copy()
+    defaults.update({
         "infile": os.path.abspath("nonlinloc_files/NonLinLoc_3d.in"),
         "veldir": os.path.abspath("nonlinloc_files/VEL"),
         "maxlat": None,
@@ -51,7 +52,7 @@ class NLLConfig(_PluginConfig):
         "working_dir": "nll_working",
         "template_dir": None,
         "relocate_templates": False,
-    }
+    })
     _readonly = []
 
     def __init__(self, *args, **kwargs):
