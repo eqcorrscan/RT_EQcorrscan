@@ -53,7 +53,8 @@ class PlotConfig(_PluginConfig):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.station_file = os.path.abspath(self.station_file)
+        if self.station_file:
+            self.station_file = os.path.abspath(self.station_file)
 
 
 PLUGIN_CONFIG_MAPPER.update({"plotter": PlotConfig})
