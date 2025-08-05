@@ -695,7 +695,8 @@ class RealTimeTribe(Tribe):
         if self.plugin_config is None:
             Logger.debug("No plugins configured")
             return
-        for key, value in self.plugin_config.items():
+        for key in self.plugin_config["order"]:
+            value = self.plugin_config.get(key, None)
             if value is None:
                 continue
             if key not in REGISTERED_PLUGINS.keys() and key != "order":
