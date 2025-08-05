@@ -16,7 +16,8 @@ from rt_eqcorrscan.helpers.sparse_event import sparsify_catalog, SparseEvent, \
     get_origin_attr
 from rt_eqcorrscan.plugins.plotter.rcet_plots import (
     aftershock_map, check_catalog, mainshock_mags, ellipse_plots,
-    ellipse_to_rectangle
+    ellipse_to_rectangle, focal_sphere_plots, plot_scaled_magnitudes,
+    make_scaled_mag_list,
 )
 from rt_eqcorrscan.plugins.output.output_runner import template_possible_self_dets
 
@@ -152,11 +153,40 @@ class Plotter(_Plugin):
                 {f: (ev.resource_id.id, os.path.getmtime(f))})
 
         self._aftershock_maps()
-        self._ellipse_plots()
+        ellipse_stats = self._ellipse_plots()
+        self._beachball_plots(
+            aftershock_azimuth=ellipse_stats["azimuth"],
+            aftershock_dip=ellipse_stats["dip"])
+        self._magnitude_plots(
+            length=ellipse_stats["length"],
+            length_z=ellipse_stats["length_z"],
+             mainshock=self._get_mainshock()
+        )
+        # TODO: Where does all this come from?
+        output_dictionary = summary_files(
+            eventid=eventid,
+            current_time=current_time,
+            elapsed_secs=elapsed_secs,
+            catalog_RT=catalog_RT,
+            cat_counts=cat_counts,
+            catalog_geonet=catalog_geonet,
+            catalog_outliers=catalog_outliers,
+            length=length,
+            azimuth=azimuth,
+            dip=dip,
+            length_z=length_z,
+            scaled_mag=scaled_mag,
+            geonet_mainshock_mag=geonet_mainshock_mag,
+            geonet_mainshock_mag_uncertainty=geonet_mainshock_mag_uncertainty,
+            mean_depth=mean_depth,
+            RT_mainshock_depth=RT_mainshock_depth,
+            RT_mainshock_depth_uncertainty=RT_mainshock_depth_uncertainty,
+            geonet_mainshock_depth=geonet_mainshock_depth,
+            geonet_mainshock_depth_uncertainty=geonet_mainshock_depth_uncertainty,
+            output_dir=output_dir)
 
-        # TODO: Beachball plotting
-        # TODO: scaled magnitude plotting
-        # TODO: Refined plot for public output (logos should be somewhere useful)
+        # TODO: pass args?
+        self._summary_figure()
 
         return []
 
@@ -201,8 +231,69 @@ class Plotter(_Plugin):
         else:
             return self_dets[0]
 
+    #### Plotting methods
+    def _summary_figure(self):
+        fig = output_aftershock_map(
+            catalog=catalog_origins,
+            reference_catalog=catalog_geonet,
+            outlier_catalog=catalog_outliers,
+            mainshock=mainshock,
+            RT_mainshock=relocated_mainshock[0],
+            corners=corners,
+            cat_counts=cat_counts,
+            width=20,
+            topo_res="03s",
+            topo_cmap="terra",
+            inventory=inv,
+            hillshade=False,
+            colours='depth')
 
-    def _ellipse_plots(self):
+        fig.savefig(
+            f"{self.config.out_dir}/Aftershock_extent_depth_map_{_now_str()}.png",
+            dpi=self.config.png_dpi)
+        fig.savefig(
+            f"{self.config.out_dir}/Aftershock_extent_depth_map_{_now_str()}.pdf",
+            dpi=self.config.eps_dpi)
+        return
+
+    def _magnitude_plots(
+        self,
+        length: float,
+        length_z: float,
+        mainshock: Event,
+    ):
+        mag_list, slip_list, ref_list, scaled_mag = make_scaled_mag_list(
+            length=length, width=length_z,
+            rupture_area=self.config.rupture_area,
+            scaled_mag_relation=self.config.scaled_mag_relation)
+        # currently cuts off figure legend!
+        fig = plot_scaled_magnitudes(
+            mag_list=mag_list, scaled_mag=scaled_mag, slip_list=slip_list,
+            ref_list=ref_list, Mw=self.config.Mw, mainshock=mainshock)
+        fig.savefig(
+            f"{self.config.out_dir}/Scaled_Magnitude_Comparison_{_now_str()}.eps",
+            dpi=self.config.eps_dpi)
+        fig.savefig(
+            f"{self.config.out_dir}/Scaled_Magnitude_Comparison_{_now_str()}.png",
+            dpi=self.config.png_dpi)
+        return
+
+    def _beachball_plots(self, aftershock_azimuth, aftershock_dip):
+        """ Make focal sphere plots. """
+        fig = focal_sphere_plots(
+            azimuth=aftershock_azimuth,
+            dip=aftershock_dip,
+            MT_NP1=self.config.MT_NP1,
+            MT_NP2=self.config.MT_NP2)
+        fig.savefig(
+            f"{self.config.out_dir}/focal_sphere_{_now_str()}.png",
+            dpi=self.config.png_dpi)
+        fig.savefig(
+            f"{self.config.out_dir}/focal_sphere_{_now_str()}.pdf",
+            dpi=self.config.eps_dpi)
+        return
+
+    def _ellipse_plots(self) -> dict:
         """ Work out the ellipses and make plots """
         mainshock = self._get_mainshock()
         (ellipse_stats, catalog_outliers, ellipse_map,
@@ -249,7 +340,7 @@ class Plotter(_Plugin):
         # corners are assigned depths
 
         # TODO: Output corners to json?
-        return
+        return ellipse_stats
 
     def _aftershock_maps(self):
         """ Make core aftershock maps. """
