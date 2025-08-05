@@ -220,6 +220,11 @@ class Outputter(_Plugin):
                 continue
             # Note: reading events is the slow part of this loop.
             event = read_events(file)
+            # We don't want to output events from before our mainshock
+            if get_origin_attr(event, "time") < self._mainshock_time:
+                # Don't output template events before our trigger event
+                self._read_files.append(file)  # Don't re-read this file.
+                continue
             event = sparsify_catalog(event, include_picks=True)
             assert len(event) == 1, f"Multiple events in {file} - not supported"
             event = event[0]
@@ -256,6 +261,12 @@ class Outputter(_Plugin):
                 if get_origin_attr(t_event, "time") < self._mainshock_time:
                     # Don't output template events before our trigger event
                     continue
+                # If we have read in a relocated version of the template then we
+                # should use that as the original template
+                if t_event.resource_id.id in self.output_events.keys():
+                    # Get the event from the relocated version and remove it from
+                    # the output events so that we don't output it and its self detection.
+                    _, t_event = self.output_events.pop(t_event.resource_id.id)
                 t_name = t_event.resource_id.id.split('/')[-1]
                 # Look for a template detections
                 t_events = [ev[1] for rid, ev in self.output_events.items()
