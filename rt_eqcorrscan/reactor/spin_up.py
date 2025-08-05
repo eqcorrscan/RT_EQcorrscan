@@ -94,11 +94,13 @@ def run(
             f"km of the trigger matching your templates, not running")
         return None, None
     inventory.write("inventory.xml", format="STATIONXML")
-    for plug in ['hyp', 'picker', 'nll', 'growclust']:
+    for plug in ['hyp', 'picker', 'nll', 'growclust', 'plotter']:
         if config.plugins[plug]:
             # We need to handle the stationxml file and velocity file here
             config.plugins[plug].station_file = os.path.join(
                 working_dir, "inventory.xml")
+    if config.plugins['plotter']:
+        config.plugins['plotter'].mainshock_id = triggering_event.resource_id.id.split('/')[-1]
     detect_interval = config.rt_match_filter.get(
         "detect_interval", 60)
     plot = config.rt_match_filter.get("plot", False)

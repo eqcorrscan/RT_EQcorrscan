@@ -742,16 +742,19 @@ class RealTimeTribe(Tribe):
             config = self.plugin_config.get(plugin_name, None)
             if config is None:
                 continue
+            if plugin_name in ["plotter"]:
+                config.out_dir = in_dir
+            else:
+                config.out_dir = f"{self.name}/{plugin_name}_out"
+                if plugin_name not in ["outputter"]:
+                    outputter_in_dirs.append(config.out_dir)
+                    # Add outputs to outputter, don't add plotting output
+                    # Don't add the outputters output!
             if plugin_name in ["outputter"]:
                 # The outputter wants all the intermediate outputs
                 config.in_dir = outputter_in_dirs
             else:
                 config.in_dir = in_dir
-            if plugin_name in ["plotter"]:
-                config.out_dir = in_dir
-            else:
-                config.out_dir = f"{self.name}/{plugin_name}_out"
-                outputter_in_dirs.append(config.out_dir)  # Add outputs to outputter, don't add plotting output
             if plugin_name == "nll":
                 # We need to set the bounds to be useful
                 config.maxlat = (

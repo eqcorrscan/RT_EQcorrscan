@@ -11,6 +11,7 @@ import glob
 import os
 import time
 import shutil
+import pickle
 
 from typing import List, Union, Set
 from collections import OrderedDict
@@ -22,7 +23,7 @@ from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
     PLUGIN_CONFIG_MAPPER, _Plugin)
 from rt_eqcorrscan.helpers.sparse_event import (
-    sparsify_catalog, get_magnitude_attr, get_origin_attr, SparseOrigin, SparseEvent)
+    sparsify_catalog, get_origin_attr, get_magnitude_attr, SparseEvent)
 
 Logger = logging.getLogger(__name__)
 
@@ -188,17 +189,7 @@ class Outputter(_Plugin):
         # Get all templates
         tic = time.perf_counter()
         if internal_config.output_templates:
-            if internal_config.template_dir is None:
-                Logger.error("Output templates requested, but template dir not set")
-            else:
-                t_files = glob.glob(f"{internal_config.template_dir}/*.xml")
-                _tkeys = self.template_dict.keys()
-                for t_file in t_files:
-                    if t_file in _tkeys:
-                        continue
-                    template = sparsify_catalog(read_events(t_file), include_picks=True)
-                    assert len(template) == 1, f"Multiple templates found in {t_file}"
-                    self.template_dict.update({t_file: template[0]})
+            self.get_template_events()
         Logger.debug(f"We have run {len(self.template_dict)} templates")
         toc = time.perf_counter()
         Logger.info(f"Took {toc - tic:.2f} s to read templates")
@@ -240,8 +231,8 @@ class Outputter(_Plugin):
 
         tic = time.perf_counter()
         # Add in templates as needed
+        template_outputs = dict()
         if internal_config.output_templates:
-            template_outputs = dict()
             for t_file, t_event in self.template_dict.items():
                 t_name = t_event.resource_id.id.split('/')[-1]
                 # Look for a template detections
@@ -281,17 +272,34 @@ class Outputter(_Plugin):
 
         # Link events
         output_events = []
+        Logger.info(f"We have a total of {len(self.output_events)} detections "
+                    f"from {len(self.template_dict)} templates.")
+        Logger.info(f"Of these templates {len(template_outputs)} have no "
+                    f"self-detections")
         for value in self.output_events.values():
             ev_file, ev = value
             output_events.append(ev)
             ev_file_fname = os.path.basename(ev_file)
-            os.symlink(ev_file, f"{out_dir}/catalog/{ev_file_fname}")
+            shutil.copyfile(ev_file, f"{out_dir}/catalog/{ev_file_fname}")
         if internal_config.output_templates:
             for value in template_outputs.values():
                 ev_file, ev = value
                 output_events.append(ev)
                 ev_file_fname = os.path.basename(ev_file)
-                os.symlink(ev_file, f"{out_dir}/catalog/{ev_file_fname}")
+                Logger.info(f"Working on {ev_file_fname}")
+                if os.path.splitext(ev_file)[-1] in ['.pkl']:
+                    Logger.info(
+                        f"Reading template and writing event for {ev_file}")
+                    # We need to read and spit those out as events
+                    with open(ev_file, "rb") as f:
+                        t = pickle.load(f)
+                    t.event.write(
+                        f"{out_dir}/catalog/"
+                        f"{os.path.splitext(ev_file_fname)[0]}.xml",
+                        format="QUAKEML")
+                else:
+                    shutil.copyfile(
+                        ev_file, f"{out_dir}/catalog/{ev_file_fname}")
         toc = time.perf_counter()
         Logger.info(f"Took {toc - tic:.2f}s to write catalog output")
         tic = time.perf_counter()

@@ -13,7 +13,7 @@ import time
 from typing import List, Iterable
 
 from obspy import read_events, Catalog, read_inventory
-from obspy.core.event import Event, Origin, Pick
+from obspy.core.event import Event, Origin, Pick, ResourceIdentifier
 from obspy.core.inventory import Inventory, Station
 from obspy.io.nordic.core import read_nordic, write_select
 
@@ -217,6 +217,7 @@ def seisan_hyp(
             return None
     # We lose some info in the round-trip to nordic
     event_out.origins[0] = event_back[0].origins[0]
+    event_out.origins[0].method_id = ResourceIdentifier("hyp")
     event_out.magnitudes = event_back[0].magnitudes
     # Fix the seed ids in the seisan picks
     for pick in event_back[0].picks:
@@ -283,6 +284,8 @@ def iterate_over_event(
         if event_located.origins[-1].quality.standard_error <= max_rms:
             Logger.info("RMS below max_RMS, good enough!")
             event_to_be_located.origins.append(event_located.origins[0])
+            # Set the preferrred origin
+            event_to_be_located.preferred_origin_id = event_to_be_located.origins[-1].resource_id
             return event_to_be_located
         # Remove least well fit pick and go again
         Logger.info(f"There are {len(event_located.origins[-1].arrivals)} arrivals")

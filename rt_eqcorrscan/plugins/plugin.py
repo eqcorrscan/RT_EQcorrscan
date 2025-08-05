@@ -11,10 +11,13 @@ import time
 import shutil
 import itertools
 import tarfile
+import pickle
 
 from abc import ABC, abstractmethod
 
 from obspy import UTCDateTime, Catalog, read_events
+
+from rt_eqcorrscan.helpers.sparse_event import sparsify_catalog
 
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
@@ -116,6 +119,7 @@ class _Plugin(ABC):
     watch_pattern = "*.xml"
     name = "Plugin"
     _write_sim_catalogues = False  # Flag to write time-stamped simulation cats
+    template_dict = {}  # dict of sparse events keyed by event id
 
     def __init__(self, config_file: str, name: str = None):
         self.config = self._read_config(config_file=config_file)
@@ -153,6 +157,22 @@ class _Plugin(ABC):
     def _cleanup(self):
         """ Anything that needs to be done at the end of a run. """
         pass
+
+    def get_template_events(self):
+        if self.config.template_dir is None:
+            Logger.error("Output templates requested, but template dir not set")
+        else:
+            t_files = glob.glob(f"{self.config.template_dir}/*.pkl")
+            _tkeys = self.template_dict.keys()
+            for t_file in t_files:
+                if t_file in _tkeys:
+                    continue
+                with open(t_file, "rb") as f:
+                    t = pickle.load(f)
+                template = sparsify_catalog([t.event], include_picks=True)
+                assert len(
+                    template) == 1, f"Multiple templates found in {t_file}"
+                self.template_dict.update({t_file: template[0]})
 
     def _summarise_state(self):
         """ Summarise the events in the outdir and write a time-stamped tgz """
@@ -271,6 +291,9 @@ class _Plugin(ABC):
                     Logger.info("Summarising state")
                     self._summarise_state()
                 if elapsed < self.config.sleep_interval:
+                    Logger.info(
+                        f"Sleeping for "
+                        f"{self.config.sleep_interval - elapsed:.2f} s")
                     time.sleep(self.config.sleep_interval - elapsed)
 
                 continue
