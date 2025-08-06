@@ -568,7 +568,8 @@ class NLL(_Plugin):
             if len(subcat):
                 located_files.append(f)  # Add this to list of located files - we won't re-run this location
                 fname = os.path.split(f)[-1]
-                fname = fname.lstrip(os.path.sep)
+                fname, ext = os.path.splitext(fname.lstrip(os.path.sep))
+                fname += ".xml"  # Cope with files (templates) that were not xml
                 outpath = os.path.join(out_dir, fname)
                 Logger.info(f"Writing {len(subcat)} events to {outpath}")
                 subcat.write(outpath, format="QUAKEML")
