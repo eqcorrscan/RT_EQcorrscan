@@ -127,7 +127,7 @@ class _Plugin(ABC):
     watch_pattern = "*.xml"
     name = "Plugin"
     _write_sim_catalogues = False  # Flag to write time-stamped simulation cats
-    template_dict = {}  # dict of sparse events keyed by event id
+    template_dict = {}  # dict of sparse events keyed by filename
 
     def __init__(self, config_file: str, name: str = None):
         self.config = self._read_config(config_file=config_file)
@@ -265,7 +265,7 @@ class _Plugin(ABC):
 
             if not len(new_file_dict):
                 if loop:
-                    Logger.debug(
+                    Logger.info(
                         f"No new events found, sleeping for "
                         f"{self.config.sleep_interval}")
                     time.sleep(self.config.sleep_interval)
