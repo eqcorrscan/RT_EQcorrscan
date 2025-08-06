@@ -542,7 +542,7 @@ class NLL(_Plugin):
                     t = pickle.load(f)
                 cat_to_locate += t.event
                 event_file_mapper.update(
-                    {f: [t.event.resource_id.id.split('/')[-1]]})
+                    {t_file: [t.event.resource_id.id.split('/')[-1]]})
                 self.located_templates.append(t_file)
                 i += 1
             Logger.info(f"Will relocate {i} templates")
@@ -553,8 +553,10 @@ class NLL(_Plugin):
         Logger.info("Locations returned")
         cat_located_dict = {ev.resource_id.id.split('/')[-1]: ev
                             for ev in cat_located}
+        Logger.info(f"Event ids located: {cat_located_dict.keys()}")
         located_files = []
         for f, eids in event_file_mapper.items():
+            Logger.info(f"Looking for {eids} in located events")
             subcat = Catalog()
             for eid in eids:
                 event = cat_located_dict.get(eid, None)

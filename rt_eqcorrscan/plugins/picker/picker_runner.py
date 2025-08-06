@@ -300,7 +300,7 @@ class Picker(_Plugin):
                     d_party, in_memory_wavebank=self.in_memory_wavebank,
                     length=desired_stream_length,
                     pre_pick=max(internal_config.shift_len * 2,
-                                 family.template.process_length))
+                                 family.template.process_length / 2))
                 stream = stream.merge(method=1)
                 # Get an excess of data to cope with missing "future" data
                 Logger.info(f"Have stream: \n{stream}")
