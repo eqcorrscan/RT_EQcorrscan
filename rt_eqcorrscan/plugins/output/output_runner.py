@@ -221,13 +221,13 @@ class Outputter(_Plugin):
                 continue
             # Note: reading events is the slow part of this loop.
             event = read_events(file)
+            assert len(event) == 1, f"Multiple events in {file} - not supported"
             # We don't want to output events from before our mainshock
-            if get_origin_attr(event, "time") < self._mainshock_time:
+            if get_origin_attr(event[0], "time") < self._mainshock_time:
                 # Don't output template events before our trigger event
                 self._read_files.append(file)  # Don't re-read this file.
                 continue
             event = sparsify_catalog(event, include_picks=True)
-            assert len(event) == 1, f"Multiple events in {file} - not supported"
             event = event[0]
             self._read_files.append(file)  # Keep track and don't read again
             if event.resource_id.id in self.output_events.keys():
