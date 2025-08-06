@@ -36,7 +36,8 @@ Logger = logging.getLogger(__name__)
 # NonLinLoc configuration
 
 class NLLConfig(_PluginConfig):
-    defaults = {
+    defaults = _PluginConfig.defaults.copy()
+    defaults.update({
         "infile": os.path.abspath("nonlinloc_files/NonLinLoc_3d.in"),
         "veldir": os.path.abspath("nonlinloc_files/VEL"),
         "maxlat": None,
@@ -51,7 +52,7 @@ class NLLConfig(_PluginConfig):
         "working_dir": "nll_working",
         "template_dir": None,
         "relocate_templates": False,
-    }
+    })
     _readonly = []
 
     def __init__(self, *args, **kwargs):
@@ -541,7 +542,7 @@ class NLL(_Plugin):
                     t = pickle.load(f)
                 cat_to_locate += t.event
                 event_file_mapper.update(
-                    {f: [t.event.resource_id.id.split('/')[-1]]})
+                    {t_file: [t.event.resource_id.id.split('/')[-1]]})
                 self.located_templates.append(t_file)
                 i += 1
             Logger.info(f"Will relocate {i} templates")
@@ -552,8 +553,10 @@ class NLL(_Plugin):
         Logger.info("Locations returned")
         cat_located_dict = {ev.resource_id.id.split('/')[-1]: ev
                             for ev in cat_located}
+        Logger.info(f"Event ids located: {cat_located_dict.keys()}")
         located_files = []
         for f, eids in event_file_mapper.items():
+            Logger.info(f"Looking for {eids} in located events")
             subcat = Catalog()
             for eid in eids:
                 event = cat_located_dict.get(eid, None)
@@ -565,7 +568,8 @@ class NLL(_Plugin):
             if len(subcat):
                 located_files.append(f)  # Add this to list of located files - we won't re-run this location
                 fname = os.path.split(f)[-1]
-                fname = fname.lstrip(os.path.sep)
+                fname, ext = os.path.splitext(fname.lstrip(os.path.sep))
+                fname += ".xml"  # Cope with files (templates) that were not xml
                 outpath = os.path.join(out_dir, fname)
                 Logger.info(f"Writing {len(subcat)} events to {outpath}")
                 subcat.write(outpath, format="QUAKEML")

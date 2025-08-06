@@ -15,7 +15,7 @@ from rt_eqcorrscan.plugins.plugin import (
 from rt_eqcorrscan.helpers.sparse_event import sparsify_catalog, SparseEvent, \
     get_origin_attr
 from rt_eqcorrscan.plugins.plotter.rcet_plots import (
-    aftershock_map, check_catalog, mainshock_mags, ellipse_plots,
+    aftershock_map, summary_files, ellipse_plots,
     ellipse_to_rectangle, focal_sphere_plots, plot_scaled_magnitudes,
     make_scaled_mag_list,
 )
@@ -29,7 +29,8 @@ class PlotConfig(_PluginConfig):
     """
     Configuration for the plotter plugin.
     """
-    defaults = {
+    defaults = _PluginConfig.defaults.copy()
+    defaults.update({
         "sleep_interval": 600,
         "mainshock_id": None,
         "station_file": None,
@@ -48,8 +49,8 @@ class PlotConfig(_PluginConfig):
         "lowess": True,
         "lowess_f": 0.5,
         "magcut": 3.0,
-        "search_radius": None,
-    }
+        "search_radius": 100.0,
+    })
     readonly = []
 
     def __init__(self, *args, **kwargs):
@@ -152,38 +153,42 @@ class Plotter(_Plugin):
             self.event_files.update(
                 {f: (ev.resource_id.id, os.path.getmtime(f))})
 
+        Logger.info("Making earthquake maps")
         self._aftershock_maps()
+        Logger.info("Computing ellipse statistics and plotting")
         ellipse_stats = self._ellipse_plots()
+        Logger.info("Plotting beachballs")
         self._beachball_plots(
             aftershock_azimuth=ellipse_stats["azimuth"],
             aftershock_dip=ellipse_stats["dip"])
+        Logger.info("Plotting magnitude scaling relationships")
         self._magnitude_plots(
             length=ellipse_stats["length"],
             length_z=ellipse_stats["length_z"],
              mainshock=self._get_mainshock()
         )
         # TODO: Where does all this come from?
-        output_dictionary = summary_files(
-            eventid=eventid,
-            current_time=current_time,
-            elapsed_secs=elapsed_secs,
-            catalog_RT=catalog_RT,
-            cat_counts=cat_counts,
-            catalog_geonet=catalog_geonet,
-            catalog_outliers=catalog_outliers,
-            length=length,
-            azimuth=azimuth,
-            dip=dip,
-            length_z=length_z,
-            scaled_mag=scaled_mag,
-            geonet_mainshock_mag=geonet_mainshock_mag,
-            geonet_mainshock_mag_uncertainty=geonet_mainshock_mag_uncertainty,
-            mean_depth=mean_depth,
-            RT_mainshock_depth=RT_mainshock_depth,
-            RT_mainshock_depth_uncertainty=RT_mainshock_depth_uncertainty,
-            geonet_mainshock_depth=geonet_mainshock_depth,
-            geonet_mainshock_depth_uncertainty=geonet_mainshock_depth_uncertainty,
-            output_dir=output_dir)
+        # output_dictionary = summary_files(
+        #     eventid=eventid,
+        #     current_time=current_time,
+        #     elapsed_secs=elapsed_secs,
+        #     catalog_RT=catalog_RT,
+        #     cat_counts=cat_counts,
+        #     catalog_geonet=catalog_geonet,
+        #     catalog_outliers=catalog_outliers,
+        #     length=length,
+        #     azimuth=azimuth,
+        #     dip=dip,
+        #     length_z=length_z,
+        #     scaled_mag=scaled_mag,
+        #     geonet_mainshock_mag=geonet_mainshock_mag,
+        #     geonet_mainshock_mag_uncertainty=geonet_mainshock_mag_uncertainty,
+        #     mean_depth=mean_depth,
+        #     RT_mainshock_depth=RT_mainshock_depth,
+        #     RT_mainshock_depth_uncertainty=RT_mainshock_depth_uncertainty,
+        #     geonet_mainshock_depth=geonet_mainshock_depth,
+        #     geonet_mainshock_depth_uncertainty=geonet_mainshock_depth_uncertainty,
+        #     output_dir=output_dir)
 
         # TODO: pass args?
         self._summary_figure()
@@ -192,12 +197,15 @@ class Plotter(_Plugin):
 
     def _get_mainshock(self) -> Union[SparseEvent, Event, None]:
         # Get the mainshock
-        mainshock = self.template_dict.get(self.config.mainshock_id, None)
-        if mainshock is None:
+        mainshock = [ev for ev in self.template_dict.values()
+                     if self.config.mainshock_id in ev.resource_id.id]
+        if len(mainshock) == 0:
             Logger.error(
-                f"Mainshock ({self.config.mainshock_id} not found in "
-                f"templates")
-        return mainshock
+                f"Mainshock ({self.config.mainshock_id}) not found in "
+                f"templates ({self.template_dict.keys()}.")
+        elif len(mainshock) > 1:
+            Logger.warning("Multiple possible mainshocks!")
+        return mainshock[0]
 
     def _get_relocated_mainshock(self) -> Union[SparseEvent, Event, None]:
         """ Try to find our detection of the mainshock """
@@ -206,8 +214,8 @@ class Plotter(_Plugin):
             return None
         t_name = mainshock.resource_id.id.split('/')[-1]
         # Look for a template detections
-        t_events = [ev[1] for rid, ev in self.events
-                    if rid.lstrip("smi:local/").startswith(t_name)]
+        t_events = [ev for ev in self.events
+                    if ev.resource_id.id.lstrip("smi:local/").startswith(t_name)]
         if len(t_events) == 0:
             # No detections, so we need to output the template
             Logger.info(f"No self-detections for mainshock: {t_name}")

@@ -38,7 +38,8 @@ class PickerConfig(_PluginConfig):
     """
     Configuration holder for the picker plugin
     """
-    defaults = {
+    defaults = _PluginConfig.defaults.copy()
+    defaults.update({
         "shift_len": 0.2,
         "min_cc": 0.4,
         "min_cc_from_mean_cc_factor": None,
@@ -56,7 +57,7 @@ class PickerConfig(_PluginConfig):
         "winlen": 0.5,
         "ps_multiplier": 0.15,
         "station_file": "stations.xml",
-    }
+    })
     readonly = []
 
     def __init__(self, *args, **kwargs):
@@ -293,14 +294,35 @@ class Picker(_Plugin):
                 d_party = Party(
                     [Family(family.template, [detection])])
                 Logger.info(f"Getting stream from {self.in_memory_wavebank}")
+                # Ideally this would be an integer multiple of process-len
+                desired_stream_length = family.template.process_length * 3
                 stream = get_stream(
                     d_party, in_memory_wavebank=self.in_memory_wavebank,
-                    length=family.template.process_length * 3.1,
+                    length=desired_stream_length,
                     pre_pick=max(internal_config.shift_len * 2,
-                                 family.template.process_length * 1.25))
+                                 family.template.process_length))
                 stream = stream.merge(method=1)
                 # Get an excess of data to cope with missing "future" data
                 Logger.info(f"Have stream: \n{stream}")
+                # lag-calc will throw away the end of data if that is not
+                # long enough - we need the data length to be a multiple of
+                # process-len
+                for tr in stream:
+                    # Note, this doesn't guarantee that the pick will be
+                    # within the data - lag-calc will throw away data that
+                    # don't work. However, because this is running in
+                    # real-time, the main issue is data near endtime, not data
+                    # near starttime
+                    tr_length = tr.stats.endtime - tr.stats.starttime
+                    process_len_multiples = (
+                        tr_length // family.template.process_length)
+                    Logger.debug(f"Trimming {tr.id} to "
+                                 f"{process_len_multiples} process lengths")
+                    tr.trim(
+                        starttime=tr.stats.endtime - (
+                                process_len_multiples *
+                                family.template.process_length),
+                        endtime=tr.stats.endtime)
                 if len(stream):
                     min_len = min([
                         tr.stats.endtime - tr.stats.starttime

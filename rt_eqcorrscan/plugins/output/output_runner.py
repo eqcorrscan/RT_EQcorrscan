@@ -145,12 +145,13 @@ class OutputConfig(_PluginConfig):
     """
     Configuration for the output plugin
     """
-    defaults = {
+    defaults = _PluginConfig.defaults.copy()
+    defaults.update({
         "sleep_interval": 20,
         "output_templates": True,
         "retain_history": False,
         "mainshock_id": None,
-    }
+    })
     readonly = []
 
     def __init__(self, *args, **kwargs):
@@ -165,6 +166,7 @@ class Outputter(_Plugin):
     template_dict = {}  # Dict of template SparseEvents keyed by filename
     output_events = {}  # Dict of output (filename, SparseEvent) tuples keyed by event-id
     _read_files = []  # List of files that we have already read. Used to avoid re-reading events
+    _skipped_templates = set()  # Set of template files to not output
 
     def _read_config(self, config_file: str):
         return OutputConfig.read(config_file=config_file)
@@ -220,13 +222,14 @@ class Outputter(_Plugin):
                 continue
             # Note: reading events is the slow part of this loop.
             event = read_events(file)
+            assert len(event) == 1, f"Multiple events in {file} - not supported"
             # We don't want to output events from before our mainshock
-            if get_origin_attr(event, "time") < self._mainshock_time:
+            if get_origin_attr(event[0], "time") < self._mainshock_time - 60:
                 # Don't output template events before our trigger event
+                Logger.info(f"Skipping {event.resource_id.id}: before trigger")
                 self._read_files.append(file)  # Don't re-read this file.
                 continue
             event = sparsify_catalog(event, include_picks=True)
-            assert len(event) == 1, f"Multiple events in {file} - not supported"
             event = event[0]
             self._read_files.append(file)  # Keep track and don't read again
             if event.resource_id.id in self.output_events.keys():
@@ -244,7 +247,7 @@ class Outputter(_Plugin):
                         new_index = i
                 if old_index <= new_index:
                     Logger.info(f"Event {event.resource_id.id} already in output. Updating original from "
-                                f"{old_in_dir.split('/')[-1]} to one from {new_in_dir.split('/')[-1]}.")
+                                f"{old_in_dir.split('/')[-1]} to one from {new_in_dir}.")
                 else:
                     Logger.info(f"New file read, but with lower priority, not updating {event.resource_id.id}")
                     continue
@@ -258,8 +261,10 @@ class Outputter(_Plugin):
         template_outputs = dict()
         if internal_config.output_templates:
             for t_file, t_event in self.template_dict.items():
-                if get_origin_attr(t_event, "time") < self._mainshock_time:
+                if t_file in self._skipped_templates or get_origin_attr(t_event, "time") < self._mainshock_time - 60:
                     # Don't output template events before our trigger event
+                    Logger.info(f"Skipping template {t_event.resource_id.id}: before trigger")
+                    self._skipped_templates.update(t_file)
                     continue
                 # If we have read in a relocated version of the template then we
                 # should use that as the original template

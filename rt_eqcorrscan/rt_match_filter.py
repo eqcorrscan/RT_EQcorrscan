@@ -695,7 +695,10 @@ class RealTimeTribe(Tribe):
         if self.plugin_config is None:
             Logger.debug("No plugins configured")
             return
-        for key, value in self.plugin_config.items():
+        Logger.info(
+            f"Setting up plugins according to {self._plugin_order}")
+        for key in self._plugin_order:
+            value = self.plugin_config.get(key, None)
             if value is None:
                 continue
             if key not in REGISTERED_PLUGINS.keys() and key != "order":
@@ -733,11 +736,11 @@ class RealTimeTribe(Tribe):
         try:
             # Need to pop this from configs so that order doesn't get
             # run as a plugin
-            order = self.plugin_config.pop("order")
+            self._plugin_order = self.plugin_config.pop("order")
         except KeyError:
-            order = ORDERED_PLUGINS
+            self._plugin_order = ORDERED_PLUGINS
         outputter_in_dirs = [in_dir]
-        for plugin_name in order:
+        for plugin_name in self._plugin_order:
             # If plugin name is plot then out_dir should be in_dir
             config = self.plugin_config.get(plugin_name, None)
             if config is None:
@@ -765,7 +768,7 @@ class RealTimeTribe(Tribe):
                         self.maxlon - (0.1 * (self.maxlon - self.minlon)))
                 config.minlon = (
                         self.minlon - (0.1 * (self.maxlon - self.minlon)))
-            if plugin_name == "growclust" and "nll" in order:
+            if plugin_name == "growclust" and "nll" in self._plugin_order:
                 # If we are running both growclust and nonlinloc we can use the nll 3D grids
                 if config.ttabsrc == "nllgrid":
                     nll_config = self.plugin_config.get('nll')
@@ -1025,11 +1028,11 @@ class RealTimeTribe(Tribe):
                     self._running = True  # Lock tribe
                     start_time = UTCDateTime.now()
                     st = self.rt_client.stream.split().merge(method=1)
-                    Logger.info(f"RTTribe received this stream from client:\n{st.__str__(extended=True)}")
+                    Logger.debug(f"RTTribe received this stream from client:\n{st.__str__(extended=True)}")
                     # Add in past data if needed - will be trimmed later
-                    Logger.info(f"Past stream is:\n{past_st.__str__(extended=True)}")
+                    Logger.debug(f"Past stream is:\n{past_st.__str__(extended=True)}")
                     st = (st + past_st).merge(method=1)  # Keep overlapping data
-                    Logger.info(f"Adding st to past_st results in:\n{st.__str__(extended=True)}")
+                    Logger.debug(f"Adding st to past_st results in:\n{st.__str__(extended=True)}")
                     # Warn if data are gappy
                     gappy = False
                     for tr in st:
