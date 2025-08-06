@@ -166,6 +166,7 @@ class Outputter(_Plugin):
     template_dict = {}  # Dict of template SparseEvents keyed by filename
     output_events = {}  # Dict of output (filename, SparseEvent) tuples keyed by event-id
     _read_files = []  # List of files that we have already read. Used to avoid re-reading events
+    _skipped_templates = set()  # Set of template files to not output
 
     def _read_config(self, config_file: str):
         return OutputConfig.read(config_file=config_file)
@@ -223,8 +224,9 @@ class Outputter(_Plugin):
             event = read_events(file)
             assert len(event) == 1, f"Multiple events in {file} - not supported"
             # We don't want to output events from before our mainshock
-            if get_origin_attr(event[0], "time") < self._mainshock_time:
+            if get_origin_attr(event[0], "time") < self._mainshock_time - 60:
                 # Don't output template events before our trigger event
+                Logger.info(f"Skipping {event.resource_id.id}: before trigger")
                 self._read_files.append(file)  # Don't re-read this file.
                 continue
             event = sparsify_catalog(event, include_picks=True)
@@ -259,8 +261,10 @@ class Outputter(_Plugin):
         template_outputs = dict()
         if internal_config.output_templates:
             for t_file, t_event in self.template_dict.items():
-                if get_origin_attr(t_event, "time") < self._mainshock_time:
+                if t_file in self._skipped_templates or get_origin_attr(t_event, "time") < self._mainshock_time - 60:
                     # Don't output template events before our trigger event
+                    Logger.info(f"Skipping template {t_event.resource_id.id}: before trigger")
+                    self._skipped_templates.update(t_file)
                     continue
                 # If we have read in a relocated version of the template then we
                 # should use that as the original template
