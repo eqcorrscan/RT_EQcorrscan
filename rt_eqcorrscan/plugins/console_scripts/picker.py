@@ -20,7 +20,7 @@ def main():
         "--config", "-c", type=str, help="Path to configuration file",
         required=True)
     parser.add_argument(
-        "--log-level", "-l", type=str, default="DEBUG")
+        "--log-level", "-l", type=str, default="INFO")
     parser.add_argument(
         "--log-formatter", type=str,
         default="%(asctime)s\t[%(processName)s:%(threadName)s]: " \
