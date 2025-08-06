@@ -247,7 +247,7 @@ class Outputter(_Plugin):
                         new_index = i
                 if old_index <= new_index:
                     Logger.info(f"Event {event.resource_id.id} already in output. Updating original from "
-                                f"{old_in_dir.split('/')[-1]} to one from {new_in_dir.split('/')[-1]}.")
+                                f"{old_in_dir.split('/')[-1]} to one from {new_in_dir}.")
                 else:
                     Logger.info(f"New file read, but with lower priority, not updating {event.resource_id.id}")
                     continue
