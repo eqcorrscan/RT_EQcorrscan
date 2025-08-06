@@ -217,6 +217,7 @@ class _Plugin(ABC):
         # be made once or making output dirs etc.
         self.setup()
         while True:
+            Logger.info("Starting mahi")
             tic = time.time()
 
             # Check for changed config
