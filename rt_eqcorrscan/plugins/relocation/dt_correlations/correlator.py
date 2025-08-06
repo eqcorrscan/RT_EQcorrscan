@@ -645,7 +645,7 @@ class Correlator:
                  p.time + 4 * (self.length - self.pre_pick))
                 for p in event.picks
                 if p.phase_hint.upper().startswith(("P", "S"))]
-        Logger.debug(f"Trying to get data from {self.client} using bulk: {bulk}")
+        Logger.info(f"Trying to get data from {self.client} using bulk: {bulk}")
         try:
             st = self.client.get_waveforms_bulk(bulk)
         except Exception as e:
@@ -660,7 +660,7 @@ class Correlator:
                     Logger.info(f"Skipping {_b}")
                     continue
         st = st.merge()
-        Logger.debug(f"Read in {len(st)} traces")
+        Logger.info(f"Read in {len(st)} traces")
         if len(st) == 0:
             return {rid: Stream()}
         st_dict = _filter_stream(
