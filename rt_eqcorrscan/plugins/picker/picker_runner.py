@@ -300,7 +300,7 @@ class Picker(_Plugin):
                     d_party, in_memory_wavebank=self.in_memory_wavebank,
                     length=desired_stream_length,
                     pre_pick=max(internal_config.shift_len * 2,
-                                 family.template.process_length / 2))
+                                 family.template.process_length))
                 stream = stream.merge(method=1)
                 # Get an excess of data to cope with missing "future" data
                 Logger.info(f"Have stream: \n{stream}")
@@ -308,6 +308,11 @@ class Picker(_Plugin):
                 # long enough - we need the data length to be a multiple of
                 # process-len
                 for tr in stream:
+                    # Note, this doesn't guarantee that the pick will be
+                    # within the data - lag-calc will throw away data that
+                    # don't work. However, because this is running in
+                    # real-time, the main issue is data near endtime, not data
+                    # near starttime
                     tr_length = tr.stats.endtime - tr.stats.starttime
                     process_len_multiples = (
                         tr_length // family.template.process_length)
