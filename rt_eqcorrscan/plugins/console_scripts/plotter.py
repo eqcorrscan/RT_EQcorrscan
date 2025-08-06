@@ -8,7 +8,7 @@ from rt_eqcorrscan.config.config import _setup_logging
 from rt_eqcorrscan.plugins.plotter.plotter_runner import Plotter
 
 
-Logger = logging.getLogger("hyp-plugin")
+Logger = logging.getLogger("plotter-plugin")
 
 
 def main():

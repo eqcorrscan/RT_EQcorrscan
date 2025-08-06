@@ -54,6 +54,7 @@ class SparseOrigin:
 class SparseMagnitude:
     mag: float = None
     method_id: SparseID = None
+    magnitude_type: str = None
 
     def get(self, key: str, default=None):
         return self.__dict__.get(key, default) or default
@@ -180,7 +181,10 @@ def _sparsify_magnitude(magnitude: Magnitude) -> SparseMagnitude:
         method_id = SparseID(magnitude.method_id.id)
     except AttributeError:
         method_id = None
-    return SparseMagnitude(mag=magnitude.mag, method_id=method_id)
+    return SparseMagnitude(
+        mag=magnitude.mag,
+        method_id=method_id,
+        magnitude_type=magnitude.magnitude_type)
 
 
 def _sparsify_waveform_id(waveform_id: WaveformStreamID) -> SparseWaveform_ID:

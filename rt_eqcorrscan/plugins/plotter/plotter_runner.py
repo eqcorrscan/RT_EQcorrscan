@@ -4,6 +4,8 @@ Runner for the plotting funcs.
 
 import os
 import logging
+import shutil
+import glob
 from typing import Iterable, List, Union, Tuple
 
 from obspy import read_events, UTCDateTime, Inventory, read_inventory
@@ -13,7 +15,7 @@ from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
     PLUGIN_CONFIG_MAPPER, _Plugin)
 from rt_eqcorrscan.helpers.sparse_event import sparsify_catalog, SparseEvent, \
-    get_origin_attr
+    get_origin_attr, get_magnitude_attr
 from rt_eqcorrscan.plugins.plotter.rcet_plots import (
     aftershock_map, summary_files, ellipse_plots,
     ellipse_to_rectangle, focal_sphere_plots, plot_scaled_magnitudes,
@@ -84,10 +86,13 @@ class Plotter(_Plugin):
 
     def core(self, new_files: Iterable, cleanup: bool = True) -> List:
         """ Run the plotter. """
+        now = UTCDateTime.now()
         internal_config = self.config.copy()
         out_dir = internal_config.pop("out_dir")
         if not os.path.isdir(out_dir):
             os.makedirs(out_dir)
+        if not os.path.isdir(f"{out_dir}/history"):
+            os.makedirs(f"{out_dir}/history")
 
         """
         Things we need for the plots:
@@ -165,16 +170,17 @@ class Plotter(_Plugin):
         self._magnitude_plots(
             length=ellipse_stats["length"],
             length_z=ellipse_stats["length_z"],
-             mainshock=self._get_mainshock()
+            mainshock=self._get_mainshock()
         )
         # TODO: Where does all this come from?
+        # Logger.info("Making summary files")
         # output_dictionary = summary_files(
-        #     eventid=eventid,
-        #     current_time=current_time,
-        #     elapsed_secs=elapsed_secs,
+        #     eventid=internal_config.mainshock_id,
+        #     current_time=now,
+        #     elapsed_secs=now - get_origin_attr(self._get_mainshock(), "time"),
         #     catalog_RT=catalog_RT,
         #     cat_counts=cat_counts,
-        #     catalog_geonet=catalog_geonet,
+        #     catalog_geonet=self.template_dict.values(),
         #     catalog_outliers=catalog_outliers,
         #     length=length,
         #     azimuth=azimuth,
@@ -189,9 +195,18 @@ class Plotter(_Plugin):
         #     geonet_mainshock_depth=geonet_mainshock_depth,
         #     geonet_mainshock_depth_uncertainty=geonet_mainshock_depth_uncertainty,
         #     output_dir=output_dir)
+        #
+        # # TODO: pass args?
+        # Logger.info("Making summary figure")
+        # self._summary_figure()
 
-        # TODO: pass args?
-        self._summary_figure()
+        # Copy "latest" to history with timestamps
+        now_str = _now_str()
+        os.makedirs(f"{out_dir}/history/{now_str}")
+        for plot in glob.glob(f"{out_dir}/*_latest.*"):
+            fname = os.path.basename(plot)
+            fname.replace("_latest", now_str)
+            shutil.copy(plot, f"{out_dir}/history/{now_str}/{fname}")
 
         return []
 
@@ -257,10 +272,10 @@ class Plotter(_Plugin):
             colours='depth')
 
         fig.savefig(
-            f"{self.config.out_dir}/Aftershock_extent_depth_map_{_now_str()}.png",
+            f"{self.config.out_dir}/Aftershock_extent_depth_map_latest.png",
             dpi=self.config.png_dpi)
         fig.savefig(
-            f"{self.config.out_dir}/Aftershock_extent_depth_map_{_now_str()}.pdf",
+            f"{self.config.out_dir}/Aftershock_extent_depth_map_latest.pdf",
             dpi=self.config.eps_dpi)
         return
 
@@ -279,10 +294,10 @@ class Plotter(_Plugin):
             mag_list=mag_list, scaled_mag=scaled_mag, slip_list=slip_list,
             ref_list=ref_list, Mw=self.config.Mw, mainshock=mainshock)
         fig.savefig(
-            f"{self.config.out_dir}/Scaled_Magnitude_Comparison_{_now_str()}.eps",
+            f"{self.config.out_dir}/Scaled_Magnitude_Comparison_latest.pdf",
             dpi=self.config.eps_dpi)
         fig.savefig(
-            f"{self.config.out_dir}/Scaled_Magnitude_Comparison_{_now_str()}.png",
+            f"{self.config.out_dir}/Scaled_Magnitude_Comparison_latest.png",
             dpi=self.config.png_dpi)
         return
 
@@ -294,10 +309,10 @@ class Plotter(_Plugin):
             MT_NP1=self.config.MT_NP1,
             MT_NP2=self.config.MT_NP2)
         fig.savefig(
-            f"{self.config.out_dir}/focal_sphere_{_now_str()}.png",
+            f"{self.config.out_dir}/focal_sphere_latest.png",
             dpi=self.config.png_dpi)
         fig.savefig(
-            f"{self.config.out_dir}/focal_sphere_{_now_str()}.pdf",
+            f"{self.config.out_dir}/focal_sphere_latest.pdf",
             dpi=self.config.eps_dpi)
         return
 
@@ -317,19 +332,19 @@ class Plotter(_Plugin):
             radius_km=self.config.search_radius)
 
         ellipse_map.savefig(
-            f'{self.config.out_dir}/confidence_ellipsoid_{_now_str()}.png',
+            f'{self.config.out_dir}/confidence_ellipsoid_latest.png',
             dpi=self.config.png_dpi)
         ellipse_map.savefig(
-            f'{self.config.out_dir}/confidence_ellipsoid_{_now_str()}.pdf',
+            f'{self.config.out_dir}/confidence_ellipsoid_latest.pdf',
             dpi=self.config.eps_dpi)
 
         ellipse_xsection.savefig(
             f'{self.config.out_dir}/confidence_ellipsoid_'
-            f'vertical{_now_str()}.png',
+            f'vertical_latest.png',
             dpi=self.config.png_dpi)
         ellipse_xsection.savefig(
             f'{self.config.out_dir}/confidence_ellipsoid_'
-            f'vertical{_now_str()}.pdf',
+            f'vertical_latest.pdf',
             dpi=self.config.eps_dpi)
 
         corners = ellipse_to_rectangle(
@@ -365,10 +380,10 @@ class Plotter(_Plugin):
         )
 
         template_map.savefig(
-            f"{self.config.out_dir}/catalog_templates_{_now_str()}.png",
+            f"{self.config.out_dir}/catalog_templates_latest.png",
             dpi=self.config.png_dpi)
         template_map.savefig(
-            f"{self.config.out_dir}/catalog_templates_{_now_str()}.pdf",
+            f"{self.config.out_dir}/catalog_templates_latest.pdf",
             dpi=self.config.eps_dpi)
         
         detected_map = aftershock_map(
@@ -381,10 +396,10 @@ class Plotter(_Plugin):
         )
 
         detected_map.savefig(
-            f"{self.config.out_dir}/catalog_RT_{_now_str()}.png",
+            f"{self.config.out_dir}/catalog_RT_latest.png",
             dpi=self.config.png_dpi)
         detected_map.savefig(
-            f"{self.config.out_dir}/catalog_RT_{_now_str()}.pdf",
+            f"{self.config.out_dir}/catalog_RT_latest.pdf",
             dpi=self.config.eps_dpi)
 
         return

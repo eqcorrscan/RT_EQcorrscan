@@ -32,7 +32,7 @@ def _eq_map(
     lons: np.ndarray,
     depths: np.ndarray,
     mags: np.ndarray,
-    times: np.ndarray,
+    times: np.ndarray,  # TODO: Don't need times, but we could use origin type and plot different styles for different types of origin (Hyp, NLL, GC, GeoNet)
     station_lats: np.ndarray,
     station_lons: np.ndarray,
     pad: float,
@@ -196,7 +196,7 @@ def aftershock_map(
         mags = np.array(
             [(ev.preferred_magnitude() or ev.magnitudes[-1]).mag for ev in catalog]
         )
-    except:
+    except IndexError:
         mags = np.array([2.0 for ev in catalog])
     times = np.array(
         [(ev.preferred_origin() or ev.origins[-1]).time.datetime for ev in catalog]
@@ -861,7 +861,7 @@ def output_aftershock_map(
                 for ev in reference_catalog
             ]
         )
-    except:
+    except IndexError:
         mags = np.array([2.0 for ev in catalog])
         ref_mags = np.array([2.0 for ev in reference_catalog])
     times = np.array(
@@ -875,7 +875,7 @@ def output_aftershock_map(
                 for ev in outlier_catalog
             ]
         )
-    except:
+    except IndexError:
         mags_o = np.array([2.0 for ev in outlier_catalog])
     times_o = np.array(
         [
@@ -1469,7 +1469,7 @@ def ellipse_plots(
         yo=[],
         xrm=y_zrm[0],
         zrm=z_rm * -1,
-        z_m=mainshock.preferred_origin().depth,
+        z_m=mainshock.preferred_origin().depth / 1000.,
         mainshock=mainshock,
         sd=ellipse_std,
         LOWESS=True,  # TODO: Emily has this hard-coded to True rather than the var?
@@ -1633,16 +1633,17 @@ def make_scaled_mag_list(length, width, rupture_area, scaled_mag_relation):
 
 def plot_scaled_magnitudes(mag_list, scaled_mag, slip_list, ref_list, Mw, mainshock):
     fig = plt.figure()
-    fig.set_size_inches(7, 6.7)
+    fig.set_size_inches(12, 6.7)
     # define axes limits + labels
     mag_listfull = mag_list
     for mag in mainshock.magnitudes:
         mag_listfull.append(mag.mag)
     max_mag = max(mag_listfull) + 0.5
     min_mag = min(mag_listfull) - 0.5
-    plt.ylim([min_mag, max_mag])
-    plt.ylabel("Magnitude")
-    plt.xlabel("Slip Style")
+    ax = fig.add_subplot()
+    ax.set_ylim([min_mag, max_mag])
+    ax.set_ylabel("Magnitude")
+    ax.set_xlabel("Slip Style")
     # map magnitudes to references
     mapping = {
         "Thingbaijam et al. (2017)": "o",
@@ -1669,7 +1670,7 @@ def plot_scaled_magnitudes(mag_list, scaled_mag, slip_list, ref_list, Mw, mainsh
     }
     # plot magnitudes
     try:
-        plt.fill_between(
+        ax.fill_between(
             slip_list,
             mainshock.preferred_magnitude().mag
             - mainshock.preferred_magnitude().mag_errors.uncertainty,
@@ -1679,27 +1680,28 @@ def plot_scaled_magnitudes(mag_list, scaled_mag, slip_list, ref_list, Mw, mainsh
             color="lightpink",
             label="Preferred M unc",
         )
-    except:
+    except:  # what is this except catching?!
         x = 1
     for i in range(len(slip_list)):
-        plt.scatter(
+        ax.scatter(
             slip_list[i],
             mag_list[i],
             marker=mapping[ref_list[i]],
             color=colors[slip_list[i]],
             label=ref_list[i],
         )
-    plt.axhline(Mw, color="r", linestyle="solid", label="Mw")
+    if Mw is not None:
+        ax.axhline(Mw, color="r", linestyle="solid", label="Mw")
     mag_cols = ["blue", "skyblue", "darkblue", "cornflower", "lightblue", "navy"]
     for i, m in enumerate(mainshock.magnitudes):
         if m.magnitude_type in ["MLv", "ML"]:
-            plt.axhline(
+            ax.axhline(
                 m.mag,
                 color=mag_cols[i],
                 linestyle="solid",
                 label="GeoNet " + m.magnitude_type,
             )
-    plt.axhline(
+    ax.axhline(
         mainshock.preferred_magnitude().mag,
         color="black",
         linestyle="solid",
@@ -1707,7 +1709,7 @@ def plot_scaled_magnitudes(mag_list, scaled_mag, slip_list, ref_list, Mw, mainsh
     )
     ### add labels to top left corner
     try:
-        plt.text(
+        ax.text(
             0,
             max_mag - 0.1,
             "Preferred GeoNet Mag ("
@@ -1721,8 +1723,8 @@ def plot_scaled_magnitudes(mag_list, scaled_mag, slip_list, ref_list, Mw, mainsh
             fontsize=11.0,
             horizontalalignment="left",
         )
-    except:
-        plt.text(
+    except:  # What is this except catching!?
+        ax.text(
             0,
             max_mag - 0.1,
             "Preferred GeoNet Mag = N/A",
@@ -1730,7 +1732,7 @@ def plot_scaled_magnitudes(mag_list, scaled_mag, slip_list, ref_list, Mw, mainsh
             fontsize=11.0,
             horizontalalignment="left",
         )
-    plt.text(
+    ax.text(
         0,
         max_mag - 0.2,
         "Preferred Scaled Mag (Mas) = " + str(scaled_mag),
@@ -1738,8 +1740,8 @@ def plot_scaled_magnitudes(mag_list, scaled_mag, slip_list, ref_list, Mw, mainsh
         fontsize=11.0,
         horizontalalignment="left",
     )
-    if Mw > 0:
-        plt.text(
+    if Mw:
+        ax.text(
             0,
             max_mag - 0.3,
             "Moment Magnitude (Mw) = " + str(Mw),
@@ -1748,7 +1750,7 @@ def plot_scaled_magnitudes(mag_list, scaled_mag, slip_list, ref_list, Mw, mainsh
             horizontalalignment="left",
         )
     else:
-        plt.text(
+        ax.text(
             0,
             max_mag - 0.3,
             "Moment Magnitude (Mw) = N/A",
@@ -1756,7 +1758,9 @@ def plot_scaled_magnitudes(mag_list, scaled_mag, slip_list, ref_list, Mw, mainsh
             fontsize=11.0,
             horizontalalignment="left",
         )
-    plt.legend(bbox_to_anchor=(1.1, 1.0))
+    # Make space for the legend
+    fig.subplots_adjust(right=0.7)
+    fig.legend(bbox_to_anchor=(0.73, 0.87), loc="upper left")
     return fig
 
 
@@ -1833,11 +1837,10 @@ def focal_sphere_plots(
         bb_ax.set_xticks([])
         bb_ax.set_yticks([])
         bb_ax.axis("equal")
-        bb_ax.axis("off")
 
         # Add title and show the plot
         bb_ax.set_title("GeoNet Moment Tensor")
-
+    axs["b"].axis("off")
     return fig
 
 
