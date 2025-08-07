@@ -327,6 +327,8 @@ def run_plugin(
     # Start plugin subprocess
     _call = [plugin_path]
     _call.extend(plugin_args)
+    # make sure all args are strs
+    _call = [str(item) for item in _call]
 
     Logger.info("Running `{call}`".format(call=" ".join(_call)))
     proc = subprocess.Popen(_call)

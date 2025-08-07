@@ -714,7 +714,7 @@ class RealTimeTribe(Tribe):
                 plugin_args.append("--simulation")
                 if key in ["plotter"]:
                     plugin_args.extend(["--simulation-time-offset",
-                                        self._simulation_time_offset])
+                                        str(self._simulation_time_offset)])
             plugin_proc = run_plugin(key, plugin_args)
             self._plugins.update({key: plugin_proc})
         return
