@@ -426,6 +426,7 @@ class Plotter(_Plugin):
             topo_res="03s",
             topo_cmap="grayC",
             hillshade=False,
+            pad=5.0,
         )
 
         template_map.savefig(
@@ -442,6 +443,7 @@ class Plotter(_Plugin):
             topo_res="03s",
             topo_cmap="grayC",
             hillshade=False,
+            pad=5.0,
         )
 
         detected_map.savefig(
