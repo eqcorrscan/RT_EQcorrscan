@@ -36,6 +36,16 @@ class SparseID:
     def __str__(self):
         return self.id
 
+@dataclass
+class SparseError:
+    uncertainty: float = None
+    lower_uncertainty: float = None
+    upper_uncertainty: float = None
+    confidence_level: float = None
+
+    def get(self, key: str, default=None):
+        # Return the default if the key actually returns None
+        return self.__dict__.get(key, default) or default
 
 @dataclass
 class SparseOrigin:
@@ -44,17 +54,21 @@ class SparseOrigin:
     depth: float = None
     time: Union[dt.datetime, UTCDateTime] = None
     method_id: SparseID = None
+    depth_errors: SparseError = None
+    time_errors: SparseError = None
+    latitude_errors: SparseError = None
+    longitude_errors: SparseError = None
 
     def get(self, key: str, default=None):
         # Return the default if the key actually returns None
         return self.__dict__.get(key, default) or default
-
 
 @dataclass
 class SparseMagnitude:
     mag: float = None
     method_id: SparseID = None
     magnitude_type: str = None
+    mag_errors: SparseError = None
 
     def get(self, key: str, default=None):
         return self.__dict__.get(key, default) or default
@@ -173,7 +187,12 @@ def _sparsify_origin(origin: Origin) -> SparseOrigin:
         longitude=origin.longitude,
         depth=origin.depth,
         time=origin.time,
-        method_id=method_id)
+        method_id=method_id,
+        depth_errors=SparseError(**origin.depth_errors.__dict__),
+        time_errors=SparseError(**origin.time_errors.__dict__),
+        latitude_errors=SparseError(**origin.latitude_errors.__dict__),
+        longitude_errors=SparseError(**origin.longitude_errors.__dict__),
+    )
 
 
 def _sparsify_magnitude(magnitude: Magnitude) -> SparseMagnitude:
@@ -184,7 +203,8 @@ def _sparsify_magnitude(magnitude: Magnitude) -> SparseMagnitude:
     return SparseMagnitude(
         mag=magnitude.mag,
         method_id=method_id,
-        magnitude_type=magnitude.magnitude_type)
+        magnitude_type=magnitude.magnitude_type,
+        mag_errors=SparseError(**magnitude.mag_errors.__dict__))
 
 
 def _sparsify_waveform_id(waveform_id: WaveformStreamID) -> SparseWaveform_ID:

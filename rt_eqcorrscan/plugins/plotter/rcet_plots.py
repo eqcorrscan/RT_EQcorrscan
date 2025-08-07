@@ -296,7 +296,7 @@ def mainshock_mags(mainshock, RT_mainshock):
             ).mag_errors.uncertainty,
             2,
         )
-    except IndexError:
+    except (IndexError, TypeError):
         geonet_mainshock_mag_uncertainty = 0.0
 
     try:

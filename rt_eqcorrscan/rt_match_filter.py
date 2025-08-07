@@ -91,6 +91,7 @@ class RealTimeTribe(Tribe):
     busy = False
 
     _simulation = False  # Flag to get extra output for simulations
+    _simulation_time_offset = 0.0  # Time offset in seconds between real-time and simulation time
     _speed_up = 1.0  # For simulated runs - do not change for real-time!
     _stream_end = UTCDateTime(1970, 1, 1)  # End of real-time data - will be
     # updated in first loop. Used for keeping track of when templates are relative
@@ -711,6 +712,9 @@ class RealTimeTribe(Tribe):
             plugin_args = ["-c", config_name]
             if self._simulation:
                 plugin_args.append("--simulation")
+                if key in ["plotter"]:
+                    plugin_args.extend(["--simulation-time-offset",
+                                        self._simulation_time_offset])
             plugin_proc = run_plugin(key, plugin_args)
             self._plugins.update({key: plugin_proc})
         return

@@ -6,6 +6,8 @@ import os
 import logging
 import shutil
 import glob
+import numpy as np
+
 from typing import Iterable, List, Union, Tuple
 
 from obspy import read_events, UTCDateTime, Inventory, read_inventory
@@ -19,7 +21,7 @@ from rt_eqcorrscan.helpers.sparse_event import sparsify_catalog, SparseEvent, \
 from rt_eqcorrscan.plugins.plotter.rcet_plots import (
     aftershock_map, summary_files, ellipse_plots,
     ellipse_to_rectangle, focal_sphere_plots, plot_scaled_magnitudes,
-    make_scaled_mag_list,
+    make_scaled_mag_list, mainshock_mags,
 )
 from rt_eqcorrscan.plugins.output.output_runner import template_possible_self_dets
 
@@ -64,14 +66,12 @@ class PlotConfig(_PluginConfig):
 PLUGIN_CONFIG_MAPPER.update({"plotter": PlotConfig})
 
 
-def _now_str():
-    return UTCDateTime.now().strftime('%Y-%m-%dT%H-%M-%S')
-
 class Plotter(_Plugin):
     name = "Plotter"
     event_cache = {}  # Dict of SparseEvents keyed by event id
     event_files = {}  # Dict of (event-id, mtime) keyed by event-file
     inventory_cache = (None, None, None)  # Tuple of (inventory, file, mtime)
+    simulation_time_offset = 0.0  # Seconds to subtract from now to get the simulated time.
 
     @property
     def events(self) -> List:
@@ -81,12 +81,20 @@ class Plotter(_Plugin):
     def inventory(self) -> Union[Inventory, None]:
         return self.inventory_cache[0]
 
+    @property
+    def now(self) -> UTCDateTime:
+        return UTCDateTime.now() - self.simulation_time_offset
+
+    @property
+    def _now_str(self) -> str:
+        return self.now.strftime("%Y-%m-%dT%H-%M-%S")
+
     def _read_config(self, config_file: str):
         return PlotConfig.read(config_file=config_file)
 
     def core(self, new_files: Iterable, cleanup: bool = True) -> List:
         """ Run the plotter. """
-        now = UTCDateTime.now()
+        now = self.now
         internal_config = self.config.copy()
         out_dir = internal_config.pop("out_dir")
         if not os.path.isdir(out_dir):
@@ -112,9 +120,11 @@ class Plotter(_Plugin):
         in the config file.
         """
         # Load template events
+        Logger.info("Getting template events")
         self.get_template_events()
 
         # Load the stations
+        Logger.info("Getting inventory")
         read_inv = False
         if self.inventory_cache[2] is not None:
             # We have read the inventory file, check if we need to re-read
@@ -135,9 +145,10 @@ class Plotter(_Plugin):
 
         # Remove expired events (e.g. those in our cache that do not appear
         # in new_files)
+        Logger.info("Checking expired files")
         expired_files = set(self.event_files.keys()).difference(set(new_files))
         for expired_file in expired_files:
-            event = self.event_files[expired_file]
+            event, _ = self.event_files[expired_file]
             expired_id = event.resource_id.id
             self.event_cache.pop(expired_id)
             # Remove from event cache
@@ -145,6 +156,7 @@ class Plotter(_Plugin):
 
         # Read detected events - we need to re-check all events everytime to
         # cope with updates
+        Logger.info("Reading events")
         for f in new_files:
             if f in self.event_files.keys():
                 # Check if the file has changed since we last read from it
@@ -166,64 +178,79 @@ class Plotter(_Plugin):
             Logger.error(f"Could not make aftershock maps due to {e}")
         Logger.info("Computing ellipse statistics and plotting")
         try:
-            ellipse_stats = self._ellipse_plots()
+            ellipse_stats, catalog_outliers = self._ellipse_plots()
         except Exception as e:
             Logger.error(f"Could not get ellipse stats due to {e}")
             ellipse_stats = None
-        if ellipse_stats:
-            Logger.info("Plotting beachballs")
-            try:
-                self._beachball_plots(
-                    aftershock_azimuth=ellipse_stats["azimuth"],
-                    aftershock_dip=ellipse_stats["dip"])
-            except Exception as e:
-                Logger.error(f"Could not plot beachballs due to {e}")
-            Logger.info("Plotting magnitude scaling relationships")
-            try:
-                self._magnitude_plots(
-                    length=ellipse_stats["length"],
-                    length_z=ellipse_stats["length_z"],
-                    mainshock=self._get_mainshock()
-                )
-            except Exception as e:
-                Logger.error(f"Could not plot magnitude relationships due to {e}")
-        # TODO: Where does all this come from?
-        # Logger.info("Making summary files")
-        # output_dictionary = summary_files(
-        #     eventid=internal_config.mainshock_id,
-        #     current_time=now,
-        #     elapsed_secs=now - get_origin_attr(self._get_mainshock(), "time"),
-        #     catalog_RT=catalog_RT,
-        #     cat_counts=cat_counts,
-        #     catalog_geonet=self.template_dict.values(),
-        #     catalog_outliers=catalog_outliers,
-        #     length=length,
-        #     azimuth=azimuth,
-        #     dip=dip,
-        #     length_z=length_z,
-        #     scaled_mag=scaled_mag,
-        #     geonet_mainshock_mag=geonet_mainshock_mag,
-        #     geonet_mainshock_mag_uncertainty=geonet_mainshock_mag_uncertainty,
-        #     mean_depth=mean_depth,
-        #     RT_mainshock_depth=RT_mainshock_depth,
-        #     RT_mainshock_depth_uncertainty=RT_mainshock_depth_uncertainty,
-        #     geonet_mainshock_depth=geonet_mainshock_depth,
-        #     geonet_mainshock_depth_uncertainty=geonet_mainshock_depth_uncertainty,
-        #     output_dir=output_dir)
+        if not ellipse_stats:
+            # Everything else requires the ellipse stats and/or catalog_outliers
+            self._add_to_history()
+            return []
+        Logger.info("Plotting beachballs")
+        try:
+            self._beachball_plots(
+                aftershock_azimuth=ellipse_stats["azimuth"],
+                aftershock_dip=ellipse_stats["dip"])
+        except Exception as e:
+            Logger.error(f"Could not plot beachballs due to {e}")
+        Logger.info("Plotting magnitude scaling relationships")
+        try:
+            scaled_mag = self._magnitude_plots(
+                length=ellipse_stats["length"],
+                length_z=ellipse_stats["length_z"],
+                mainshock=self._get_mainshock()
+            )
+        except Exception as e:
+            scaled_mag = np.nan
+            Logger.error(f"Could not plot magnitude relationships due to {e}")
+        Logger.info("Making summary files")
+        (geonet_mainshock_mag, geonet_mainshock_mag_uncertainty,
+         geonet_mainshock_depth, geonet_mainshock_depth_uncertainty,
+         RT_mainshock_depth, RT_mainshock_depth_uncertainty) = mainshock_mags(
+            mainshock=self._get_mainshock(), RT_mainshock=self._get_relocated_mainshock())
+
+        output_dictionary = summary_files(
+            eventid=internal_config.mainshock_id,
+            current_time=now,
+            elapsed_secs=now - get_origin_attr(self._get_mainshock(), "time"),
+            catalog_RT=self.events,
+            cat_counts=[
+                len([ev for ev in self.events if len(ev.origins) == 0]),
+                len([ev for ev in self.events if len(ev.magnitudes) == 0]),
+                len([t for t in self.template_dict.values() if len(t.origins) == 0]),
+                len([t for t in self.template_dict.values() if len(t.magnitudes) == 0])
+            ],
+            catalog_geonet=self.template_dict.values(),
+            catalog_outliers=catalog_outliers,
+            length=ellipse_stats['length'],
+            azimuth=ellipse_stats['azimuth'],
+            dip=ellipse_stats['dip'],
+            length_z=ellipse_stats['length_z'],
+            scaled_mag=scaled_mag,
+            geonet_mainshock_mag=geonet_mainshock_mag,
+            geonet_mainshock_mag_uncertainty=geonet_mainshock_mag_uncertainty,
+            mean_depth=np.mean([get_origin_attr(ev, "depth") / 1000.0 for ev in self.events
+                                if get_origin_attr(ev, "depth") is not None]),
+            RT_mainshock_depth=RT_mainshock_depth,
+            RT_mainshock_depth_uncertainty=RT_mainshock_depth_uncertainty,
+            geonet_mainshock_depth=geonet_mainshock_depth,
+            geonet_mainshock_depth_uncertainty=geonet_mainshock_depth_uncertainty,
+            output_dir=out_dir)
         #
         # # TODO: pass args?
         # Logger.info("Making summary figure")
         # self._summary_figure()
+        self._add_to_history()
+        return []
 
+    def _add_to_history(self):
         # Copy "latest" to history with timestamps
-        now_str = _now_str()
-        os.makedirs(f"{out_dir}/history/{now_str}")
-        for plot in glob.glob(f"{out_dir}/*_latest.*"):
+        now_str = self._now_str
+        os.makedirs(f"{self.config.out_dir}/history/{now_str}")
+        for plot in glob.glob(f"{self.config.out_dir}/*_latest.*"):
             fname = os.path.basename(plot)
             fname.replace("_latest", now_str)
-            shutil.copy(plot, f"{out_dir}/history/{now_str}/{fname}")
-
-        return []
+            shutil.copy(plot, f"{self.config.out_dir}/history/{now_str}/{fname}")
 
     def _get_mainshock(self) -> Union[SparseEvent, Event, None]:
         # Get the mainshock
@@ -314,7 +341,7 @@ class Plotter(_Plugin):
         fig.savefig(
             f"{self.config.out_dir}/Scaled_Magnitude_Comparison_latest.png",
             dpi=self.config.png_dpi)
-        return
+        return scaled_mag
 
     def _beachball_plots(self, aftershock_azimuth, aftershock_dip):
         """ Make focal sphere plots. """
@@ -378,7 +405,7 @@ class Plotter(_Plugin):
         # corners are assigned depths
 
         # TODO: Output corners to json?
-        return ellipse_stats
+        return ellipse_stats, catalog_outliers
 
     def _aftershock_maps(self):
         """ Make core aftershock maps. """

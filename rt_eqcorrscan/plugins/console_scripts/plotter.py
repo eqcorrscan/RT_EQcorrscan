@@ -37,6 +37,9 @@ def main():
         "--simulation", action="store_true",
         help="Flag to notify if this is a simulation - extra output will be"
              "provided in simulation mode.")
+    parser.add_argument(
+        "--simulation-time-offset", type=float, default=0.0,
+        help="Seconds to subtract from now to give simulated time")
 
     args = parser.parse_args()
 
@@ -45,6 +48,7 @@ def main():
         screen=args.log_to_screen, file=True, filename=args.log_file)
 
     plotter = Plotter(config_file=args.config)
+    plotter.simulation_time_offset = args.simulation_time_offset
     if args.simulation:
         Logger.info("Nothing to be done for simulation for picker")
     plotter.run(loop=args.now)
