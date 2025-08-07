@@ -1689,6 +1689,7 @@ def plot_scaled_magnitudes(mag_list, scaled_mag, slip_list, ref_list, Mw, mainsh
         )
     except:  # what is this except catching?!
         x = 1
+    # TODO: Output these in a csv as well.
     for i in range(len(slip_list)):
         ax.scatter(
             slip_list[i],
