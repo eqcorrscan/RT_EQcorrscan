@@ -156,18 +156,24 @@ class Plotter(_Plugin):
         # cope with updates
         Logger.info("Reading events")
         for f in new_files:
+            mtime = os.path.getmtime(f)
             if f in self.event_files.keys():
                 # Check if the file has changed since we last read from it
-                if os.path.getmtime(f) <= self.event_files[f][1]:
+                if mtime <= self.event_files[f][1]:
                     # File has not been updated. Skip reading
                     continue
             # File is either new or updated. Read
-            cat = sparsify_catalog(read_events(f), include_picks=True)
+            if os.path.isfile(f):
+                # Cope with files being changed while we work...
+                cat = sparsify_catalog(read_events(f), include_picks=True)
+            else:
+                # We can ignore it.
+                continue
             assert len(cat) == 1, f"More than one event in {f}"
             ev = cat[0]
             self.event_cache.update({ev.resource_id.id: ev})
             self.event_files.update(
-                {f: (ev.resource_id.id, os.path.getmtime(f))})
+                {f: (ev.resource_id.id, mtime)})
 
         Logger.info("Making earthquake maps")
         try:
