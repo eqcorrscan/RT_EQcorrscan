@@ -433,7 +433,7 @@ class Plotter(_Plugin):
             topo_cmap="grayC",
             hillshade=False,
             pad=5.0,
-            timestamp=self.now(),
+            timestamp=self.now,
         )
 
         template_map.savefig(
@@ -451,7 +451,7 @@ class Plotter(_Plugin):
             topo_cmap="grayC",
             hillshade=False,
             pad=5.0,
-            timestamp=self.now(),
+            timestamp=self.now,
         )
 
         detected_map.savefig(
