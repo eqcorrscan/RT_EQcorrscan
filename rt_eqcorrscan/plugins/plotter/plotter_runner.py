@@ -184,6 +184,7 @@ class Plotter(_Plugin):
             self.event_files.update(
                 {f: (ev.resource_id.id, mtime)})
 
+        # TODO: Make maps after ellipse plots and scale to the non-outlier catalogue
         Logger.info("Making earthquake maps")
         try:
             self._aftershock_maps()
@@ -253,6 +254,7 @@ class Plotter(_Plugin):
         # # TODO: pass args?
         # Logger.info("Making summary figure")
         # self._summary_figure()
+        # TODO: plot_geometry_with_time
         self._add_to_history()
         return []
 

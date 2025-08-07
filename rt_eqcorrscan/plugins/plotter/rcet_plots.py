@@ -46,6 +46,7 @@ def _eq_map(
     timestamp: Union[UTCDateTime, datetime]
 ) -> pygmt.Figure:
     """ """
+    # TODO: Inset with stations, make main map focused on earthquakes
     all_lons = np.concatenate([lons, station_lons])
     all_lats = np.concatenate([lats, station_lats])
     # PyGMT copes with longitudes > 180
@@ -356,7 +357,6 @@ def mainshock_mags(mainshock, RT_mainshock):
 ###########################################################
 
 
-# TODO: Is this used?
 def _eq_map_test(
     catalog: Catalog,
     reference_catalog: Catalog,
@@ -469,69 +469,69 @@ def _eq_map_test(
     with fig.subplot(nrows=1, ncols=1, figsize=("15c", "5c")):
         fig.basemap(region=[0, 15, 0, 5], projection="X?", frame=["tblr"], panel=[0, 0])
 
+    """
+    Note, unused section as we don't calculate magnitudes yet.
     # Bottom row, single subplot with table of numbers
-    #   with fig.subplot(nrows=1, ncols=1, figsize=("15c", "5c")):
-    #
-    #       fig.basemap(
-    #           region=[0, 15, 0, 5], projection="X?", frame=['tblr'], panel=[0, 0])
-    #
-    #      #plot title
-    #      fig.text(text="Magnitude Outputs", position='TC', offset='j0c/0.4c', font="16p,Helvetica-Bold,black")
-    #      #plot text within table
-    #      header_vert=3.2  # y position of table header row
-    #      RT_vert=2.3     # y position of RT-EQcorrscan values row
-    #      Geonet_vert=1.4 # y position of GeoNet values row
-    #      padding=0.3
-    #      column_positions=[1.2, 3, 4.4, 6, 7.6, 9.2, 10.8, 12.4, 14]  # x positions of columns
-    #      column_headers=["Catalogue", "M8+", "M7-7.9", "M6-6.9", "M5-5.9", "M4-4.9", "M3-3.9", "M2-2.9", "M<2"]
-    #      mag_list=[8, 7, 6, 5, 4, 3, 2, 1, 0]
-    #
-    #      for i, c in enumerate(column_headers):
-    #          fig.text(text=c, x=column_positions[i], y=header_vert, font="11p,Helvetica-Bold,black",
-    #                   justify='BC')
-    #      fig.text(text='RT-EQcs', x=column_positions[0], y=RT_vert, font="12p,Helvetica,black", justify='BC')
-    #      fig.text(text='GeoNet', x=column_positions[0], y=Geonet_vert, font="12p,Helvetica,black", justify='BC')
-    #      #plot RT mag bin counts
-    #      for j, m in enumerate(mag_list[0:-2]):
-    #          fig.text(text=str(np.count_nonzero(mags_round == m)), x=column_positions[j+1], y=RT_vert,
-    #                   font="12p,Helvetica,black", justify='BC')
-    #      fig.text(text=str(np.count_nonzero(mags_round == 0)+np.count_nonzero(mags_round == 1)),
-    #               x=column_positions[-1], y=RT_vert, font="12p,Helvetica,black", justify='BC')
-    #      #plot reference mag bin counts
-    #      for j, m in enumerate(mag_list[0:-2]):
-    #          fig.text(text=str(np.count_nonzero(ref_mags_round == m)), x=column_positions[j+1], y=Geonet_vert,
-    #                   font="12p,Helvetica,black", justify='BC')
-    #      fig.text(text=str(np.count_nonzero(ref_mags_round == 0)+np.count_nonzero(ref_mags_round == 1)),
-    #               x=column_positions[-1], y=Geonet_vert, font="12p,Helvetica,black", justify='BC')
-    #
-    #      #plot structure of table
-    #      left=0.2
-    #      right=14.7
-    #      for v in [header_vert, RT_vert, Geonet_vert]:
-    #          fig.plot(x=[left,right], y=[v-padding,v-padding], pen="0.5p,black", projection='X?')
-    #      fig.plot(x=[left,right], y=[header_vert+2*padding,header_vert+2*padding],
-    #               pen="0.5p,black", projection='X?') #top
-    #      for c in column_positions[2:]:
-    #          fig.plot(x=[c-0.75,c-0.75], y=[header_vert+2*padding, Geonet_vert-padding],
-    #                   pen="0.5p,black", projection='X?')
-    #      fig.plot(x=[column_positions[1]-padding*2, column_positions[1]-padding*2],
-    #               y=[header_vert+2*padding, Geonet_vert-padding],
-    #                   pen="0.5p,black", projection='X?') #left of value columns
-    #      fig.plot(x=[left, left], y=[header_vert+2*padding, Geonet_vert-padding],
-    #               pen="0.5p,black", projection='X?') #left
-    #      fig.plot(x=[right, right], y=[header_vert+2*padding, Geonet_vert-padding],
-    #               pen="0.5p,black", projection='X?') #right
-    #
-    #      #plot footnotes
-    #      fig.text(text='Of ' + str(len(catalog)+len(outlier_catalog)) + ' events in the RT-EQcorrscan catalog, '
-    #               + str(cat_counts[0]) + ' have no origin and ' + str(cat_counts[1]) + ' have no magnitude.',
-    #               x=0.5, y=Geonet_vert-0.8, font="9p,Helvetica,black", justify='BL')
-    #      fig.text(text='Of ' + str(len(reference_catalog)) + ' events in the GeoNet catalog, '
-    #               + str(cat_counts[2]) +  ' have no origin and ' + str(cat_counts[3]) + ' have no magnitude.',
-    #               x=0.5, y=Geonet_vert-1.2, font="9p,Helvetica,black", justify='BL')
-    #
+    with fig.subplot(nrows=1, ncols=1, figsize=("15c", "5c")):
+        fig.basemap(
+            region=[0, 15, 0, 5], projection="X?", frame=['tblr'], panel=[0, 0])
+
+        #plot title
+        fig.text(text="Magnitude Outputs", position='TC', offset='j0c/0.4c', font="16p,Helvetica-Bold,black")
+        #plot text within table
+        header_vert=3.2  # y position of table header row
+        RT_vert=2.3     # y position of RT-EQcorrscan values row
+        Geonet_vert=1.4 # y position of GeoNet values row
+        padding=0.3
+        column_positions=[1.2, 3, 4.4, 6, 7.6, 9.2, 10.8, 12.4, 14]  # x positions of columns
+        column_headers=["Catalogue", "M8+", "M7-7.9", "M6-6.9", "M5-5.9", "M4-4.9", "M3-3.9", "M2-2.9", "M<2"]
+        mag_list=[8, 7, 6, 5, 4, 3, 2, 1, 0]
+        for i, c in enumerate(column_headers):
+            fig.text(text=c, x=column_positions[i], y=header_vert, font="11p,Helvetica-Bold,black",
+                      justify='BC')
+        fig.text(text='RT-EQcs', x=column_positions[0], y=RT_vert, font="12p,Helvetica,black", justify='BC')
+        fig.text(text='GeoNet', x=column_positions[0], y=Geonet_vert, font="12p,Helvetica,black", justify='BC')
+        #plot RT mag bin counts
+        for j, m in enumerate(mag_list[0:-2]):
+            fig.text(text=str(np.count_nonzero(mags_round == m)), x=column_positions[j+1], y=RT_vert,
+                     font="12p,Helvetica,black", justify='BC')
+        fig.text(text=str(np.count_nonzero(mags_round == 0)+np.count_nonzero(mags_round == 1)),
+                 x=column_positions[-1], y=RT_vert, font="12p,Helvetica,black", justify='BC')
+        #plot reference mag bin counts
+        for j, m in enumerate(mag_list[0:-2]):
+            fig.text(text=str(np.count_nonzero(ref_mags_round == m)), x=column_positions[j+1], y=Geonet_vert,
+                     font="12p,Helvetica,black", justify='BC')
+        fig.text(text=str(np.count_nonzero(ref_mags_round == 0)+np.count_nonzero(ref_mags_round == 1)),
+                 x=column_positions[-1], y=Geonet_vert, font="12p,Helvetica,black", justify='BC')
+         #plot structure of table
+        left=0.2
+        right=14.7
+        for v in [header_vert, RT_vert, Geonet_vert]:
+            fig.plot(x=[left,right], y=[v-padding,v-padding], pen="0.5p,black", projection='X?')
+        fig.plot(x=[left,right], y=[header_vert+2*padding,header_vert+2*padding],
+                 pen="0.5p,black", projection='X?') #top
+        for c in column_positions[2:]:
+            fig.plot(x=[c-0.75,c-0.75], y=[header_vert+2*padding, Geonet_vert-padding],
+                     pen="0.5p,black", projection='X?')
+        fig.plot(x=[column_positions[1]-padding*2, column_positions[1]-padding*2],
+                 y=[header_vert+2*padding, Geonet_vert-padding],
+                     pen="0.5p,black", projection='X?') #left of value columns
+        fig.plot(x=[left, left], y=[header_vert+2*padding, Geonet_vert-padding],
+                 pen="0.5p,black", projection='X?') #left
+        fig.plot(x=[right, right], y=[header_vert+2*padding, Geonet_vert-padding],
+                 pen="0.5p,black", projection='X?') #right
+
+        #plot footnotes
+        fig.text(text='Of ' + str(len(catalog)+len(outlier_catalog)) + ' events in the RT-EQcorrscan catalog, '
+                 + str(cat_counts[0]) + ' have no origin and ' + str(cat_counts[1]) + ' have no magnitude.',
+                 x=0.5, y=Geonet_vert-0.8, font="9p,Helvetica,black", justify='BL')
+        fig.text(text='Of ' + str(len(reference_catalog)) + ' events in the GeoNet catalog, '
+                 + str(cat_counts[2]) +  ' have no origin and ' + str(cat_counts[3]) + ' have no magnitude.',
+                 x=0.5, y=Geonet_vert-1.2, font="9p,Helvetica,black", justify='BL')
+        """
     ####### TEXT BOX
 
+    # TODO: Make text box full heigh of figure
     # Move plot origin by 1 cm above the height of the entire figure
     fig.shift_origin(yshift="h+1c")
     # Top row, one subplot
@@ -1640,7 +1640,7 @@ def make_scaled_mag_list(length, width, rupture_area, scaled_mag_relation):
 
 def plot_scaled_magnitudes(mag_list, scaled_mag, slip_list, ref_list, Mw, mainshock):
     fig = plt.figure()
-    fig.set_size_inches(12, 6.7)
+    fig.set_size_inches(12, 8)
     # define axes limits + labels
     mag_listfull = mag_list
     for mag in mainshock.magnitudes:
@@ -1678,7 +1678,7 @@ def plot_scaled_magnitudes(mag_list, scaled_mag, slip_list, ref_list, Mw, mainsh
     # plot magnitudes
     try:
         ax.fill_between(
-            slip_list,
+            slip_list,  # TODO: Make this full axis width
             mainshock.preferred_magnitude().mag
             - mainshock.preferred_magnitude().mag_errors.uncertainty,
             mainshock.preferred_magnitude().mag
@@ -2077,6 +2077,7 @@ def summary_files(
     return output_dictionary
 
 
+# TODO This needs to be included in the plotter
 def plot_geometry_with_time(
     times,
     events,
@@ -2464,359 +2465,6 @@ def plot_geometry_with_time(
     plt.legend()
     plt.xlim(10, (86400 * 7))
     return fig
-
-
-################################################################################
-
-
-def plot_geometry_with_time_videos(
-    times,
-    events,
-    geonet_events,
-    mean_depths,
-    dips,
-    Relocated_depths,
-    Relocated_depth_uncerts,
-    lengths,
-    azimuths,
-    mags,
-    GeoNet_mags,
-    GeoNet_mags_uncerts,
-    GeoNet_depths,
-    GeoNet_depth_uncerts,
-    log,
-    mainshock,
-    **kwargs,
-):
-
-    pclength = lengths[-1] * 0.1
-    pcazimuth = 10
-    fig = plt.figure()
-    fig.set_size_inches(16, 12)
-    fig.patch.set_facecolor("white")
-
-    # plot summary statistics text
-    ax1 = fig.add_subplot(3, 2, 1)
-    ax1.set_axis_off()
-    plt.text(
-        0.5,
-        1,
-        "RT-EQcorrscan Aftershock Analysis Outputs",
-        weight="bold",
-        color="black",
-        fontsize=14.0,
-        horizontalalignment="center",
-    )
-
-    plt.text(
-        0,
-        0.85,
-        "Trigger_ID: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.85,
-        str(mainshock.resource_id).split("/")[-1],
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.75,
-        "Time since trigger: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.75,
-        str(round(times[-1])) + " seconds",
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.65,
-        "Total events: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.65,
-        str(events[-1]),
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.55,
-        "Fault Length: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.55,
-        str(round(lengths[-1], 1)) + " km",
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.44,
-        "Fault Strike/Dip: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.44,
-        str(round(azimuths[-1], 1)) + "/" + str(round(dips[-1], 1)) + " degrees",
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.35,
-        "Scaled magnitude: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.35,
-        str(round(mags[-1], 2)),
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.25,
-        "GeoNet magnitude: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.25,
-        str(round(GeoNet_mags[-1], 2)),
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.15,
-        "Mean aftershock depth: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.15,
-        str(round(mean_depths[-1], 1)) + " km",
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.05,
-        "RT/GN mainshock depth: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.05,
-        str(round(Relocated_depths[-1], 1))
-        + "/"
-        + str(round(GeoNet_depths[-1], 1))
-        + " km",
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    # Plot events
-    ax1 = fig.add_subplot(3, 2, 2)
-    if log == True:
-        ax1.set_xscale("log")
-    ax1.plot(
-        times,
-        events,
-        linestyle="-",
-        marker=".",
-        markersize="0.01",
-        linewidth=3,
-        label="N events (RT-EQcorrscan)",
-        color="#ff9955ff",
-    )
-    ax1.title.set_text("Events")
-    plt.axvline(x=60, color="r", linestyle="-")
-    plt.axvline(x=360, color="r", linestyle="-.")
-    plt.axvline(x=3600, color="r", linestyle="dashed")
-    plt.axvline(x=86400, color="r", linestyle="dotted")
-    plt.text(47, min(events + geonet_events), "1 minute", rotation=90, color="red")
-    plt.text(270, min(events + geonet_events), "10 minutes", rotation=90, color="red")
-    plt.text(2700, min(events + geonet_events), "1 hour", rotation=90, color="red")
-    plt.text(66400, min(events + geonet_events), "1 day", rotation=90, color="red")
-    plt.legend(loc="upper left")
-    plt.ylabel("Number of detected events")
-    plt.xlim(10, (86400 * 1 + 1000))
-
-    # Plot dips
-    ax1 = fig.add_subplot(3, 2, 3)
-    if log == True:
-        ax1.set_xscale("log")
-
-    ax1.title.set_text("Dips")
-    plt.axvline(x=60, color="r", linestyle="-")
-    plt.axvline(x=360, color="r", linestyle="-.")
-    plt.axvline(x=3600, color="r", linestyle="dashed")
-    plt.axvline(x=86400, color="r", linestyle="dotted")
-    ax1.plot(
-        times,
-        dips,
-        linestyle="-",
-        marker=".",
-        markersize="0.01",
-        linewidth=3,
-        label="Dip",
-        color="#ff9955ff",
-    )
-    plt.legend()
-    plt.ylabel("Dip (degrees)")
-    plt.xlim(10, (86400 * 1 + 1000))
-
-    # plot lengths
-    ax3 = fig.add_subplot(3, 2, 4)
-    if log == True:
-        ax3.set_xscale("log")
-    ax3.title.set_text("Length")
-    ax3.plot(
-        times,
-        lengths,
-        linestyle="-",
-        marker=".",
-        markersize="0.01",
-        linewidth=3,
-        label="2$\sigma$ Length",
-        color="#ff9955ff",
-    )
-    plt.axvline(x=60, color="r", linestyle="-")
-    plt.axvline(x=360, color="r", linestyle="-.")
-    plt.axvline(x=3600, color="r", linestyle="dashed")
-    plt.axvline(x=86400, color="r", linestyle="dotted")
-    plt.legend()
-    plt.ylabel("Length (km)")
-    plt.xlim(10, (86400 * 1 + 1000))
-
-    # plot azimuths
-    ax2 = fig.add_subplot(3, 2, 5)
-    if log == True:
-        ax2.set_xscale("log")
-    ax2.title.set_text("Strike")
-    ax2.plot(
-        times,
-        azimuths,
-        linestyle="-",
-        marker=".",
-        markersize="0.01",
-        linewidth=3,
-        label="Strike",
-        color="#ff9955ff",
-    )
-    plt.axvline(x=60, color="r", linestyle="-")
-    plt.axvline(x=360, color="r", linestyle="-.")
-    plt.axvline(x=3600, color="r", linestyle="dashed")
-    plt.axvline(x=86400, color="r", linestyle="dotted")
-    plt.legend()
-    if log == True:
-        plt.xlabel("log(seconds since mainshock)")
-    else:
-        plt.xlabel("seconds since mainshock")
-    plt.ylabel("Degrees ($\degree$)")
-    plt.xlim(10, (86400 * 1 + 1000))
-
-    # plot magnitudes
-    ax4 = fig.add_subplot(3, 2, 6)
-    if log == True:
-        ax4.set_xscale("log")
-    ax4.title.set_text("Magnitudes")
-    plt.axvline(x=60, color="r", linestyle="-")
-    plt.axvline(x=360, color="r", linestyle="-.")
-    plt.axvline(x=3600, color="r", linestyle="dashed")
-    plt.axvline(x=86400, color="r", linestyle="dotted")
-    ax4.plot(
-        times,
-        mags,
-        linestyle="-",
-        marker=".",
-        markersize="0.01",
-        linewidth=3,
-        label="Scaled magnitude",
-        color="#ff9955ff",
-    )
-    ax4.plot(
-        times,
-        GeoNet_mags,
-        linestyle="-",
-        marker=".",
-        markersize="0.01",
-        label="GeoNet preferred magnitude",
-        color="darkgray",
-    )
-    # plot geonet magnitudes and uncertainties
-    geonet_max_mags, geonet_min_mags = [], []
-    for i, m in enumerate(GeoNet_mags):
-        geonet_max_mags.append(m + GeoNet_mags_uncerts[i])
-        geonet_min_mags.append(m - GeoNet_mags_uncerts[i])
-    ax4.fill_between(times, geonet_min_mags, geonet_max_mags, alpha=0.2, color="gray")
-    if log == True:
-        plt.xlabel("log(seconds since mainshock)")
-    else:
-        plt.xlabel("seconds since mainshock")
-    plt.ylabel("Magnitude")
-    plt.legend()
-    plt.xlim(10, (86400 * 1 + 1000))
-    return fig
-
 
 #################################
 

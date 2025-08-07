@@ -99,6 +99,7 @@ def template_possible_self_dets(
     return self_dets
 
 
+# TODO: Add a column of GeoNet ID if self-detection
 def catalog_to_csv(
     catalog: Union[Catalog, List[SparseEvent]],
     csv_filename: str
