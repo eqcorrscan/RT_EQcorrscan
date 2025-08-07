@@ -740,19 +740,15 @@ class RealTimeTribe(Tribe):
         except KeyError:
             self._plugin_order = ORDERED_PLUGINS
         outputter_in_dirs = [in_dir]
-        for plugin_name in self._plugin_order:
-            # If plugin name is plot then out_dir should be in_dir
+        for i, plugin_name in enumerate(self._plugin_order):
             config = self.plugin_config.get(plugin_name, None)
             if config is None:
                 continue
-            if plugin_name in ["plotter"]:
-                config.out_dir = in_dir
-            else:
-                config.out_dir = f"{self.name}/{plugin_name}_out"
-                if plugin_name not in ["outputter"]:
-                    outputter_in_dirs.append(config.out_dir)
-                    # Add outputs to outputter, don't add plotting output
-                    # Don't add the outputters output!
+            config.out_dir = f"{self.name}/{plugin_name}_out"
+            if plugin_name not in ["outputter"]:
+                outputter_in_dirs.append(config.out_dir)
+                # Add outputs to outputter, don't add plotting output
+                # Don't add the outputters output!
             if plugin_name in ["outputter"]:
                 # The outputter wants all the intermediate outputs
                 config.in_dir = outputter_in_dirs
@@ -782,7 +778,9 @@ class RealTimeTribe(Tribe):
             config.template_dir = os.path.abspath(
                 self.running_template_dir)
             # Output of previous plugin as input to next
-            in_dir = config.out_dir
+            # If plugin came after plot, then plugin in dir should be plot plugin in dir
+            if plugin_name not in ["plotter"]:
+                in_dir = config.out_dir
         return in_dir
 
     def _start_streaming(self):
