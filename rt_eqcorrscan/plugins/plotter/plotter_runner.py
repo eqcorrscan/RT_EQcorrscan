@@ -137,8 +137,9 @@ class Plotter(_Plugin):
         # in new_files)
         expired_files = set(self.event_files.keys()).difference(set(new_files))
         for expired_file in expired_files:
-            # Remove from file cache
-            expired_id, _ = self.event_cache.pop(expired_file)
+            event = self.event_files[expired_file]
+            expired_id = event.resource_id.id
+            self.event_cache.pop(expired_id)
             # Remove from event cache
             self.event_cache.pop(expired_id)
 

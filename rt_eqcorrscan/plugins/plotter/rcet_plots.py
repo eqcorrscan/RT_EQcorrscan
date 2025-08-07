@@ -1179,7 +1179,7 @@ def plot_confidence_ellipsoid(
         + str(int(azimuth + 180)).zfill(3)
         + "$\degree$"
     )
-    ax_nstd.legend()
+    ax_nstd.legend(loc="upper left")
 
     return fig
 
