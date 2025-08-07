@@ -160,19 +160,33 @@ class Plotter(_Plugin):
                 {f: (ev.resource_id.id, os.path.getmtime(f))})
 
         Logger.info("Making earthquake maps")
-        self._aftershock_maps()
+        try:
+            self._aftershock_maps()
+        except Exception as e:
+            Logger.error(f"Could not make aftershock maps due to {e}")
         Logger.info("Computing ellipse statistics and plotting")
-        ellipse_stats = self._ellipse_plots()
-        Logger.info("Plotting beachballs")
-        self._beachball_plots(
-            aftershock_azimuth=ellipse_stats["azimuth"],
-            aftershock_dip=ellipse_stats["dip"])
-        Logger.info("Plotting magnitude scaling relationships")
-        self._magnitude_plots(
-            length=ellipse_stats["length"],
-            length_z=ellipse_stats["length_z"],
-            mainshock=self._get_mainshock()
-        )
+        try:
+            ellipse_stats = self._ellipse_plots()
+        except Exception as e:
+            Logger.error(f"Could not get ellipse stats due to {e}")
+            ellipse_stats = None
+        if ellipse_stats:
+            Logger.info("Plotting beachballs")
+            try:
+                self._beachball_plots(
+                    aftershock_azimuth=ellipse_stats["azimuth"],
+                    aftershock_dip=ellipse_stats["dip"])
+            except Exception as e:
+                Logger.error(f"Could not plot beachballs due to {e}")
+            Logger.info("Plotting magnitude scaling relationships")
+            try:
+                self._magnitude_plots(
+                    length=ellipse_stats["length"],
+                    length_z=ellipse_stats["length_z"],
+                    mainshock=self._get_mainshock()
+                )
+            except Exception as e:
+                Logger.error(f"Could not plot magnitude relationships due to {e}")
         # TODO: Where does all this come from?
         # Logger.info("Making summary files")
         # output_dictionary = summary_files(
