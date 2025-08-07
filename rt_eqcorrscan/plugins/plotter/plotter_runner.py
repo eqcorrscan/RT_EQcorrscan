@@ -74,6 +74,12 @@ class Plotter(_Plugin):
     simulation_time_offset = 0.0  # Seconds to subtract from now to get the simulated time.
 
     @property
+    def _aftershock_templates(self):
+        return [ev for ev in self.template_dict.values()
+                if get_origin_attr(ev, "time") or UTCDateTime(0) >=
+                get_origin_attr(self._get_mainshock(), "time")]
+
+    @property
     def events(self) -> List:
         return [e for e in self.event_cache.values()]
 
@@ -227,7 +233,7 @@ class Plotter(_Plugin):
                 len([t for t in self.template_dict.values() if len(t.origins) == 0]),
                 len([t for t in self.template_dict.values() if len(t.magnitudes) == 0])
             ],
-            catalog_geonet=self.template_dict.values(),
+            catalog_geonet=self._aftershock_templates,
             catalog_outliers=catalog_outliers,
             length=ellipse_stats['length'],
             azimuth=ellipse_stats['azimuth'],
@@ -427,6 +433,7 @@ class Plotter(_Plugin):
             topo_cmap="grayC",
             hillshade=False,
             pad=5.0,
+            timestamp=self.now(),
         )
 
         template_map.savefig(
@@ -444,6 +451,7 @@ class Plotter(_Plugin):
             topo_cmap="grayC",
             hillshade=False,
             pad=5.0,
+            timestamp=self.now(),
         )
 
         detected_map.savefig(

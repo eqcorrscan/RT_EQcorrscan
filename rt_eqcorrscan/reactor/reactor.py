@@ -15,6 +15,7 @@ from obspy import UTCDateTime, Catalog, read_events
 from obspy.core.event import Event, Magnitude
 
 from obsplus.events import get_events
+from obspy.geodetics import degrees2kilometers
 
 from rt_eqcorrscan.database.database_manager import (
     TemplateBank, check_tribe_quality)
@@ -413,7 +414,9 @@ class Reactor(object):
             os.symlink(tf, os.path.join(tribe_dir, os.path.basename(tf)))
         # Add config for plotting
         if self.config.plugins["plotter"]:
-            self.config.plugins["plotter"].search_radius = region["maxradius"]
+            # Roughly convert to km
+            self.config.plugins["plotter"].search_radius = degrees2kilometers(
+                region["maxradius"])
         self.config.write(
             os.path.join(working_dir, 'rt_eqcorrscan_config.yml'))
         triggering_event.write(

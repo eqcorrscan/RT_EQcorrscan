@@ -11,6 +11,8 @@ import numpy as np
 
 from typing import Union, Tuple
 
+from datetime import datetime
+from obspy import UTCDateTime
 from pyproj import CRS, Transformer
 
 from obspy.core.event import Catalog, Event
@@ -41,6 +43,7 @@ def _eq_map(
     topo_res: Union[bool, str],
     topo_cmap: str,
     hillshade: bool,
+    timestamp: Union[UTCDateTime, datetime]
 ) -> pygmt.Figure:
     """ """
     all_lons = np.concatenate([lons, station_lons])
@@ -72,7 +75,9 @@ def _eq_map(
             topo_res = "01s"
 
     fig = pygmt.Figure()
-    fig.basemap(region=region, projection=f"M{width}c", frame=True)
+    fig.basemap(region=region, projection=f"M{width}c",
+                frame=["a", f"+t{len(lats)} earthquakes at "
+                            f"{timestamp.strftime('%Y/%m/%d %H:%M:%S')}"])
 
     grid = pygmt.datasets.load_earth_relief(resolution=topo_res, region=region)
     if hillshade:
@@ -156,6 +161,7 @@ def aftershock_map(
     topo_res: Union[bool, str] = True,
     topo_cmap: str = "geo",
     hillshade: bool = False,
+    timestamp: Union[UTCDateTime, datetime] = UTCDateTime.now(),
 ) -> pygmt.Figure:
     """
     Make a basic aftershock map.
@@ -222,6 +228,7 @@ def aftershock_map(
         topo_res=topo_res,
         topo_cmap=topo_cmap,
         hillshade=hillshade,
+        timestamp=timestamp,
     )
 
     # Plot mainshock
