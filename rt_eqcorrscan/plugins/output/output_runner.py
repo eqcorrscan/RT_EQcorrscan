@@ -120,7 +120,7 @@ def catalog_to_csv(
         "Origin Time (UTC)": "get_origin_attr(event, 'time')",
         "Latitude": "get_origin_attr(event, 'latitude')",
         "Longitude": "get_origin_attr(event, 'longitude')",
-        "Depth (km)": "get_origin_attr(event, 'depth') / 1000.0",
+        "Depth (km)": "(get_origin_attr(event, 'depth') or 0.0) / 1000.0",
         "Magnitude": "get_magnitude_attr(event, 'mag')",
         "Location Method ID": "get_origin_attr(event, 'method_id')",
     })
@@ -263,7 +263,7 @@ class Outputter(_Plugin):
             for t_file, t_event in self.template_dict.items():
                 if t_file in self._skipped_templates or get_origin_attr(t_event, "time") < self._mainshock_time - 60:
                     # Don't output template events before our trigger event
-                    Logger.info(f"Skipping template {t_event.resource_id.id}: before trigger")
+                    Logger.debug(f"Skipping template {t_event.resource_id.id}: before trigger")
                     self._skipped_templates.update(t_file)
                     continue
                 # If we have read in a relocated version of the template then we
