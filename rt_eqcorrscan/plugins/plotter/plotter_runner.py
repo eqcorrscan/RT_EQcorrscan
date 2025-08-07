@@ -156,6 +156,9 @@ class Plotter(_Plugin):
         # cope with updates
         Logger.info("Reading events")
         for f in new_files:
+            if not os.path.isfile(f):
+                # File no longer exists.
+                continue
             mtime = os.path.getmtime(f)
             if f in self.event_files.keys():
                 # Check if the file has changed since we last read from it
