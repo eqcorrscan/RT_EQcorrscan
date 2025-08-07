@@ -286,7 +286,7 @@ def mainshock_mags(mainshock, RT_mainshock):
         geonet_mainshock_mag = round(
             (mainshock.preferred_magnitude() or mainshock.magnitudes[-1]).mag, 2
         )
-    except IndexError:
+    except (IndexError, TypeError):
         geonet_mainshock_mag = 0.0
 
     try:
@@ -303,7 +303,7 @@ def mainshock_mags(mainshock, RT_mainshock):
         geonet_mainshock_depth = round(
             (mainshock.preferred_origin() or mainshock.origins[-1]).depth / 1000, 1
         )
-    except IndexError:
+    except (IndexError, TypeError):
         geonet_mainshock_depth = 0.0
 
     try:
@@ -314,7 +314,7 @@ def mainshock_mags(mainshock, RT_mainshock):
             / 1000,
             1,
         )
-    except IndexError:
+    except (IndexError, TypeError):
         geonet_mainshock_depth_uncertainty = 0.0
 
     try:
@@ -322,7 +322,7 @@ def mainshock_mags(mainshock, RT_mainshock):
             (RT_mainshock.preferred_origin() or RT_mainshock.origins[-1]).depth / 1000,
             1,
         )
-    except IndexError:
+    except (IndexError, TypeError):
         RT_mainshock_depth = geonet_mainshock_depth
 
     try:
@@ -333,7 +333,7 @@ def mainshock_mags(mainshock, RT_mainshock):
             / 1000,
             1,
         )
-    except IndexError:
+    except (IndexError, TypeError):
         RT_mainshock_depth_uncertainty = geonet_mainshock_depth_uncertainty
 
     return (
