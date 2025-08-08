@@ -91,6 +91,7 @@ class RealTimeTribe(Tribe):
     busy = False
 
     _simulation = False  # Flag to get extra output for simulations
+    _simulation_time_offset = 0.0  # Time offset in seconds between real-time and simulation time
     _speed_up = 1.0  # For simulated runs - do not change for real-time!
     _stream_end = UTCDateTime(1970, 1, 1)  # End of real-time data - will be
     # updated in first loop. Used for keeping track of when templates are relative
@@ -711,6 +712,9 @@ class RealTimeTribe(Tribe):
             plugin_args = ["-c", config_name]
             if self._simulation:
                 plugin_args.append("--simulation")
+                if key in ["plotter"]:
+                    plugin_args.extend(["--simulation-time-offset",
+                                        str(self._simulation_time_offset)])
             plugin_proc = run_plugin(key, plugin_args)
             self._plugins.update({key: plugin_proc})
         return
@@ -740,19 +744,15 @@ class RealTimeTribe(Tribe):
         except KeyError:
             self._plugin_order = ORDERED_PLUGINS
         outputter_in_dirs = [in_dir]
-        for plugin_name in self._plugin_order:
-            # If plugin name is plot then out_dir should be in_dir
+        for i, plugin_name in enumerate(self._plugin_order):
             config = self.plugin_config.get(plugin_name, None)
             if config is None:
                 continue
-            if plugin_name in ["plotter"]:
-                config.out_dir = in_dir
-            else:
-                config.out_dir = f"{self.name}/{plugin_name}_out"
-                if plugin_name not in ["outputter"]:
-                    outputter_in_dirs.append(config.out_dir)
-                    # Add outputs to outputter, don't add plotting output
-                    # Don't add the outputters output!
+            config.out_dir = f"{self.name}/{plugin_name}_out"
+            if plugin_name not in ["outputter"]:
+                outputter_in_dirs.append(config.out_dir)
+                # Add outputs to outputter, don't add plotting output
+                # Don't add the outputters output!
             if plugin_name in ["outputter"]:
                 # The outputter wants all the intermediate outputs
                 config.in_dir = outputter_in_dirs
@@ -782,7 +782,9 @@ class RealTimeTribe(Tribe):
             config.template_dir = os.path.abspath(
                 self.running_template_dir)
             # Output of previous plugin as input to next
-            in_dir = config.out_dir
+            # If plugin came after plot, then plugin in dir should be plot plugin in dir
+            if plugin_name not in ["plotter"]:
+                in_dir = config.out_dir
         return in_dir
 
     def _start_streaming(self):

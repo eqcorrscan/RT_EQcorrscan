@@ -99,6 +99,7 @@ def template_possible_self_dets(
     return self_dets
 
 
+# TODO: Add a column of GeoNet ID if self-detection
 def catalog_to_csv(
     catalog: Union[Catalog, List[SparseEvent]],
     csv_filename: str
@@ -120,9 +121,10 @@ def catalog_to_csv(
         "Origin Time (UTC)": "get_origin_attr(event, 'time')",
         "Latitude": "get_origin_attr(event, 'latitude')",
         "Longitude": "get_origin_attr(event, 'longitude')",
-        "Depth (km)": "get_origin_attr(event, 'depth') / 1000.0",
+        "Depth (km)": "(get_origin_attr(event, 'depth') or 0.0) / 1000.0",
         "Magnitude": "get_magnitude_attr(event, 'mag')",
         "Location Method ID": "get_origin_attr(event, 'method_id')",
+        "Self Detection ID": "event.self_det_id",
     })
 
     lines = [", ".join(columns.keys())]
@@ -231,6 +233,8 @@ class Outputter(_Plugin):
                 continue
             event = sparsify_catalog(event, include_picks=True)
             event = event[0]
+            # Add in self_det_id which will be overloaded later if it is a template self-detection
+            event.self_det_id = None
             self._read_files.append(file)  # Keep track and don't read again
             if event.resource_id.id in self.output_events.keys():
                 # Check the input directory. If the "new" event has an in-dir
@@ -263,7 +267,7 @@ class Outputter(_Plugin):
             for t_file, t_event in self.template_dict.items():
                 if t_file in self._skipped_templates or get_origin_attr(t_event, "time") < self._mainshock_time - 60:
                     # Don't output template events before our trigger event
-                    Logger.info(f"Skipping template {t_event.resource_id.id}: before trigger")
+                    Logger.debug(f"Skipping template {t_event.resource_id.id}: before trigger")
                     self._skipped_templates.update(t_file)
                     continue
                 # If we have read in a relocated version of the template then we
@@ -283,9 +287,12 @@ class Outputter(_Plugin):
                     template_outputs.update({t_name: (t_file, t_event)})
                     continue
                 # Look for template self detections - slop in origin time? Then match picks?
-                if len(template_possible_self_dets(template_event=t_event, catalog=t_events)):
+                self_dets = template_possible_self_dets(template_event=t_event, catalog=t_events)
+                if len(self_dets):
                     Logger.debug(f"Found likely self detections for template "
                                  f"{t_name}, not including template to output")
+                    for ev in self_dets:
+                        ev.self_det_id = t_event.resource_id.id
                     continue
                 Logger.info(f"No self detections for {t_name}, "
                             f"adding template to output")

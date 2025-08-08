@@ -277,7 +277,13 @@ class _Plugin(ABC):
             # TODO: If input files are removed, remove the associated output
             #  files as well - needs a database of input file linked to output file.
             new_files = list(itertools.chain.from_iterable(new_file_dict.values()))
-            processed_files = self.core(new_files=new_files, cleanup=cleanup)
+            try:
+                processed_files = self.core(new_files=new_files, cleanup=cleanup)
+            except Exception as e:
+                Logger.error(
+                    "Could not run plugin core for {0} due to: {1}".format(
+                        self.name, e),
+                    exc_info=True)
 
             # Associate file with correct watcher
             processed_files = {
@@ -327,6 +333,8 @@ def run_plugin(
     # Start plugin subprocess
     _call = [plugin_path]
     _call.extend(plugin_args)
+    # make sure all args are strs
+    _call = [str(item) for item in _call]
 
     Logger.info("Running `{call}`".format(call=" ".join(_call)))
     proc = subprocess.Popen(_call)

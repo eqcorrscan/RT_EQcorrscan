@@ -4,6 +4,10 @@ Runner for the plotting funcs.
 
 import os
 import logging
+import shutil
+import glob
+import numpy as np
+
 from typing import Iterable, List, Union, Tuple
 
 from obspy import read_events, UTCDateTime, Inventory, read_inventory
@@ -13,11 +17,11 @@ from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
     PLUGIN_CONFIG_MAPPER, _Plugin)
 from rt_eqcorrscan.helpers.sparse_event import sparsify_catalog, SparseEvent, \
-    get_origin_attr
+    get_origin_attr, get_magnitude_attr
 from rt_eqcorrscan.plugins.plotter.rcet_plots import (
     aftershock_map, summary_files, ellipse_plots,
     ellipse_to_rectangle, focal_sphere_plots, plot_scaled_magnitudes,
-    make_scaled_mag_list,
+    make_scaled_mag_list, mainshock_mags,
 )
 from rt_eqcorrscan.plugins.output.output_runner import template_possible_self_dets
 
@@ -62,14 +66,18 @@ class PlotConfig(_PluginConfig):
 PLUGIN_CONFIG_MAPPER.update({"plotter": PlotConfig})
 
 
-def _now_str():
-    return UTCDateTime.now().strftime('%Y-%m-%dT%H-%M-%S')
-
 class Plotter(_Plugin):
     name = "Plotter"
     event_cache = {}  # Dict of SparseEvents keyed by event id
     event_files = {}  # Dict of (event-id, mtime) keyed by event-file
     inventory_cache = (None, None, None)  # Tuple of (inventory, file, mtime)
+    simulation_time_offset = 0.0  # Seconds to subtract from now to get the simulated time.
+
+    @property
+    def _aftershock_templates(self):
+        return [ev for ev in self.template_dict.values()
+                if get_origin_attr(ev, "time") or UTCDateTime(0) >=
+                get_origin_attr(self._get_mainshock(), "time")]
 
     @property
     def events(self) -> List:
@@ -79,15 +87,26 @@ class Plotter(_Plugin):
     def inventory(self) -> Union[Inventory, None]:
         return self.inventory_cache[0]
 
+    @property
+    def now(self) -> UTCDateTime:
+        return UTCDateTime.now() - self.simulation_time_offset
+
+    @property
+    def _now_str(self) -> str:
+        return self.now.strftime("%Y-%m-%dT%H-%M-%S")
+
     def _read_config(self, config_file: str):
         return PlotConfig.read(config_file=config_file)
 
     def core(self, new_files: Iterable, cleanup: bool = True) -> List:
         """ Run the plotter. """
+        now = self.now
         internal_config = self.config.copy()
         out_dir = internal_config.pop("out_dir")
         if not os.path.isdir(out_dir):
             os.makedirs(out_dir)
+        if not os.path.isdir(f"{out_dir}/history"):
+            os.makedirs(f"{out_dir}/history")
 
         """
         Things we need for the plots:
@@ -107,9 +126,11 @@ class Plotter(_Plugin):
         in the config file.
         """
         # Load template events
+        Logger.info("Getting template events")
         self.get_template_events()
 
         # Load the stations
+        Logger.info("Getting inventory")
         read_inv = False
         if self.inventory_cache[2] is not None:
             # We have read the inventory file, check if we need to re-read
@@ -130,70 +151,121 @@ class Plotter(_Plugin):
 
         # Remove expired events (e.g. those in our cache that do not appear
         # in new_files)
+        Logger.info("Checking expired files")
         expired_files = set(self.event_files.keys()).difference(set(new_files))
         for expired_file in expired_files:
-            # Remove from file cache
-            expired_id, _ = self.event_cache.pop(expired_file)
+            expired_id, _ = self.event_files.pop(expired_file)
             # Remove from event cache
             self.event_cache.pop(expired_id)
 
         # Read detected events - we need to re-check all events everytime to
         # cope with updates
+        Logger.info("Reading events")
         for f in new_files:
+            if not os.path.isfile(f):
+                # File no longer exists.
+                continue
+            mtime = os.path.getmtime(f)
             if f in self.event_files.keys():
                 # Check if the file has changed since we last read from it
-                if os.path.getmtime(f) <= self.event_files[f][1]:
+                if mtime <= self.event_files[f][1]:
                     # File has not been updated. Skip reading
                     continue
             # File is either new or updated. Read
-            cat = sparsify_catalog(read_events(f), include_picks=True)
+            if os.path.isfile(f):
+                # Cope with files being changed while we work...
+                cat = sparsify_catalog(read_events(f), include_picks=True)
+            else:
+                # We can ignore it.
+                continue
             assert len(cat) == 1, f"More than one event in {f}"
             ev = cat[0]
             self.event_cache.update({ev.resource_id.id: ev})
             self.event_files.update(
-                {f: (ev.resource_id.id, os.path.getmtime(f))})
+                {f: (ev.resource_id.id, mtime)})
 
+        # TODO: Make maps after ellipse plots and scale to the non-outlier catalogue
         Logger.info("Making earthquake maps")
-        self._aftershock_maps()
+        try:
+            self._aftershock_maps()
+        except Exception as e:
+            Logger.error(f"Could not make aftershock maps due to {e}")
         Logger.info("Computing ellipse statistics and plotting")
-        ellipse_stats = self._ellipse_plots()
+        try:
+            ellipse_stats, catalog_outliers = self._ellipse_plots()
+        except Exception as e:
+            Logger.error(f"Could not get ellipse stats due to {e}")
+            ellipse_stats = None
+        if not ellipse_stats:
+            # Everything else requires the ellipse stats and/or catalog_outliers
+            self._add_to_history()
+            return []
         Logger.info("Plotting beachballs")
-        self._beachball_plots(
-            aftershock_azimuth=ellipse_stats["azimuth"],
-            aftershock_dip=ellipse_stats["dip"])
+        try:
+            self._beachball_plots(
+                aftershock_azimuth=ellipse_stats["azimuth"],
+                aftershock_dip=ellipse_stats["dip"])
+        except Exception as e:
+            Logger.error(f"Could not plot beachballs due to {e}")
         Logger.info("Plotting magnitude scaling relationships")
-        self._magnitude_plots(
-            length=ellipse_stats["length"],
-            length_z=ellipse_stats["length_z"],
-             mainshock=self._get_mainshock()
-        )
-        # TODO: Where does all this come from?
-        # output_dictionary = summary_files(
-        #     eventid=eventid,
-        #     current_time=current_time,
-        #     elapsed_secs=elapsed_secs,
-        #     catalog_RT=catalog_RT,
-        #     cat_counts=cat_counts,
-        #     catalog_geonet=catalog_geonet,
-        #     catalog_outliers=catalog_outliers,
-        #     length=length,
-        #     azimuth=azimuth,
-        #     dip=dip,
-        #     length_z=length_z,
-        #     scaled_mag=scaled_mag,
-        #     geonet_mainshock_mag=geonet_mainshock_mag,
-        #     geonet_mainshock_mag_uncertainty=geonet_mainshock_mag_uncertainty,
-        #     mean_depth=mean_depth,
-        #     RT_mainshock_depth=RT_mainshock_depth,
-        #     RT_mainshock_depth_uncertainty=RT_mainshock_depth_uncertainty,
-        #     geonet_mainshock_depth=geonet_mainshock_depth,
-        #     geonet_mainshock_depth_uncertainty=geonet_mainshock_depth_uncertainty,
-        #     output_dir=output_dir)
+        try:
+            scaled_mag = self._magnitude_plots(
+                length=ellipse_stats["length"],
+                length_z=ellipse_stats["length_z"],
+                mainshock=self._get_mainshock()
+            )
+        except Exception as e:
+            scaled_mag = np.nan
+            Logger.error(f"Could not plot magnitude relationships due to {e}")
+        Logger.info("Making summary files")
+        (geonet_mainshock_mag, geonet_mainshock_mag_uncertainty,
+         geonet_mainshock_depth, geonet_mainshock_depth_uncertainty,
+         RT_mainshock_depth, RT_mainshock_depth_uncertainty) = mainshock_mags(
+            mainshock=self._get_mainshock(), RT_mainshock=self._get_relocated_mainshock())
 
-        # TODO: pass args?
-        self._summary_figure()
-
+        output_dictionary = summary_files(
+            eventid=internal_config.mainshock_id,
+            current_time=now,
+            elapsed_secs=now - get_origin_attr(self._get_mainshock(), "time"),
+            catalog_RT=self.events,
+            cat_counts=[
+                len([ev for ev in self.events if len(ev.origins) == 0]),
+                len([ev for ev in self.events if len(ev.magnitudes) == 0]),
+                len([t for t in self.template_dict.values() if len(t.origins) == 0]),
+                len([t for t in self.template_dict.values() if len(t.magnitudes) == 0])
+            ],
+            catalog_geonet=self._aftershock_templates,
+            catalog_outliers=catalog_outliers,
+            length=ellipse_stats['length'],
+            azimuth=ellipse_stats['azimuth'],
+            dip=ellipse_stats['dip'],
+            length_z=ellipse_stats['length_z'],
+            scaled_mag=scaled_mag,
+            geonet_mainshock_mag=geonet_mainshock_mag,
+            geonet_mainshock_mag_uncertainty=geonet_mainshock_mag_uncertainty,
+            mean_depth=np.mean([get_origin_attr(ev, "depth") / 1000.0 for ev in self.events
+                                if get_origin_attr(ev, "depth") is not None]),
+            RT_mainshock_depth=RT_mainshock_depth,
+            RT_mainshock_depth_uncertainty=RT_mainshock_depth_uncertainty,
+            geonet_mainshock_depth=geonet_mainshock_depth,
+            geonet_mainshock_depth_uncertainty=geonet_mainshock_depth_uncertainty,
+            output_dir=out_dir)
+        #
+        # # TODO: pass args?
+        # Logger.info("Making summary figure")
+        # self._summary_figure()
+        # TODO: plot_geometry_with_time
+        self._add_to_history()
         return []
+
+    def _add_to_history(self):
+        # Copy "latest" to history with timestamps
+        now_str = self._now_str
+        os.makedirs(f"{self.config.out_dir}/history/{now_str}")
+        for plot in glob.glob(f"{self.config.out_dir}/*_latest.*"):
+            fname = os.path.basename(plot)
+            fname.replace("_latest", now_str)
+            shutil.copy(plot, f"{self.config.out_dir}/history/{now_str}/{fname}")
 
     def _get_mainshock(self) -> Union[SparseEvent, Event, None]:
         # Get the mainshock
@@ -257,10 +329,10 @@ class Plotter(_Plugin):
             colours='depth')
 
         fig.savefig(
-            f"{self.config.out_dir}/Aftershock_extent_depth_map_{_now_str()}.png",
+            f"{self.config.out_dir}/Aftershock_extent_depth_map_latest.png",
             dpi=self.config.png_dpi)
         fig.savefig(
-            f"{self.config.out_dir}/Aftershock_extent_depth_map_{_now_str()}.pdf",
+            f"{self.config.out_dir}/Aftershock_extent_depth_map_latest.pdf",
             dpi=self.config.eps_dpi)
         return
 
@@ -279,12 +351,17 @@ class Plotter(_Plugin):
             mag_list=mag_list, scaled_mag=scaled_mag, slip_list=slip_list,
             ref_list=ref_list, Mw=self.config.Mw, mainshock=mainshock)
         fig.savefig(
-            f"{self.config.out_dir}/Scaled_Magnitude_Comparison_{_now_str()}.eps",
+            f"{self.config.out_dir}/Scaled_Magnitude_Comparison_latest.pdf",
             dpi=self.config.eps_dpi)
         fig.savefig(
-            f"{self.config.out_dir}/Scaled_Magnitude_Comparison_{_now_str()}.png",
+            f"{self.config.out_dir}/Scaled_Magnitude_Comparison_latest.png",
             dpi=self.config.png_dpi)
-        return
+        with open(f"{self.config.out_dir}/Scaled_Magnitude_comparison_latest.csv", "w"):
+            f.write(ref_list.join(','))
+            f.write("\n")
+            f.write(mag_list.join(','))
+            f.write('\n')
+        return scaled_mag
 
     def _beachball_plots(self, aftershock_azimuth, aftershock_dip):
         """ Make focal sphere plots. """
@@ -294,10 +371,10 @@ class Plotter(_Plugin):
             MT_NP1=self.config.MT_NP1,
             MT_NP2=self.config.MT_NP2)
         fig.savefig(
-            f"{self.config.out_dir}/focal_sphere_{_now_str()}.png",
+            f"{self.config.out_dir}/focal_sphere_latest.png",
             dpi=self.config.png_dpi)
         fig.savefig(
-            f"{self.config.out_dir}/focal_sphere_{_now_str()}.pdf",
+            f"{self.config.out_dir}/focal_sphere_latest.pdf",
             dpi=self.config.eps_dpi)
         return
 
@@ -317,19 +394,19 @@ class Plotter(_Plugin):
             radius_km=self.config.search_radius)
 
         ellipse_map.savefig(
-            f'{self.config.out_dir}/confidence_ellipsoid_{_now_str()}.png',
+            f'{self.config.out_dir}/confidence_ellipsoid_latest.png',
             dpi=self.config.png_dpi)
         ellipse_map.savefig(
-            f'{self.config.out_dir}/confidence_ellipsoid_{_now_str()}.pdf',
+            f'{self.config.out_dir}/confidence_ellipsoid_latest.pdf',
             dpi=self.config.eps_dpi)
 
         ellipse_xsection.savefig(
             f'{self.config.out_dir}/confidence_ellipsoid_'
-            f'vertical{_now_str()}.png',
+            f'vertical_latest.png',
             dpi=self.config.png_dpi)
         ellipse_xsection.savefig(
             f'{self.config.out_dir}/confidence_ellipsoid_'
-            f'vertical{_now_str()}.pdf',
+            f'vertical_latest.pdf',
             dpi=self.config.eps_dpi)
 
         corners = ellipse_to_rectangle(
@@ -348,7 +425,7 @@ class Plotter(_Plugin):
         # corners are assigned depths
 
         # TODO: Output corners to json?
-        return ellipse_stats
+        return ellipse_stats, catalog_outliers
 
     def _aftershock_maps(self):
         """ Make core aftershock maps. """
@@ -362,13 +439,15 @@ class Plotter(_Plugin):
             topo_res="03s",
             topo_cmap="grayC",
             hillshade=False,
+            pad=5.0,
+            timestamp=self.now,
         )
 
         template_map.savefig(
-            f"{self.config.out_dir}/catalog_templates_{_now_str()}.png",
+            f"{self.config.out_dir}/catalog_templates_latest.png",
             dpi=self.config.png_dpi)
         template_map.savefig(
-            f"{self.config.out_dir}/catalog_templates_{_now_str()}.pdf",
+            f"{self.config.out_dir}/catalog_templates_latest.pdf",
             dpi=self.config.eps_dpi)
         
         detected_map = aftershock_map(
@@ -378,13 +457,15 @@ class Plotter(_Plugin):
             topo_res="03s",
             topo_cmap="grayC",
             hillshade=False,
+            pad=5.0,
+            timestamp=self.now,
         )
 
         detected_map.savefig(
-            f"{self.config.out_dir}/catalog_RT_{_now_str()}.png",
+            f"{self.config.out_dir}/catalog_RT_latest.png",
             dpi=self.config.png_dpi)
         detected_map.savefig(
-            f"{self.config.out_dir}/catalog_RT_{_now_str()}.pdf",
+            f"{self.config.out_dir}/catalog_RT_latest.pdf",
             dpi=self.config.eps_dpi)
 
         return

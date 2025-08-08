@@ -115,6 +115,7 @@ def run(
         notifier=config.notifier, plugin_config=config.plugins,
     )
     real_time_tribe._simulation = simulation
+    real_time_tribe._simulation_time_offset = synthetic_time_offset
 
     real_time_tribe._speed_up = speed_up
     if speed_up > 1:
