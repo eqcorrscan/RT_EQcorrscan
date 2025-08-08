@@ -440,6 +440,7 @@ class Plotter(_Plugin):
         template_map = aftershock_map(
             catalog=self.template_dict.values(),
             mainshock=mainshock,
+            search_radius=self.config.search_radius,
             inventory=self.inventory,
             topo_res="03s",
             topo_cmap="grayC",
@@ -458,6 +459,7 @@ class Plotter(_Plugin):
         detected_map = aftershock_map(
             catalog=self.events,
             mainshock=mainshock,
+            search_radius=self.config.search_radius,
             inventory=self.inventory,
             topo_res="03s",
             topo_cmap="grayC",

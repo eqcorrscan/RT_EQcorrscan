@@ -13,6 +13,7 @@ from typing import Union, Tuple
 
 from datetime import datetime
 from obspy import UTCDateTime
+from obspy.geodetics import kilometer2degrees
 from pyproj import CRS, Transformer
 
 from obspy.core.event import Catalog, Event
@@ -34,6 +35,7 @@ def _eq_map(
     lons: np.ndarray,
     depths: np.ndarray,
     mags: np.ndarray,
+    search_radius_deg: float,
     times: np.ndarray,  # TODO: Don't need times, but we could use origin type and plot different styles for different types of origin (Hyp, NLL, GC, GeoNet)
     station_lats: np.ndarray,
     station_lons: np.ndarray,
@@ -52,19 +54,25 @@ def _eq_map(
     # If longitudes cross the dateline, convert them to work
     if all_lons.max() - all_lons.min() > 180:
         all_lons %= 360
-    lon_range = all_lons.max() - all_lons.min()
+    all_lon_range = all_lons.max() - all_lons.min()
+    all_lat_range = all_lats.max() - all_lats.min()
+
+    if lons.max() - lons.min() > 180:
+        lons %= 360
+    lon_range = lons.max() - lons.min()
+    lat_range = lats.max() - lats.min()
 
     large_region = [
-        all_lons.min() - (lon_range * (pad / 100)),
-        all_lons.max() + (lon_range * (pad / 100)),
-        min(90, all_lats.min() - (lon_range * (pad / 100))),
-        max(-90, all_lats.max() + (lon_range * (pad / 100))),
+        all_lons.min() - (all_lon_range * (pad / 100)),
+        all_lons.max() + (all_lon_range * (pad / 100)),
+        min(90, all_lats.min() - (all_lat_range * (pad / 100))),
+        max(-90, all_lats.max() + (all_lat_range * (pad / 100))),
     ]
     region = [
-        lons.min() - ((lons.max() - lons.min()) * (pad / 100)),
-        lons.max() + ((lons.max() - lons.min()) * (pad / 100)),
-        min(90, lats.min() - ((lats.max() - lats.min()) * (pad / 100))),
-        max(-90, lats.max() - ((lats.max() - lats.min()) * (pad / 100))),
+        lons.min() - max(search_radius_deg, lon_range * (pad / 100)),
+        lons.max() + max(search_radius_deg, lon_range * (pad / 100)),
+        min(90, lats.min() - max(search_radius_deg, lat_range * (pad / 100))),
+        max(-90, lats.max() + max(search_radius_deg, lat_range * (pad / 100))),
     ]
     # Work out resolution for topography
     if topo_res is True:
@@ -92,7 +100,7 @@ def _eq_map(
         fig.grdimage(grid=grid, shading=dgrid, cmap=topo_cmap)
     else:
         fig.grdimage(grid=grid, cmap=topo_cmap)
-    fig.coast(shorelines="1/0.5p")
+    fig.coast(shorelines="1/0.5p", water="white")
 
     pygmt.makecpt(cmap="plasma", series=[depths.min(), depths.max()])
 
@@ -181,6 +189,7 @@ def _eq_map(
 def aftershock_map(
     catalog: Catalog,
     mainshock: Event,
+    search_radius: float,
     inventory: Inventory = None,
     pad: float = 50.0,
     width: float = 15.0,
@@ -248,6 +257,7 @@ def aftershock_map(
         depths=depths,
         mags=mags,
         times=times,
+        search_radius_deg=kilometer2degrees(search_radius),
         station_lons=station_lons,
         station_lats=station_lats,
         width=width,
@@ -1705,8 +1715,7 @@ def plot_scaled_magnitudes(mag_list, scaled_mag, slip_list, ref_list, Mw, mainsh
     # plot magnitudes
     try:
         ax.fill_between(
-            #slip_list, 
-            ax.get_xlim(),
+            slip_list,
             mainshock.preferred_magnitude().mag
             - mainshock.preferred_magnitude().mag_errors.uncertainty,
             mainshock.preferred_magnitude().mag
