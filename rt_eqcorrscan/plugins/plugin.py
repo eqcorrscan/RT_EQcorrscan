@@ -280,10 +280,11 @@ class _Plugin(ABC):
             try:
                 processed_files = self.core(new_files=new_files, cleanup=cleanup)
             except Exception as e:
-                Logger.error(
+                Logger.exception(
                     "Could not run plugin core for {0} due to: {1}".format(
                         self.name, e),
                     exc_info=True)
+                processed_files = []
 
             # Associate file with correct watcher
             processed_files = {

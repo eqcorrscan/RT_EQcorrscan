@@ -189,12 +189,14 @@ class Plotter(_Plugin):
         try:
             self._aftershock_maps()
         except Exception as e:
-            Logger.error(f"Could not make aftershock maps due to {e}")
+            Logger.exception(f"Could not make aftershock maps due to {e}",
+                             exc_info=True)
         Logger.info("Computing ellipse statistics and plotting")
         try:
             ellipse_stats, catalog_outliers = self._ellipse_plots()
         except Exception as e:
-            Logger.error(f"Could not get ellipse stats due to {e}")
+            Logger.exception(f"Could not get ellipse stats due to {e}",
+                             exc_info=True)
             ellipse_stats = None
         if not ellipse_stats:
             # Everything else requires the ellipse stats and/or catalog_outliers
@@ -206,7 +208,8 @@ class Plotter(_Plugin):
                 aftershock_azimuth=ellipse_stats["azimuth"],
                 aftershock_dip=ellipse_stats["dip"])
         except Exception as e:
-            Logger.error(f"Could not plot beachballs due to {e}")
+            Logger.exception(f"Could not plot beachballs due to {e}",
+                             exc_info=True)
         Logger.info("Plotting magnitude scaling relationships")
         try:
             scaled_mag = self._magnitude_plots(
@@ -216,7 +219,9 @@ class Plotter(_Plugin):
             )
         except Exception as e:
             scaled_mag = np.nan
-            Logger.error(f"Could not plot magnitude relationships due to {e}")
+            Logger.exception(
+                f"Could not plot magnitude relationships due to {e}",
+                exc_info=True)
         Logger.info("Making summary files")
         (geonet_mainshock_mag, geonet_mainshock_mag_uncertainty,
          geonet_mainshock_depth, geonet_mainshock_depth_uncertainty,
@@ -356,10 +361,10 @@ class Plotter(_Plugin):
         fig.savefig(
             f"{self.config.out_dir}/Scaled_Magnitude_Comparison_latest.png",
             dpi=self.config.png_dpi)
-        with open(f"{self.config.out_dir}/Scaled_Magnitude_comparison_latest.csv", "w"):
-            f.write(ref_list.join(','))
+        with open(f"{self.config.out_dir}/Scaled_Magnitude_comparison_latest.csv", "w") as f:
+            f.write(','.join(ref_list))
             f.write("\n")
-            f.write(mag_list.join(','))
+            f.write(','.join(str(m) for m in mag_list))
             f.write('\n')
         return scaled_mag
 
@@ -439,7 +444,7 @@ class Plotter(_Plugin):
             topo_res="03s",
             topo_cmap="grayC",
             hillshade=False,
-            pad=5.0,
+            pad=10.0,
             timestamp=self.now,
         )
 
@@ -457,7 +462,7 @@ class Plotter(_Plugin):
             topo_res="03s",
             topo_cmap="grayC",
             hillshade=False,
-            pad=5.0,
+            pad=10.0,
             timestamp=self.now,
         )
 

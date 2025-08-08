@@ -131,9 +131,11 @@ def _eq_map(
     inset_mid_lon = inset_region[0] + (inset_region[1] - inset_region[0]) / 2
     inset_mid_lat = inset_region[2] + (inset_region[3] - inset_region[2]) / 2
 
+    inset_frame = True
     if max_dim > 15:
         # Orthographic projection
         inset_proj = f"G{inset_mid_lon}/{inset_mid_lat}/{inset_width}c"
+        inset_frame = False
     elif max_dim > 3:
         # Albers
         inset_proj = (
@@ -143,23 +145,25 @@ def _eq_map(
         # Mercator
         inset_proj = f"M{inset_width}c"
 
-    with fig.inset(position=f"jBL+w{inset_width}c+o0.1c"):
+    with fig.inset(position=f"jBL+w{inset_width}c"): #+o0.1c"):
         fig.coast(
             region=inset_region,
             projection=inset_proj,
             land="gray",
             water="white",
+            frame=inset_frame,
         )
         rectangle = [[region[0], region[2], region[1], region[3]]]
         fig.plot(data=rectangle, style="r+s", pen="2p,red", projection=inset_proj)
 
     # Station inset
-    with fig.inset(position=f"jTL+w{inset_width}c+o0.1c"):
+    with fig.inset(position=f"jTL+w{inset_width}c"): #+o0.1c"):
         fig.coast(
             region=large_region,
             projection=f"M{inset_width}c",
             land="gray",
-            water="white"
+            water="white",
+            frame=True,
         )
         rectangle = [[region[0], region[2], region[1], region[3]]]
         fig.plot(data=rectangle, style="r+s", pen="2p,red")
