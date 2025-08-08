@@ -46,7 +46,6 @@ def _eq_map(
     timestamp: Union[UTCDateTime, datetime]
 ) -> pygmt.Figure:
     """ """
-    # TODO: Inset with stations, make main map focused on earthquakes
     all_lons = np.concatenate([lons, station_lons])
     all_lats = np.concatenate([lats, station_lats])
     # PyGMT copes with longitudes > 180
@@ -55,11 +54,17 @@ def _eq_map(
         all_lons %= 360
     lon_range = all_lons.max() - all_lons.min()
 
-    region = [
+    large_region = [
         all_lons.min() - (lon_range * (pad / 100)),
         all_lons.max() + (lon_range * (pad / 100)),
         min(90, all_lats.min() - (lon_range * (pad / 100))),
         max(-90, all_lats.max() + (lon_range * (pad / 100))),
+    ]
+    region = [
+        lons.min() - ((lons.max() - lons.min()) * (pad / 100)),
+        lons.max() + ((lons.max() - lons.min()) * (pad / 100)),
+        min(90, lats.min() - ((lats.max() - lats.min()) * (pad / 100))),
+        max(-90, lats.max() - ((lats.max() - lats.min()) * (pad / 100))),
     ]
     # Work out resolution for topography
     if topo_res is True:
@@ -147,6 +152,24 @@ def _eq_map(
         )
         rectangle = [[region[0], region[2], region[1], region[3]]]
         fig.plot(data=rectangle, style="r+s", pen="2p,red", projection=inset_proj)
+
+    # Station inset
+    with fig.inset(position=f"jTL+w{inset_width}c+o0.1c"):
+        fig.coast(
+            region=large_region,
+            projection=f"M{inset_width}c",
+            land="gray",
+            water="white"
+        )
+        rectangle = [[region[0], region[2], region[1], region[3]]]
+        fig.plot(data=rectangle, style="r+s", pen="2p,red")
+        fig.plot(
+            x=station_lons,
+            y=station_lats,
+            style="i0.5c",
+            fill="royalblue",
+            pen="black",
+        )
 
     return fig
 
@@ -1678,7 +1701,8 @@ def plot_scaled_magnitudes(mag_list, scaled_mag, slip_list, ref_list, Mw, mainsh
     # plot magnitudes
     try:
         ax.fill_between(
-            slip_list,  # TODO: Make this full axis width
+            #slip_list, 
+            ax.get_xlim(),
             mainshock.preferred_magnitude().mag
             - mainshock.preferred_magnitude().mag_errors.uncertainty,
             mainshock.preferred_magnitude().mag
@@ -1689,7 +1713,6 @@ def plot_scaled_magnitudes(mag_list, scaled_mag, slip_list, ref_list, Mw, mainsh
         )
     except:  # what is this except catching?!
         x = 1
-    # TODO: Output these in a csv as well.
     for i in range(len(slip_list)):
         ax.scatter(
             slip_list[i],

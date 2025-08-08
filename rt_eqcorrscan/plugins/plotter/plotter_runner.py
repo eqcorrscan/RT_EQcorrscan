@@ -356,6 +356,11 @@ class Plotter(_Plugin):
         fig.savefig(
             f"{self.config.out_dir}/Scaled_Magnitude_Comparison_latest.png",
             dpi=self.config.png_dpi)
+        with open(f"{self.config.out_dir}/Scaled_Magnitude_comparison_latest.csv", "w"):
+            f.write(ref_list.join(','))
+            f.write("\n")
+            f.write(mag_list.join(','))
+            f.write('\n')
         return scaled_mag
 
     def _beachball_plots(self, aftershock_azimuth, aftershock_dip):
