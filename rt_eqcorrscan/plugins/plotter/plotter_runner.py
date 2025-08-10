@@ -21,7 +21,7 @@ from rt_eqcorrscan.helpers.sparse_event import sparsify_catalog, SparseEvent, \
 from rt_eqcorrscan.plugins.plotter.rcet_plots import (
     aftershock_map, summary_files, ellipse_plots,
     ellipse_to_rectangle, focal_sphere_plots, plot_scaled_magnitudes,
-    make_scaled_mag_list, mainshock_mags,
+    make_scaled_mag_list, mainshock_mags, output_aftershock_map,
 )
 from rt_eqcorrscan.plugins.output.output_runner import template_possible_self_dets
 
@@ -193,7 +193,7 @@ class Plotter(_Plugin):
                              exc_info=True)
         Logger.info("Computing ellipse statistics and plotting")
         try:
-            ellipse_stats, catalog_outliers = self._ellipse_plots()
+            ellipse_stats, catalog_outliers, corners = self._ellipse_plots()
         except Exception as e:
             Logger.exception(f"Could not get ellipse stats due to {e}",
                              exc_info=True)
@@ -255,9 +255,35 @@ class Plotter(_Plugin):
             geonet_mainshock_depth=geonet_mainshock_depth,
             geonet_mainshock_depth_uncertainty=geonet_mainshock_depth_uncertainty,
             output_dir=out_dir)
-        #
-        # # TODO: pass args?
-        # Logger.info("Making summary figure")
+
+        # TODO: pass args?
+        Logger.info("Making summary figure")
+        summary_fig = output_aftershock_map(
+            catalog=self.events,
+            reference_catalog=self._aftershock_templates,
+            outlier_catalog=catalog_outliers,
+            mainshock=self._get_mainshock(),
+            RT_mainshock=self._get_relocated_mainshock(),
+            corners=corners,
+            cat_counts=[
+                len([ev for ev in self.events if len(ev.origins) == 0]),
+                len([ev for ev in self.events if len(ev.magnitudes) == 0]),
+                len([t for t in self.template_dict.values() if len(t.origins) == 0]),
+                len([t for t in self.template_dict.values() if len(t.magnitudes) == 0])
+            ],
+            width=20,
+            topo_res="03s",
+            topo_cmap="terra",
+            inventory=self.inventory,
+            hillshade=False,
+            colours='depth')
+
+        summary_fig.savefig(
+            f"{self.config.out_dir}/Aftershock_extent_depth_map_latest.png",
+            dpi=self.config.png_dpi)
+        summary_fig.savefig(
+            f"{self.config.out_dir}/Aftershock_extent_depth_map_latest.pdf",
+            dpi=self.config.eps_dpi)
         # self._summary_figure()
         # TODO: plot_geometry_with_time
         self._add_to_history()
@@ -317,30 +343,6 @@ class Plotter(_Plugin):
             return self_dets[0]
 
     #### Plotting methods
-    def _summary_figure(self):
-        fig = output_aftershock_map(
-            catalog=catalog_origins,
-            reference_catalog=catalog_geonet,
-            outlier_catalog=catalog_outliers,
-            mainshock=mainshock,
-            RT_mainshock=relocated_mainshock[0],
-            corners=corners,
-            cat_counts=cat_counts,
-            width=20,
-            topo_res="03s",
-            topo_cmap="terra",
-            inventory=inv,
-            hillshade=False,
-            colours='depth')
-
-        fig.savefig(
-            f"{self.config.out_dir}/Aftershock_extent_depth_map_latest.png",
-            dpi=self.config.png_dpi)
-        fig.savefig(
-            f"{self.config.out_dir}/Aftershock_extent_depth_map_latest.pdf",
-            dpi=self.config.eps_dpi)
-        return
-
     def _magnitude_plots(
         self,
         length: float,
@@ -430,7 +432,7 @@ class Plotter(_Plugin):
         # corners are assigned depths
 
         # TODO: Output corners to json?
-        return ellipse_stats, catalog_outliers
+        return ellipse_stats, catalog_outliers, corners
 
     def _aftershock_maps(self):
         """ Make core aftershock maps. """

@@ -394,7 +394,7 @@ def mainshock_mags(mainshock, RT_mainshock):
 ###########################################################
 
 
-def _eq_map_test(
+def _eq_map_summary(
     catalog: Catalog,
     reference_catalog: Catalog,
     outlier_catalog: Catalog,
@@ -503,8 +503,8 @@ def _eq_map_test(
     fig = pygmt.Figure()
 
     ##### Bottom Table panel
-    with fig.subplot(nrows=1, ncols=1, figsize=("15c", "5c")):
-        fig.basemap(region=[0, 15, 0, 5], projection="X?", frame=["tblr"], panel=[0, 0])
+    # with fig.subplot(nrows=1, ncols=1, figsize=("15c", "5c")):
+    #     fig.basemap(region=[0, 15, 0, 5], projection="X?", frame=["tblr"], panel=[0, 0])
 
     """
     Note, unused section as we don't calculate magnitudes yet.
@@ -570,10 +570,10 @@ def _eq_map_test(
 
     # TODO: Make text box full heigh of figure
     # Move plot origin by 1 cm above the height of the entire figure
-    fig.shift_origin(yshift="h+1c")
+    # fig.shift_origin(yshift="h+1c")
     # Top row, one subplot
-    with fig.subplot(nrows=1, ncols=1, figsize=("15c", "10c")):
-        fig.basemap(region=[0, 12, -2, 13], projection="X?", frame="tblr", panel=[0, 0])
+    with fig.subplot(nrows=1, ncols=1, figsize=("15c", "16c")):
+        fig.basemap(region=[0, 12, -1, 15], projection="X?", frame="tblr", panel=[0, 0])
         # plot key output information
         fig.text(
             text="RT-EQcorrscan Aftershock Analysis Outputs",
@@ -593,24 +593,26 @@ def _eq_map_test(
         )
         fig.image(
             imagefile="https://dwvt5wwshu97q.cloudfront.net/uploads/267/portal/267/logo/VUW%20Logo.png?v=63854704381",
-            position="g10/2+w3c+jCM",
+            position="g10/1.5+w3c+jCM",
             box=False,
         )
         fig.image(
             imagefile="https://www.cid.org.nz/assets/Uploads/GNS_logo_HORZ.gif",
-            position="g10/4+w4c+jCM",
+            position="g10/2.8+w4c+jCM",
             box=False,
         )
         fig.image(
-            imagefile="/home/emilyws/soft/RCET_RTEQcorrscan/science_catalogs/RCET-logo.png",
-            position="g10/6+w3c+jCM",
+            imagefile=os.path.abspath(os.path.join(
+                os.path.abspath(__file__),
+                "../../../../docs/images/RCET_logo_transparent.png")),
+            position="g10/4+w3c+jCM",
             box=False,
         )
 
     ########## MAIN MAP
 
     # Move plot origin by 1 cm right of the width of the entire figure, and back down to zero height
-    fig.shift_origin(xshift="w+1c", yshift="-6c")
+    fig.shift_origin(xshift="w+1c") #, yshift="-6c")
     # one subplot
     with fig.subplot(nrows=1, ncols=1, figsize=("15c", "16c")):
         fig.basemap(
@@ -934,7 +936,7 @@ def output_aftershock_map(
     else:
         station_lats, station_lons = np.array([]), np.array([])
 
-    fig = _eq_map_test(
+    fig = _eq_map_summary(
         catalog=catalog,
         reference_catalog=reference_catalog,
         outlier_catalog=outlier_catalog,
@@ -2079,7 +2081,7 @@ def summary_files(
             "5.5 2 0 "
             + font_size
             + "p,Helvetica,black ML "
-            + str(mean_depth)
+            + f"{mean_depth:.2f}"
             + " km \n"
         )
         f.write(
