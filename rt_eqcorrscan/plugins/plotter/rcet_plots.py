@@ -12,7 +12,10 @@ import numpy as np
 from typing import Union, Tuple
 
 from datetime import datetime
+
+from matplotlib.font_manager import FontProperties
 from obspy import UTCDateTime
+from obspy.geodetics import kilometer2degrees
 from pyproj import CRS, Transformer
 
 from obspy.core.event import Catalog, Event
@@ -34,6 +37,9 @@ def _eq_map(
     lons: np.ndarray,
     depths: np.ndarray,
     mags: np.ndarray,
+    middle_lon: float,
+    middle_lat: float,
+    search_radius_deg: float,
     times: np.ndarray,  # TODO: Don't need times, but we could use origin type and plot different styles for different types of origin (Hyp, NLL, GC, GeoNet)
     station_lats: np.ndarray,
     station_lons: np.ndarray,
@@ -46,21 +52,40 @@ def _eq_map(
     timestamp: Union[UTCDateTime, datetime]
 ) -> pygmt.Figure:
     """ """
-    # TODO: Inset with stations, make main map focused on earthquakes
     all_lons = np.concatenate([lons, station_lons])
     all_lats = np.concatenate([lats, station_lats])
     # PyGMT copes with longitudes > 180
     # If longitudes cross the dateline, convert them to work
     if all_lons.max() - all_lons.min() > 180:
         all_lons %= 360
-    lon_range = all_lons.max() - all_lons.min()
+    all_lon_range = all_lons.max() - all_lons.min()
+    all_lat_range = all_lats.max() - all_lats.min()
 
-    region = [
-        all_lons.min() - (lon_range * (pad / 100)),
-        all_lons.max() + (lon_range * (pad / 100)),
-        min(90, all_lats.min() - (lon_range * (pad / 100))),
-        max(-90, all_lats.max() + (lon_range * (pad / 100))),
+    if lons.max() - lons.min() > 180:
+        lons %= 360
+    lon_range = lons.max() - lons.min()
+    lat_range = lats.max() - lats.min()
+
+    large_region = [
+        all_lons.min() - (all_lon_range * (pad / 100)),
+        all_lons.max() + (all_lon_range * (pad / 100)),
+        max(-90, all_lats.min() - (all_lat_range * (pad / 100))),
+        min(90, all_lats.max() + (all_lat_range * (pad / 100))),
     ]
+    if middle_lon and middle_lat:
+        region = [
+            middle_lon - search_radius_deg,
+            middle_lon + search_radius_deg,
+            max(-90.0, middle_lat - search_radius_deg),
+            min(90.0, middle_lat + search_radius_deg)
+        ]
+    else:
+        region = [
+            lons.min() - max(search_radius_deg, lon_range * (pad / 100)),
+            lons.max() + max(search_radius_deg, lon_range * (pad / 100)),
+            max(-90, lats.min() - max(search_radius_deg, lat_range * (pad / 100))),
+            min(90, lats.max() + max(search_radius_deg, lat_range * (pad / 100))),
+        ]
     # Work out resolution for topography
     if topo_res is True:
         min_region_dim = min(region[1] - region[0], region[3] - region[2])
@@ -87,7 +112,7 @@ def _eq_map(
         fig.grdimage(grid=grid, shading=dgrid, cmap=topo_cmap)
     else:
         fig.grdimage(grid=grid, cmap=topo_cmap)
-    fig.coast(shorelines="1/0.5p")
+    fig.coast(shorelines="1/0.5p", water="white")
 
     pygmt.makecpt(cmap="plasma", series=[depths.min(), depths.max()])
 
@@ -126,9 +151,11 @@ def _eq_map(
     inset_mid_lon = inset_region[0] + (inset_region[1] - inset_region[0]) / 2
     inset_mid_lat = inset_region[2] + (inset_region[3] - inset_region[2]) / 2
 
+    inset_frame = True
     if max_dim > 15:
         # Orthographic projection
         inset_proj = f"G{inset_mid_lon}/{inset_mid_lat}/{inset_width}c"
+        inset_frame = False
     elif max_dim > 3:
         # Albers
         inset_proj = (
@@ -138,15 +165,35 @@ def _eq_map(
         # Mercator
         inset_proj = f"M{inset_width}c"
 
-    with fig.inset(position=f"jBL+w{inset_width}c+o0.1c"):
+    with fig.inset(position=f"jBL+w{inset_width}c"): #+o0.1c"):
         fig.coast(
             region=inset_region,
             projection=inset_proj,
             land="gray",
             water="white",
+            frame=inset_frame,
         )
         rectangle = [[region[0], region[2], region[1], region[3]]]
         fig.plot(data=rectangle, style="r+s", pen="2p,red", projection=inset_proj)
+
+    # Station inset
+    with fig.inset(position=f"jTL+w{inset_width}c"): #+o0.1c"):
+        fig.coast(
+            region=large_region,
+            projection=f"M{inset_width}c",
+            land="gray",
+            water="white",
+            frame=True,
+        )
+        rectangle = [[region[0], region[2], region[1], region[3]]]
+        fig.plot(data=rectangle, style="r+s", pen="2p,red")
+        fig.plot(
+            x=station_lons,
+            y=station_lats,
+            style="i0.5c",
+            fill="royalblue",
+            pen="black",
+        )
 
     return fig
 
@@ -154,6 +201,7 @@ def _eq_map(
 def aftershock_map(
     catalog: Catalog,
     mainshock: Event,
+    search_radius: float,
     inventory: Inventory = None,
     pad: float = 50.0,
     width: float = 15.0,
@@ -204,7 +252,7 @@ def aftershock_map(
             [(ev.preferred_magnitude() or ev.magnitudes[-1]).mag for ev in catalog]
         )
     except IndexError:
-        mags = np.array([2.0 for ev in catalog])
+        mags = 3 * np.ones(len(catalog))
     times = np.array(
         [(ev.preferred_origin() or ev.origins[-1]).time.datetime for ev in catalog]
     )
@@ -215,12 +263,17 @@ def aftershock_map(
     else:
         station_lats, station_lons = np.array([]), np.array([])
 
+    mainshock_origin = mainshock.preferred_origin() or mainshock.origins[-1]
+
     fig = _eq_map(
         lats=lats,
         lons=lons,
         depths=depths,
         mags=mags,
         times=times,
+        middle_lon=mainshock_origin.longitude,
+        middle_lat=mainshock_origin.latitude,
+        search_radius_deg=kilometer2degrees(search_radius),
         station_lons=station_lons,
         station_lats=station_lats,
         width=width,
@@ -233,7 +286,6 @@ def aftershock_map(
     )
 
     # Plot mainshock
-    mainshock_origin = mainshock.preferred_origin() or mainshock.origins[-1]
     fig.plot(
         x=mainshock_origin.longitude,
         y=mainshock_origin.latitude,
@@ -357,7 +409,7 @@ def mainshock_mags(mainshock, RT_mainshock):
 ###########################################################
 
 
-def _eq_map_test(
+def _eq_map_summary(
     catalog: Catalog,
     reference_catalog: Catalog,
     outlier_catalog: Catalog,
@@ -466,8 +518,8 @@ def _eq_map_test(
     fig = pygmt.Figure()
 
     ##### Bottom Table panel
-    with fig.subplot(nrows=1, ncols=1, figsize=("15c", "5c")):
-        fig.basemap(region=[0, 15, 0, 5], projection="X?", frame=["tblr"], panel=[0, 0])
+    # with fig.subplot(nrows=1, ncols=1, figsize=("15c", "5c")):
+    #     fig.basemap(region=[0, 15, 0, 5], projection="X?", frame=["tblr"], panel=[0, 0])
 
     """
     Note, unused section as we don't calculate magnitudes yet.
@@ -533,10 +585,10 @@ def _eq_map_test(
 
     # TODO: Make text box full heigh of figure
     # Move plot origin by 1 cm above the height of the entire figure
-    fig.shift_origin(yshift="h+1c")
+    # fig.shift_origin(yshift="h+1c")
     # Top row, one subplot
-    with fig.subplot(nrows=1, ncols=1, figsize=("15c", "10c")):
-        fig.basemap(region=[0, 12, -2, 13], projection="X?", frame="tblr", panel=[0, 0])
+    with fig.subplot(nrows=1, ncols=1, figsize=("15c", "16c")):
+        fig.basemap(region=[0, 12, -1, 15], projection="X?", frame="tblr", panel=[0, 0])
         # plot key output information
         fig.text(
             text="RT-EQcorrscan Aftershock Analysis Outputs",
@@ -550,22 +602,30 @@ def _eq_map_test(
         # space for RCET logo - need to host local file
 
         fig.image(
-            imagefile="https://eqcorrscan.readthedocs.io/en/latest/_images/EQcorrscan_logo.png",
+            imagefile=os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "logos/EQcorrscan_logo.png"),
             position="g10/0+w3c+jCM",
             box=False,
         )
         fig.image(
-            imagefile="https://dwvt5wwshu97q.cloudfront.net/uploads/267/portal/267/logo/VUW%20Logo.png?v=63854704381",
-            position="g10/2+w3c+jCM",
+            imagefile=os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "logos/VUW Logo.png"),
+            position="g10/1.5+w3c+jCM",
             box=False,
         )
         fig.image(
-            imagefile="https://www.cid.org.nz/assets/Uploads/GNS_logo_HORZ.gif",
-            position="g10/4+w4c+jCM",
+            imagefile=os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "logos/Earth_sci_NZ.jpeg"),
+            position="g10/3.8+w2c+jCM",
             box=False,
         )
         fig.image(
-            imagefile="/home/emilyws/soft/RCET_RTEQcorrscan/science_catalogs/RCET-logo.png",
+            imagefile=os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "logos/RCET_logo_transparent.png"),
             position="g10/6+w3c+jCM",
             box=False,
         )
@@ -573,7 +633,7 @@ def _eq_map_test(
     ########## MAIN MAP
 
     # Move plot origin by 1 cm right of the width of the entire figure, and back down to zero height
-    fig.shift_origin(xshift="w+1c", yshift="-6c")
+    fig.shift_origin(xshift="w+1c") #, yshift="-6c")
     # one subplot
     with fig.subplot(nrows=1, ncols=1, figsize=("15c", "16c")):
         fig.basemap(
@@ -604,17 +664,18 @@ def _eq_map_test(
                 panel=[0, 0],
             )
             # plot outliers
-            fig.plot(
-                x=lons_o,
-                y=lats_o,
-                size=0.02 * 2**mags_o,
-                fill=depths_o,
-                cmap=True,
-                style="cc",
-                pen="white",
-                transparency=50,
-                panel=[0, 0],
-            )
+            if len(lons_o):
+                fig.plot(
+                    x=lons_o,
+                    y=lats_o,
+                    size=0.02 * 2**mags_o,
+                    fill=depths_o,
+                    cmap=True,
+                    style="cc",
+                    pen="white",
+                    transparency=50,
+                    panel=[0, 0],
+                )
             fig.colorbar(
                 position="jBR+o0.88c/0.8c+h+w4c/0.25c+ml",
                 frame=["xa10f10+lDepth", "y+lkm"],
@@ -897,7 +958,7 @@ def output_aftershock_map(
     else:
         station_lats, station_lons = np.array([]), np.array([])
 
-    fig = _eq_map_test(
+    fig = _eq_map_summary(
         catalog=catalog,
         reference_catalog=reference_catalog,
         outlier_catalog=outlier_catalog,
@@ -1678,7 +1739,7 @@ def plot_scaled_magnitudes(mag_list, scaled_mag, slip_list, ref_list, Mw, mainsh
     # plot magnitudes
     try:
         ax.fill_between(
-            slip_list,  # TODO: Make this full axis width
+            slip_list,
             mainshock.preferred_magnitude().mag
             - mainshock.preferred_magnitude().mag_errors.uncertainty,
             mainshock.preferred_magnitude().mag
@@ -1689,7 +1750,6 @@ def plot_scaled_magnitudes(mag_list, scaled_mag, slip_list, ref_list, Mw, mainsh
         )
     except:  # what is this except catching?!
         x = 1
-    # TODO: Output these in a csv as well.
     for i in range(len(slip_list)):
         ax.scatter(
             slip_list[i],
@@ -2043,7 +2103,7 @@ def summary_files(
             "5.5 2 0 "
             + font_size
             + "p,Helvetica,black ML "
-            + str(mean_depth)
+            + f"{mean_depth:.2f}"
             + " km \n"
         )
         f.write(
@@ -2075,10 +2135,9 @@ def summary_files(
             + ") km"
         )
 
-    return output_dictionary
+    return output_dictionary, f_output
 
 
-# TODO This needs to be included in the plotter
 def plot_geometry_with_time(
     times,
     events,
@@ -2088,6 +2147,7 @@ def plot_geometry_with_time(
     Relocated_depth_uncerts,
     lengths,
     azimuths,
+    dips,
     mags,
     GeoNet_mags,
     GeoNet_mags_uncerts,
@@ -2101,13 +2161,39 @@ def plot_geometry_with_time(
     pclength = lengths[-1] * 0.1
     pcazimuth = 10
     fig = plt.figure()
-    fig.set_size_inches(16, 12)
+    fig.set_size_inches(16, 14)
     fig.patch.set_facecolor("white")
 
     # plot summary statistics text
-    ax1 = fig.add_subplot(3, 2, 1)
-    ax1.set_axis_off()
-    plt.text(
+    ax0 = fig.add_subplot(4, 2, 1)
+    ax0.axis("off")
+
+    summary_text = [
+        ["Trigger ID:", mainshock.resource_id.id.split("/")[-1]],
+        ["Time since trigger:", f"{times[-1]:.2f} seconds"],
+        ["Total events:", f"{events[-1]}"],
+        ["Fault length:", f"{lengths[-1]:.2f} km"],
+        ["Fault azimuth:", f"{azimuths[-1]:.2f} degrees"],
+        ["Fault dip:", f"{dips[-1]:.2f} degrees"],
+        ["Scaled magnitude:", f"{mags[-1]:.1f}"],
+        ["GeoNet magnitude:", f"{GeoNet_mags[-1]:.1f}"],
+        ["Mean aftershock depth:", f"{mean_depths[-1]:.2f} km"],
+        ["RT/GN mainshock depth:", f"{Relocated_depths[-1]:.1f}/{GeoNet_depths[-1]:.1f} km"]
+    ]
+
+    table = ax0.table(
+        cellText=summary_text,
+        cellLoc="left",
+        edges="open",
+        loc="center",
+    )
+
+    # Make left column bold
+    for (row, col), cell in table.get_celld().items():
+        if col == 0:
+            cell.set_text_props(fontproperties=FontProperties(weight="bold"))
+
+    ax0.text(
         0.5,
         1,
         "RT-EQcorrscan Aftershock Analysis Outputs",
@@ -2117,173 +2203,15 @@ def plot_geometry_with_time(
         horizontalalignment="center",
     )
 
-    plt.text(
-        0,
-        0.85,
-        "Trigger_ID: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.85,
-        str(mainshock.resource_id).split("/")[-1],
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.75,
-        "Time since trigger: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.75,
-        str(times[-1]) + " seconds",
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.65,
-        "Total events: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.65,
-        str(events[-1]),
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.55,
-        "Fault Length: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.55,
-        str(lengths[-1]) + " km",
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.44,
-        "Fault Azimuth: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.44,
-        str(azimuths[-1]) + " degrees",
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.35,
-        "Scaled magnitude: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.35,
-        str(mags[-1]),
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.25,
-        "GeoNet magnitude: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.25,
-        str(GeoNet_mags[-1]),
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.15,
-        "Mean aftershock depth: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.15,
-        str(mean_depths[-1]) + " km",
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.05,
-        "RT/GN mainshock depth: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.05,
-        str(round(Relocated_depths[-1], 1))
-        + "/"
-        + str(round(GeoNet_depths[-1], 1))
-        + " km",
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
+    def _additional_plot_elements(ax):
+        ax.axvline(x=60, color="r", linestyle="-")
+        ax.axvline(x=360, color="r", linestyle="-.")
+        ax.axvline(x=3600, color="r", linestyle="dashed")
+        ax.axvline(x=86400, color="r", linestyle="dotted")
+        ax.set_xlim(10, (86400 * 7))
 
     # Plot events
-    ax1 = fig.add_subplot(3, 2, 2)
+    ax1 = fig.add_subplot(4, 2, 3)
     if log == True:
         ax1.set_xscale("log")
     ax1.plot(
@@ -2302,34 +2230,33 @@ def plot_geometry_with_time(
         linestyle="-",
         marker=".",
         markersize="0.01",
-        linewidth=3,
+        linewidth=2,
         label="N events (GeoNet)",
         color="darkgray",
     )
     ax1.title.set_text("Events")
-    plt.axvline(x=60, color="r", linestyle="-")
-    plt.axvline(x=360, color="r", linestyle="-.")
-    plt.axvline(x=3600, color="r", linestyle="dashed")
-    plt.axvline(x=86400, color="r", linestyle="dotted")
-    plt.text(47, min(events + geonet_events), "1 minute", rotation=90, color="red")
-    plt.text(270, min(events + geonet_events), "10 minutes", rotation=90, color="red")
-    plt.text(2700, min(events + geonet_events), "1 hour", rotation=90, color="red")
-    plt.text(66400, min(events + geonet_events), "1 day", rotation=90, color="red")
-    plt.legend(loc="upper left")
-    plt.ylabel("Number of detected events")
-    plt.xlim(10, (86400 * 7))
+    ax1.text(47, min(events + geonet_events), "1 minute", rotation=90,
+            color="red")
+    ax1.text(270, min(events + geonet_events), "10 minutes", rotation=90,
+            color="red")
+    ax1.text(2700, min(events + geonet_events), "1 hour", rotation=90,
+            color="red")
+    ax1.text(66400, min(events + geonet_events), "1 day", rotation=90,
+            color="red")
+    _additional_plot_elements(ax=ax1)
+    ax1.legend(loc="upper left")
+    ax1.set_ylabel("Number of detected events")
 
     # Plot depths
-    ax1 = fig.add_subplot(3, 2, 3)
+    ax2 = fig.add_subplot(4, 2, 5)
     if log == True:
-        ax1.set_xscale("log")
+        ax2.set_xscale("log")
 
-    ax1.title.set_text("Depths")
-    plt.axvline(x=60, color="r", linestyle="-")
-    plt.axvline(x=360, color="r", linestyle="-.")
-    plt.axvline(x=3600, color="r", linestyle="dashed")
-    plt.axvline(x=86400, color="r", linestyle="dotted")
-    ax1.plot(
+    ax2.title.set_text("Depths")
+    _additional_plot_elements(ax=ax2)
+    # Plot depths around the other way
+    ax2.invert_yaxis()
+    ax2.plot(
         times,
         mean_depths,
         linestyle="-",
@@ -2339,7 +2266,7 @@ def plot_geometry_with_time(
         label="Mean aftershock depths",
         color="blueviolet",
     )
-    ax1.plot(
+    ax2.plot(
         times,
         Relocated_depths,
         linestyle="-",
@@ -2353,8 +2280,8 @@ def plot_geometry_with_time(
     for i, m in enumerate(Relocated_depths):
         RT_max_depths.append(m + Relocated_depth_uncerts[i])
         RT_min_depths.append(m - Relocated_depth_uncerts[i])
-    ax1.fill_between(times, RT_min_depths, RT_max_depths, alpha=0.2, color="plum")
-    ax1.plot(
+    ax2.fill_between(times, RT_min_depths, RT_max_depths, alpha=0.2, color="plum")
+    ax2.plot(
         times,
         GeoNet_depths,
         linestyle="-",
@@ -2367,15 +2294,14 @@ def plot_geometry_with_time(
     for i, m in enumerate(GeoNet_depths):
         geonet_max_depths.append(m + GeoNet_depth_uncerts[i])
         geonet_min_depths.append(m - GeoNet_depth_uncerts[i])
-    ax1.fill_between(
+    ax2.fill_between(
         times, geonet_min_depths, geonet_max_depths, alpha=0.2, color="grey"
     )
-    plt.legend()
-    plt.ylabel("Depth (km)")
-    plt.xlim(10, (86400 * 7))
+    ax2.legend()
+    ax2.set_ylabel("Depth (km)")
 
     # plot lengths
-    ax3 = fig.add_subplot(3, 2, 4)
+    ax3 = fig.add_subplot(4, 2, 6)
     if log == True:
         ax3.set_xscale("log")
     ax3.title.set_text("Length")
@@ -2387,22 +2313,18 @@ def plot_geometry_with_time(
         markersize="0.01",
         linewidth=3,
         label="2$\sigma$ Length",
-        color="green",
+        color="lightblue",
     )
-    plt.axvline(x=60, color="r", linestyle="-")
-    plt.axvline(x=360, color="r", linestyle="-.")
-    plt.axvline(x=3600, color="r", linestyle="dashed")
-    plt.axvline(x=86400, color="r", linestyle="dotted")
-    plt.legend()
-    plt.ylabel("Length (km)")
-    plt.xlim(10, (86400 * 7))
+    _additional_plot_elements(ax=ax3)
+    ax3.legend()
+    ax3.set_ylabel("Length (km)")
 
     # plot azimuths
-    ax2 = fig.add_subplot(3, 2, 5)
+    ax4 = fig.add_subplot(4, 2, 7)
     if log == True:
-        ax2.set_xscale("log")
-    ax2.title.set_text("Azimuths")
-    ax2.plot(
+        ax4.set_xscale("log")
+    ax4.title.set_text("Azimuths")
+    ax4.plot(
         times,
         azimuths,
         linestyle="-",
@@ -2412,28 +2334,44 @@ def plot_geometry_with_time(
         label="Azimuths",
         color="orange",
     )
-    plt.axvline(x=60, color="r", linestyle="-")
-    plt.axvline(x=360, color="r", linestyle="-.")
-    plt.axvline(x=3600, color="r", linestyle="dashed")
-    plt.axvline(x=86400, color="r", linestyle="dotted")
-    plt.legend()
+    _additional_plot_elements(ax=ax4)
+    ax4.legend()
     if log == True:
-        plt.xlabel("log(seconds since mainshock)")
+        ax4.set_xlabel("log(seconds since mainshock)")
     else:
-        plt.xlabel("seconds since mainshock")
-    plt.ylabel("Degrees ($\degree$)")
-    plt.xlim(10, (86400 * 7))
+        ax4.set_xlabel("seconds since mainshock")
+    ax4.set_ylabel("Degrees ($\degree$)")
+
+    # plot dips
+    ax5 = fig.add_subplot(4, 2, 8)
+    if log == True:
+        ax5.set_xscale("log")
+    ax5.title.set_text("Dips")
+    ax5.plot(
+        times,
+        dips,
+        linestyle="-",
+        marker=".",
+        markersize="0.01",
+        linewidth=3,
+        label="Dips",
+        color="green",
+    )
+    _additional_plot_elements(ax=ax5)
+    ax5.legend()
+    if log == True:
+        ax5.set_xlabel("log(seconds since mainshock)")
+    else:
+        ax5.set_xlabel("seconds since mainshock")
+    ax5.set_ylabel("Degrees ($\degree$)")
 
     # plot magnitudes
-    ax4 = fig.add_subplot(3, 2, 6)
+    ax6 = fig.add_subplot(4, 2, 4)
     if log == True:
-        ax4.set_xscale("log")
-    ax4.title.set_text("Magnitudes")
-    plt.axvline(x=60, color="r", linestyle="-")
-    plt.axvline(x=360, color="r", linestyle="-.")
-    plt.axvline(x=3600, color="r", linestyle="dashed")
-    plt.axvline(x=86400, color="r", linestyle="dotted")
-    ax4.plot(
+        ax6.set_xscale("log")
+    ax6.title.set_text("Magnitudes")
+    _additional_plot_elements(ax=ax6)
+    ax6.plot(
         times,
         mags,
         linestyle="-",
@@ -2443,7 +2381,7 @@ def plot_geometry_with_time(
         label="Scaled magnitude",
         color="blue",
     )
-    ax4.plot(
+    ax6.plot(
         times,
         GeoNet_mags,
         linestyle="-",
@@ -2457,14 +2395,10 @@ def plot_geometry_with_time(
     for i, m in enumerate(GeoNet_mags):
         geonet_max_mags.append(m + GeoNet_mags_uncerts[i])
         geonet_min_mags.append(m - GeoNet_mags_uncerts[i])
-    ax4.fill_between(times, geonet_min_mags, geonet_max_mags, alpha=0.2, color="gray")
-    if log == True:
-        plt.xlabel("log(seconds since mainshock)")
-    else:
-        plt.xlabel("seconds since mainshock")
-    plt.ylabel("Magnitude")
-    plt.legend()
-    plt.xlim(10, (86400 * 7))
+    ax6.fill_between(times, geonet_min_mags, geonet_max_mags, alpha=0.2, color="gray")
+    ax6.set_ylabel("Magnitude")
+    ax6.legend()
+    fig.tight_layout()
     return fig
 
 #################################

@@ -7,6 +7,7 @@ import logging
 import shutil
 import glob
 import numpy as np
+import pandas as pd
 
 from typing import Iterable, List, Union, Tuple
 
@@ -21,7 +22,8 @@ from rt_eqcorrscan.helpers.sparse_event import sparsify_catalog, SparseEvent, \
 from rt_eqcorrscan.plugins.plotter.rcet_plots import (
     aftershock_map, summary_files, ellipse_plots,
     ellipse_to_rectangle, focal_sphere_plots, plot_scaled_magnitudes,
-    make_scaled_mag_list, mainshock_mags,
+    make_scaled_mag_list, mainshock_mags, output_aftershock_map,
+    plot_geometry_with_time,
 )
 from rt_eqcorrscan.plugins.output.output_runner import template_possible_self_dets
 
@@ -75,9 +77,13 @@ class Plotter(_Plugin):
 
     @property
     def _aftershock_templates(self):
-        return [ev for ev in self.template_dict.values()
-                if get_origin_attr(ev, "time") or UTCDateTime(0) >=
-                get_origin_attr(self._get_mainshock(), "time")]
+        aftershock_templates = []
+        mainshock_time = get_origin_attr(self._get_mainshock(), "time")
+        for ev in self.template_dict.values():
+            ori_time = get_origin_attr(ev, "time") or UTCDateTime(0)
+            if ori_time >= mainshock_time:
+                aftershock_templates.append(ev)
+        return aftershock_templates
 
     @property
     def events(self) -> List:
@@ -189,12 +195,14 @@ class Plotter(_Plugin):
         try:
             self._aftershock_maps()
         except Exception as e:
-            Logger.error(f"Could not make aftershock maps due to {e}")
+            Logger.exception(f"Could not make aftershock maps due to {e}",
+                             exc_info=True)
         Logger.info("Computing ellipse statistics and plotting")
         try:
-            ellipse_stats, catalog_outliers = self._ellipse_plots()
+            ellipse_stats, catalog_outliers, corners = self._ellipse_plots()
         except Exception as e:
-            Logger.error(f"Could not get ellipse stats due to {e}")
+            Logger.exception(f"Could not get ellipse stats due to {e}",
+                             exc_info=True)
             ellipse_stats = None
         if not ellipse_stats:
             # Everything else requires the ellipse stats and/or catalog_outliers
@@ -206,7 +214,8 @@ class Plotter(_Plugin):
                 aftershock_azimuth=ellipse_stats["azimuth"],
                 aftershock_dip=ellipse_stats["dip"])
         except Exception as e:
-            Logger.error(f"Could not plot beachballs due to {e}")
+            Logger.exception(f"Could not plot beachballs due to {e}",
+                             exc_info=True)
         Logger.info("Plotting magnitude scaling relationships")
         try:
             scaled_mag = self._magnitude_plots(
@@ -216,14 +225,16 @@ class Plotter(_Plugin):
             )
         except Exception as e:
             scaled_mag = np.nan
-            Logger.error(f"Could not plot magnitude relationships due to {e}")
+            Logger.exception(
+                f"Could not plot magnitude relationships due to {e}",
+                exc_info=True)
         Logger.info("Making summary files")
         (geonet_mainshock_mag, geonet_mainshock_mag_uncertainty,
          geonet_mainshock_depth, geonet_mainshock_depth_uncertainty,
          RT_mainshock_depth, RT_mainshock_depth_uncertainty) = mainshock_mags(
             mainshock=self._get_mainshock(), RT_mainshock=self._get_relocated_mainshock())
 
-        output_dictionary = summary_files(
+        _, summary_filename = summary_files(
             eventid=internal_config.mainshock_id,
             current_time=now,
             elapsed_secs=now - get_origin_attr(self._get_mainshock(), "time"),
@@ -250,11 +261,39 @@ class Plotter(_Plugin):
             geonet_mainshock_depth=geonet_mainshock_depth,
             geonet_mainshock_depth_uncertainty=geonet_mainshock_depth_uncertainty,
             output_dir=out_dir)
-        #
-        # # TODO: pass args?
-        # Logger.info("Making summary figure")
-        # self._summary_figure()
-        # TODO: plot_geometry_with_time
+
+        # TODO: pass args?
+        Logger.info("Making summary figure")
+        summary_fig = output_aftershock_map(
+            catalog=self.events,
+            reference_catalog=self._aftershock_templates,
+            outlier_catalog=catalog_outliers,
+            mainshock=self._get_mainshock(),
+            RT_mainshock=self._get_relocated_mainshock(),
+            corners=corners,
+            cat_counts=[
+                len([ev for ev in self.events if len(ev.origins) == 0]),
+                len([ev for ev in self.events if len(ev.magnitudes) == 0]),
+                len([t for t in self.template_dict.values() if len(t.origins) == 0]),
+                len([t for t in self.template_dict.values() if len(t.magnitudes) == 0])
+            ],
+            width=20,
+            topo_res="03s",
+            topo_cmap="terra",
+            inventory=self.inventory,
+            hillshade=False,
+            colours='depth')
+
+        summary_fig.savefig(
+            f"{self.config.out_dir}/Aftershock_extent_depth_map_latest.png",
+            dpi=self.config.png_dpi)
+        summary_fig.savefig(
+            f"{self.config.out_dir}/Aftershock_extent_depth_map_latest.pdf",
+            dpi=self.config.eps_dpi)
+
+        Logger.info("Plotting geometry with time")
+        self._plot_geometry_with_time(summary_file=summary_filename)
+
         self._add_to_history()
         return []
 
@@ -275,6 +314,7 @@ class Plotter(_Plugin):
             Logger.error(
                 f"Mainshock ({self.config.mainshock_id}) not found in "
                 f"templates ({self.template_dict.keys()}.")
+            return None
         elif len(mainshock) > 1:
             Logger.warning("Multiple possible mainshocks!")
         return mainshock[0]
@@ -312,28 +352,35 @@ class Plotter(_Plugin):
             return self_dets[0]
 
     #### Plotting methods
-    def _summary_figure(self):
-        fig = output_aftershock_map(
-            catalog=catalog_origins,
-            reference_catalog=catalog_geonet,
-            outlier_catalog=catalog_outliers,
-            mainshock=mainshock,
-            RT_mainshock=relocated_mainshock[0],
-            corners=corners,
-            cat_counts=cat_counts,
-            width=20,
-            topo_res="03s",
-            topo_cmap="terra",
-            inventory=inv,
-            hillshade=False,
-            colours='depth')
+    def _plot_geometry_with_time(self, summary_file: str):
+        # Arguments come from summary file apparently, so lets see if we can
+        # guess what Emily thinks should be in here.
+        df = pd.read_csv(summary_file)
 
+        fig = plot_geometry_with_time(
+            times=df.Elapsed_secs.to_list(),
+            events=df.N_evs.to_list(),
+            geonet_events=df.N_geonet_evs.to_list(),
+            mean_depths=df.Mean_depth.to_list(),
+            Relocated_depths=df.Relocated_depth.to_list(),
+            Relocated_depth_uncerts=df.Relocated_depth_unc.to_list(),
+            lengths=df.Length.to_list(),
+            azimuths=df.Azimuth.to_list(),
+            dips=df.Dip.to_list(),
+            mags=df.Scaled_mag.to_list(),
+            GeoNet_mags=df.GeoNet_mag.to_list(),
+            GeoNet_mags_uncerts=df.GeoNet_mag_unc.to_list(),
+            GeoNet_depths=df.GeoNet_ms_depth.to_list(),
+            GeoNet_depth_uncerts=df.GeoNet_ms_depth_unc.to_list(),
+            log=True,
+            mainshock=self._get_mainshock(),
+        )
         fig.savefig(
-            f"{self.config.out_dir}/Aftershock_extent_depth_map_latest.png",
-            dpi=self.config.png_dpi)
-        fig.savefig(
-            f"{self.config.out_dir}/Aftershock_extent_depth_map_latest.pdf",
+            f"{self.config.out_dir}/Geometry_with_time_latest.pdf",
             dpi=self.config.eps_dpi)
+        fig.savefig(
+            f"{self.config.out_dir}/Geometry_with_time_latest.png",
+            dpi=self.config.png_dpi)
         return
 
     def _magnitude_plots(
@@ -356,6 +403,11 @@ class Plotter(_Plugin):
         fig.savefig(
             f"{self.config.out_dir}/Scaled_Magnitude_Comparison_latest.png",
             dpi=self.config.png_dpi)
+        with open(f"{self.config.out_dir}/Scaled_Magnitude_comparison_latest.csv", "w") as f:
+            f.write(','.join(ref_list))
+            f.write("\n")
+            f.write(','.join(str(m) for m in mag_list))
+            f.write('\n')
         return scaled_mag
 
     def _beachball_plots(self, aftershock_azimuth, aftershock_dip):
@@ -420,7 +472,7 @@ class Plotter(_Plugin):
         # corners are assigned depths
 
         # TODO: Output corners to json?
-        return ellipse_stats, catalog_outliers
+        return ellipse_stats, catalog_outliers, corners
 
     def _aftershock_maps(self):
         """ Make core aftershock maps. """
@@ -430,11 +482,12 @@ class Plotter(_Plugin):
         template_map = aftershock_map(
             catalog=self.template_dict.values(),
             mainshock=mainshock,
+            search_radius=self.config.search_radius,
             inventory=self.inventory,
             topo_res="03s",
             topo_cmap="grayC",
             hillshade=False,
-            pad=5.0,
+            pad=10.0,
             timestamp=self.now,
         )
 
@@ -448,11 +501,12 @@ class Plotter(_Plugin):
         detected_map = aftershock_map(
             catalog=self.events,
             mainshock=mainshock,
+            search_radius=self.config.search_radius,
             inventory=self.inventory,
             topo_res="03s",
             topo_cmap="grayC",
             hillshade=False,
-            pad=5.0,
+            pad=10.0,
             timestamp=self.now,
         )
 

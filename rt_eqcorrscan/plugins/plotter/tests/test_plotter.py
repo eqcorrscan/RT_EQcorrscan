@@ -158,6 +158,7 @@ class TestOutputPlugin(unittest.TestCase):
             template_dir=self.template_dir,
             location_dir=self.location_dir,
             relocation_dir=self.relocation_dir)
+        self.templates[0].event.preferred_magnitude().mag_errors.uncertainty = 0.5
         config = PlotConfig(
             in_dir=[self.location_dir, self.relocation_dir],
             template_dir=self.template_dir,

@@ -124,6 +124,7 @@ def catalog_to_csv(
         "Depth (km)": "(get_origin_attr(event, 'depth') or 0.0) / 1000.0",
         "Magnitude": "get_magnitude_attr(event, 'mag')",
         "Location Method ID": "get_origin_attr(event, 'method_id')",
+        "Self Detection ID": "event._self_det_id",
     })
 
     lines = [", ".join(columns.keys())]
@@ -232,6 +233,8 @@ class Outputter(_Plugin):
                 continue
             event = sparsify_catalog(event, include_picks=True)
             event = event[0]
+            # Add in self_det_id which will be overloaded later if it is a template self-detection
+            event._self_det_id = None
             self._read_files.append(file)  # Keep track and don't read again
             if event.resource_id.id in self.output_events.keys():
                 # Check the input directory. If the "new" event has an in-dir
@@ -284,9 +287,12 @@ class Outputter(_Plugin):
                     template_outputs.update({t_name: (t_file, t_event)})
                     continue
                 # Look for template self detections - slop in origin time? Then match picks?
-                if len(template_possible_self_dets(template_event=t_event, catalog=t_events)):
+                self_dets = template_possible_self_dets(template_event=t_event, catalog=t_events)
+                if len(self_dets):
                     Logger.debug(f"Found likely self detections for template "
                                  f"{t_name}, not including template to output")
+                    for ev in self_dets:
+                        ev._self_det_id = t_event.resource_id.id
                     continue
                 Logger.info(f"No self detections for {t_name}, "
                             f"adding template to output")

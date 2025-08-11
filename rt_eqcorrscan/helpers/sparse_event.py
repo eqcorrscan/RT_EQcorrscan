@@ -104,6 +104,7 @@ class SparsePick:
 class SparseEvent:
     _preferred_magnitude_index = None
     _preferred_origin_index = None
+    _self_det_id = None
 
     def __init__(self,
                  resource_id: SparseID,
