@@ -589,24 +589,30 @@ def _eq_map_summary(
         # space for RCET logo - need to host local file
 
         fig.image(
-            imagefile="https://eqcorrscan.readthedocs.io/en/latest/_images/EQcorrscan_logo.png",
+            imagefile=os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "logos/EQcorrscan_logo.png"),
             position="g10/0+w3c+jCM",
             box=False,
         )
         fig.image(
-            imagefile="https://dwvt5wwshu97q.cloudfront.net/uploads/267/portal/267/logo/VUW%20Logo.png?v=63854704381",
+            imagefile=os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "logos/VUW Logo.png"),
             position="g10/1.5+w3c+jCM",
             box=False,
         )
         fig.image(
-            imagefile="https://www.cid.org.nz/assets/Uploads/GNS_logo_HORZ.gif",
+            imagefile=os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "logos/GNS_logo_HORZ.gif"),
             position="g10/2.8+w4c+jCM",
             box=False,
         )
         fig.image(
-            imagefile=os.path.abspath(os.path.join(
-                os.path.abspath(__file__),
-                "../../../../docs/images/RCET_logo_transparent.png")),
+            imagefile=os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "logos/RCET_logo_transparent.png"),
             position="g10/4+w3c+jCM",
             box=False,
         )
@@ -2291,7 +2297,7 @@ def plot_geometry_with_time(
         markersize="0.01",
         linewidth=3,
         label="2$\sigma$ Length",
-        color="green",
+        color="lightblue",
     )
     _additional_plot_elements(ax=ax3)
     ax3.legend()
@@ -2333,7 +2339,7 @@ def plot_geometry_with_time(
         markersize="0.01",
         linewidth=3,
         label="Dips",
-        color="brown",
+        color="green",
     )
     _additional_plot_elements(ax=ax5)
     ax5.legend()
