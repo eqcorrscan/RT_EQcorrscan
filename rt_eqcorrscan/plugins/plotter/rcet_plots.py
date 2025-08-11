@@ -37,6 +37,8 @@ def _eq_map(
     lons: np.ndarray,
     depths: np.ndarray,
     mags: np.ndarray,
+    middle_lon: float,
+    middle_lat: float,
     search_radius_deg: float,
     times: np.ndarray,  # TODO: Don't need times, but we could use origin type and plot different styles for different types of origin (Hyp, NLL, GC, GeoNet)
     station_lats: np.ndarray,
@@ -67,19 +69,23 @@ def _eq_map(
     large_region = [
         all_lons.min() - (all_lon_range * (pad / 100)),
         all_lons.max() + (all_lon_range * (pad / 100)),
-        min(90, all_lats.min() - (all_lat_range * (pad / 100))),
-        max(-90, all_lats.max() + (all_lat_range * (pad / 100))),
+        max(-90, all_lats.min() - (all_lat_range * (pad / 100))),
+        min(90, all_lats.max() + (all_lat_range * (pad / 100))),
     ]
-    region = [
-        # lons.min() - max(search_radius_deg, lon_range * (pad / 100)),
-        # lons.max() + max(search_radius_deg, lon_range * (pad / 100)),
-        # min(90, lats.min() - max(search_radius_deg, lat_range * (pad / 100))),
-        # max(-90, lats.max() + max(search_radius_deg, lat_range * (pad / 100))),
-        lons.min() - search_radius_deg,
-        lons.max() + search_radius_deg,
-        min(90, lats.min() - search_radius_deg),
-        max(-90, lats.max() + search_radius_deg),
-    ]
+    if middle_lon and middle_lat:
+        region = [
+            middle_lon - search_radius_deg,
+            middle_lon + search_radius_deg,
+            max(-90.0, middle_lat - search_radius_deg),
+            min(90.0, middle_lat + search_radius_deg)
+        ]
+    else:
+        region = [
+            lons.min() - max(search_radius_deg, lon_range * (pad / 100)),
+            lons.max() + max(search_radius_deg, lon_range * (pad / 100)),
+            max(-90, lats.min() - max(search_radius_deg, lat_range * (pad / 100))),
+            min(90, lats.max() + max(search_radius_deg, lat_range * (pad / 100))),
+        ]
     # Work out resolution for topography
     if topo_res is True:
         min_region_dim = min(region[1] - region[0], region[3] - region[2])
@@ -257,12 +263,16 @@ def aftershock_map(
     else:
         station_lats, station_lons = np.array([]), np.array([])
 
+    mainshock_origin = mainshock.preferred_origin() or mainshock.origins[-1]
+
     fig = _eq_map(
         lats=lats,
         lons=lons,
         depths=depths,
         mags=mags,
         times=times,
+        middle_lon=mainshock_origin.longitude,
+        middle_lat=mainshock_origin.latitude,
         search_radius_deg=kilometer2degrees(search_radius),
         station_lons=station_lons,
         station_lats=station_lats,
@@ -276,7 +286,6 @@ def aftershock_map(
     )
 
     # Plot mainshock
-    mainshock_origin = mainshock.preferred_origin() or mainshock.origins[-1]
     fig.plot(
         x=mainshock_origin.longitude,
         y=mainshock_origin.latitude,
