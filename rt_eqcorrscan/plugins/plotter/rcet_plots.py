@@ -246,7 +246,7 @@ def aftershock_map(
             [(ev.preferred_magnitude() or ev.magnitudes[-1]).mag for ev in catalog]
         )
     except IndexError:
-        mags = np.array([2.0 for ev in catalog])
+        mags = 3 * np.ones(len(catalog))
     times = np.array(
         [(ev.preferred_origin() or ev.origins[-1]).time.datetime for ev in catalog]
     )
@@ -2221,7 +2221,7 @@ def plot_geometry_with_time(
         linestyle="-",
         marker=".",
         markersize="0.01",
-        linewidth=3,
+        linewidth=2,
         label="N events (GeoNet)",
         color="darkgray",
     )
