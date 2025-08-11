@@ -7,6 +7,7 @@ import logging
 import shutil
 import glob
 import numpy as np
+import pandas as pd
 
 from typing import Iterable, List, Union, Tuple
 
@@ -22,6 +23,7 @@ from rt_eqcorrscan.plugins.plotter.rcet_plots import (
     aftershock_map, summary_files, ellipse_plots,
     ellipse_to_rectangle, focal_sphere_plots, plot_scaled_magnitudes,
     make_scaled_mag_list, mainshock_mags, output_aftershock_map,
+    plot_geometry_with_time,
 )
 from rt_eqcorrscan.plugins.output.output_runner import template_possible_self_dets
 
@@ -228,7 +230,7 @@ class Plotter(_Plugin):
          RT_mainshock_depth, RT_mainshock_depth_uncertainty) = mainshock_mags(
             mainshock=self._get_mainshock(), RT_mainshock=self._get_relocated_mainshock())
 
-        output_dictionary = summary_files(
+        _, summary_filename = summary_files(
             eventid=internal_config.mainshock_id,
             current_time=now,
             elapsed_secs=now - get_origin_attr(self._get_mainshock(), "time"),
@@ -284,8 +286,10 @@ class Plotter(_Plugin):
         summary_fig.savefig(
             f"{self.config.out_dir}/Aftershock_extent_depth_map_latest.pdf",
             dpi=self.config.eps_dpi)
-        # self._summary_figure()
-        # TODO: plot_geometry_with_time
+
+        Logger.info("Plotting geometry with time")
+        self._plot_geometry_with_time(summary_file=summary_filename)
+
         self._add_to_history()
         return []
 
@@ -343,6 +347,37 @@ class Plotter(_Plugin):
             return self_dets[0]
 
     #### Plotting methods
+    def _plot_geometry_with_time(self, summary_file: str):
+        # Arguments come from summary file apparently, so lets see if we can
+        # guess what Emily thinks should be in here.
+        df = pd.read_csv(summary_file)
+
+        fig = plot_geometry_with_time(
+            times=df.Elapsed_secs.to_list(),
+            events=df.N_evs.to_list(),
+            geonet_events=df.N_geonet_evs.to_list(),
+            mean_depths=df.Mean_depth.to_list(),
+            Relocated_depths=df.Relocated_depth.to_list(),
+            Relocated_depth_uncerts=df.Relocated_depth_unc.to_list(),
+            lengths=df.Length.to_list(),
+            azimuths=df.Azimuth.to_list(),
+            dips=df.Dip.to_list(),
+            mags=df.Scaled_mag.to_list(),
+            GeoNet_mags=df.GeoNet_mag.to_list(),
+            GeoNet_mags_uncerts=df.GeoNet_mag_unc.to_list(),
+            GeoNet_depths=df.GeoNet_ms_depth.to_list(),
+            GeoNet_depth_uncerts=df.GeoNet_ms_depth_unc.to_list(),
+            log=True,
+            mainshock=self._get_mainshock(),
+        )
+        fig.savefig(
+            f"{self.config.out_dir}/Geometry_with_time_latest.pdf",
+            dpi=self.config.eps_dpi)
+        fig.savefig(
+            f"{self.config.out_dir}/Geometry_with_time_latest.png",
+            dpi=self.config.png_dpi)
+        return
+
     def _magnitude_plots(
         self,
         length: float,

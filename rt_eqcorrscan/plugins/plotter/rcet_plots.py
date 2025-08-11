@@ -12,6 +12,8 @@ import numpy as np
 from typing import Union, Tuple
 
 from datetime import datetime
+
+from matplotlib.font_manager import FontProperties
 from obspy import UTCDateTime
 from obspy.geodetics import kilometer2degrees
 from pyproj import CRS, Transformer
@@ -2113,10 +2115,9 @@ def summary_files(
             + ") km"
         )
 
-    return output_dictionary
+    return output_dictionary, f_output
 
 
-# TODO This needs to be included in the plotter
 def plot_geometry_with_time(
     times,
     events,
@@ -2126,6 +2127,7 @@ def plot_geometry_with_time(
     Relocated_depth_uncerts,
     lengths,
     azimuths,
+    dips,
     mags,
     GeoNet_mags,
     GeoNet_mags_uncerts,
@@ -2139,13 +2141,39 @@ def plot_geometry_with_time(
     pclength = lengths[-1] * 0.1
     pcazimuth = 10
     fig = plt.figure()
-    fig.set_size_inches(16, 12)
+    fig.set_size_inches(16, 14)
     fig.patch.set_facecolor("white")
 
     # plot summary statistics text
-    ax1 = fig.add_subplot(3, 2, 1)
-    ax1.set_axis_off()
-    plt.text(
+    ax0 = fig.add_subplot(4, 2, 1)
+    ax0.axis("off")
+
+    summary_text = [
+        ["Trigger ID:", mainshock.resource_id.id.split("/")[-1]],
+        ["Time since trigger:", f"{times[-1]:.2f} seconds"],
+        ["Total events:", f"{events[-1]}"],
+        ["Fault length:", f"{lengths[-1]:.2f} km"],
+        ["Fault azimuth:", f"{azimuths[-1]:.2f} degrees"],
+        ["Fault dip:", f"{dips[-1]:.2f} degrees"],
+        ["Scaled magnitude:", f"{mags[-1]:.1f}"],
+        ["GeoNet magnitude:", f"{GeoNet_mags[-1]:.1f}"],
+        ["Mean aftershock depth:", f"{mean_depths[-1]:.2f} km"],
+        ["RT/GN mainshock depth:", f"{Relocated_depths[-1]:.1f}/{GeoNet_depths[-1]:.1f} km"]
+    ]
+
+    table = ax0.table(
+        cellText=summary_text,
+        cellLoc="left",
+        edges="open",
+        loc="center",
+    )
+
+    # Make left column bold
+    for (row, col), cell in table.get_celld().items():
+        if col == 0:
+            cell.set_text_props(fontproperties=FontProperties(weight="bold"))
+
+    ax0.text(
         0.5,
         1,
         "RT-EQcorrscan Aftershock Analysis Outputs",
@@ -2155,173 +2183,15 @@ def plot_geometry_with_time(
         horizontalalignment="center",
     )
 
-    plt.text(
-        0,
-        0.85,
-        "Trigger_ID: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.85,
-        str(mainshock.resource_id).split("/")[-1],
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.75,
-        "Time since trigger: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.75,
-        str(times[-1]) + " seconds",
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.65,
-        "Total events: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.65,
-        str(events[-1]),
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.55,
-        "Fault Length: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.55,
-        str(lengths[-1]) + " km",
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.44,
-        "Fault Azimuth: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.44,
-        str(azimuths[-1]) + " degrees",
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.35,
-        "Scaled magnitude: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.35,
-        str(mags[-1]),
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.25,
-        "GeoNet magnitude: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.25,
-        str(GeoNet_mags[-1]),
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.15,
-        "Mean aftershock depth: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.15,
-        str(mean_depths[-1]) + " km",
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
-
-    plt.text(
-        0,
-        0.05,
-        "RT/GN mainshock depth: ",
-        color="black",
-        fontsize=12.0,
-        weight="bold",
-        horizontalalignment="left",
-    )
-    plt.text(
-        0.45,
-        0.05,
-        str(round(Relocated_depths[-1], 1))
-        + "/"
-        + str(round(GeoNet_depths[-1], 1))
-        + " km",
-        color="black",
-        fontsize=12.0,
-        horizontalalignment="left",
-    )
+    def _additional_plot_elements(ax):
+        ax.axvline(x=60, color="r", linestyle="-")
+        ax.axvline(x=360, color="r", linestyle="-.")
+        ax.axvline(x=3600, color="r", linestyle="dashed")
+        ax.axvline(x=86400, color="r", linestyle="dotted")
+        ax.set_xlim(10, (86400 * 7))
 
     # Plot events
-    ax1 = fig.add_subplot(3, 2, 2)
+    ax1 = fig.add_subplot(4, 2, 3)
     if log == True:
         ax1.set_xscale("log")
     ax1.plot(
@@ -2345,29 +2215,26 @@ def plot_geometry_with_time(
         color="darkgray",
     )
     ax1.title.set_text("Events")
-    plt.axvline(x=60, color="r", linestyle="-")
-    plt.axvline(x=360, color="r", linestyle="-.")
-    plt.axvline(x=3600, color="r", linestyle="dashed")
-    plt.axvline(x=86400, color="r", linestyle="dotted")
-    plt.text(47, min(events + geonet_events), "1 minute", rotation=90, color="red")
-    plt.text(270, min(events + geonet_events), "10 minutes", rotation=90, color="red")
-    plt.text(2700, min(events + geonet_events), "1 hour", rotation=90, color="red")
-    plt.text(66400, min(events + geonet_events), "1 day", rotation=90, color="red")
-    plt.legend(loc="upper left")
-    plt.ylabel("Number of detected events")
-    plt.xlim(10, (86400 * 7))
+    ax1.text(47, min(events + geonet_events), "1 minute", rotation=90,
+            color="red")
+    ax1.text(270, min(events + geonet_events), "10 minutes", rotation=90,
+            color="red")
+    ax1.text(2700, min(events + geonet_events), "1 hour", rotation=90,
+            color="red")
+    ax1.text(66400, min(events + geonet_events), "1 day", rotation=90,
+            color="red")
+    _additional_plot_elements(ax=ax1)
+    ax1.legend(loc="upper left")
+    ax1.set_ylabel("Number of detected events")
 
     # Plot depths
-    ax1 = fig.add_subplot(3, 2, 3)
+    ax2 = fig.add_subplot(4, 2, 5)
     if log == True:
-        ax1.set_xscale("log")
+        ax2.set_xscale("log")
 
-    ax1.title.set_text("Depths")
-    plt.axvline(x=60, color="r", linestyle="-")
-    plt.axvline(x=360, color="r", linestyle="-.")
-    plt.axvline(x=3600, color="r", linestyle="dashed")
-    plt.axvline(x=86400, color="r", linestyle="dotted")
-    ax1.plot(
+    ax2.title.set_text("Depths")
+    _additional_plot_elements(ax=ax2)
+    ax2.plot(
         times,
         mean_depths,
         linestyle="-",
@@ -2377,7 +2244,7 @@ def plot_geometry_with_time(
         label="Mean aftershock depths",
         color="blueviolet",
     )
-    ax1.plot(
+    ax2.plot(
         times,
         Relocated_depths,
         linestyle="-",
@@ -2391,8 +2258,8 @@ def plot_geometry_with_time(
     for i, m in enumerate(Relocated_depths):
         RT_max_depths.append(m + Relocated_depth_uncerts[i])
         RT_min_depths.append(m - Relocated_depth_uncerts[i])
-    ax1.fill_between(times, RT_min_depths, RT_max_depths, alpha=0.2, color="plum")
-    ax1.plot(
+    ax2.fill_between(times, RT_min_depths, RT_max_depths, alpha=0.2, color="plum")
+    ax2.plot(
         times,
         GeoNet_depths,
         linestyle="-",
@@ -2405,15 +2272,14 @@ def plot_geometry_with_time(
     for i, m in enumerate(GeoNet_depths):
         geonet_max_depths.append(m + GeoNet_depth_uncerts[i])
         geonet_min_depths.append(m - GeoNet_depth_uncerts[i])
-    ax1.fill_between(
+    ax2.fill_between(
         times, geonet_min_depths, geonet_max_depths, alpha=0.2, color="grey"
     )
-    plt.legend()
-    plt.ylabel("Depth (km)")
-    plt.xlim(10, (86400 * 7))
+    ax2.legend()
+    ax2.set_ylabel("Depth (km)")
 
     # plot lengths
-    ax3 = fig.add_subplot(3, 2, 4)
+    ax3 = fig.add_subplot(4, 2, 6)
     if log == True:
         ax3.set_xscale("log")
     ax3.title.set_text("Length")
@@ -2427,20 +2293,16 @@ def plot_geometry_with_time(
         label="2$\sigma$ Length",
         color="green",
     )
-    plt.axvline(x=60, color="r", linestyle="-")
-    plt.axvline(x=360, color="r", linestyle="-.")
-    plt.axvline(x=3600, color="r", linestyle="dashed")
-    plt.axvline(x=86400, color="r", linestyle="dotted")
-    plt.legend()
-    plt.ylabel("Length (km)")
-    plt.xlim(10, (86400 * 7))
+    _additional_plot_elements(ax=ax3)
+    ax3.legend()
+    ax3.set_ylabel("Length (km)")
 
     # plot azimuths
-    ax2 = fig.add_subplot(3, 2, 5)
+    ax4 = fig.add_subplot(4, 2, 7)
     if log == True:
-        ax2.set_xscale("log")
-    ax2.title.set_text("Azimuths")
-    ax2.plot(
+        ax4.set_xscale("log")
+    ax4.title.set_text("Azimuths")
+    ax4.plot(
         times,
         azimuths,
         linestyle="-",
@@ -2450,28 +2312,44 @@ def plot_geometry_with_time(
         label="Azimuths",
         color="orange",
     )
-    plt.axvline(x=60, color="r", linestyle="-")
-    plt.axvline(x=360, color="r", linestyle="-.")
-    plt.axvline(x=3600, color="r", linestyle="dashed")
-    plt.axvline(x=86400, color="r", linestyle="dotted")
-    plt.legend()
+    _additional_plot_elements(ax=ax4)
+    ax4.legend()
     if log == True:
-        plt.xlabel("log(seconds since mainshock)")
+        ax4.set_xlabel("log(seconds since mainshock)")
     else:
-        plt.xlabel("seconds since mainshock")
-    plt.ylabel("Degrees ($\degree$)")
-    plt.xlim(10, (86400 * 7))
+        ax4.set_xlabel("seconds since mainshock")
+    ax4.set_ylabel("Degrees ($\degree$)")
+
+    # plot dips
+    ax5 = fig.add_subplot(4, 2, 8)
+    if log == True:
+        ax5.set_xscale("log")
+    ax5.title.set_text("Dips")
+    ax5.plot(
+        times,
+        dips,
+        linestyle="-",
+        marker=".",
+        markersize="0.01",
+        linewidth=3,
+        label="Dips",
+        color="brown",
+    )
+    _additional_plot_elements(ax=ax5)
+    ax5.legend()
+    if log == True:
+        ax5.set_xlabel("log(seconds since mainshock)")
+    else:
+        ax5.set_xlabel("seconds since mainshock")
+    ax5.set_ylabel("Degrees ($\degree$)")
 
     # plot magnitudes
-    ax4 = fig.add_subplot(3, 2, 6)
+    ax6 = fig.add_subplot(4, 2, 4)
     if log == True:
-        ax4.set_xscale("log")
-    ax4.title.set_text("Magnitudes")
-    plt.axvline(x=60, color="r", linestyle="-")
-    plt.axvline(x=360, color="r", linestyle="-.")
-    plt.axvline(x=3600, color="r", linestyle="dashed")
-    plt.axvline(x=86400, color="r", linestyle="dotted")
-    ax4.plot(
+        ax6.set_xscale("log")
+    ax6.title.set_text("Magnitudes")
+    _additional_plot_elements(ax=ax6)
+    ax6.plot(
         times,
         mags,
         linestyle="-",
@@ -2481,7 +2359,7 @@ def plot_geometry_with_time(
         label="Scaled magnitude",
         color="blue",
     )
-    ax4.plot(
+    ax6.plot(
         times,
         GeoNet_mags,
         linestyle="-",
@@ -2495,14 +2373,10 @@ def plot_geometry_with_time(
     for i, m in enumerate(GeoNet_mags):
         geonet_max_mags.append(m + GeoNet_mags_uncerts[i])
         geonet_min_mags.append(m - GeoNet_mags_uncerts[i])
-    ax4.fill_between(times, geonet_min_mags, geonet_max_mags, alpha=0.2, color="gray")
-    if log == True:
-        plt.xlabel("log(seconds since mainshock)")
-    else:
-        plt.xlabel("seconds since mainshock")
-    plt.ylabel("Magnitude")
-    plt.legend()
-    plt.xlim(10, (86400 * 7))
+    ax6.fill_between(times, geonet_min_mags, geonet_max_mags, alpha=0.2, color="gray")
+    ax6.set_ylabel("Magnitude")
+    ax6.legend()
+    fig.tight_layout()
     return fig
 
 #################################
