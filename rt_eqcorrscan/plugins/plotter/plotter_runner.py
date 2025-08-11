@@ -77,9 +77,13 @@ class Plotter(_Plugin):
 
     @property
     def _aftershock_templates(self):
-        return [ev for ev in self.template_dict.values()
-                if get_origin_attr(ev, "time") or UTCDateTime(0) >=
-                get_origin_attr(self._get_mainshock(), "time")]
+        aftershock_templates = []
+        mainshock_time = get_origin_attr(self._get_mainshock(), "time")
+        for ev in self.template_dict.values():
+            ori_time = get_origin_attr(ev, "time") or UTCDateTime(0)
+            if ori_time >= mainshock_time:
+                aftershock_templates.append(ev)
+        return aftershock_templates
 
     @property
     def events(self) -> List:
@@ -310,6 +314,7 @@ class Plotter(_Plugin):
             Logger.error(
                 f"Mainshock ({self.config.mainshock_id}) not found in "
                 f"templates ({self.template_dict.keys()}.")
+            return None
         elif len(mainshock) > 1:
             Logger.warning("Multiple possible mainshocks!")
         return mainshock[0]
