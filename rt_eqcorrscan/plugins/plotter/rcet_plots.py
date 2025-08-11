@@ -605,15 +605,15 @@ def _eq_map_summary(
         fig.image(
             imagefile=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
-                "logos/GNS_logo_HORZ.gif"),
-            position="g10/2.8+w4c+jCM",
+                "logos/Earth_sci_NZ.jpeg"),
+            position="g10/3.8+w2c+jCM",
             box=False,
         )
         fig.image(
             imagefile=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "logos/RCET_logo_transparent.png"),
-            position="g10/4+w3c+jCM",
+            position="g10/6+w3c+jCM",
             box=False,
         )
 
