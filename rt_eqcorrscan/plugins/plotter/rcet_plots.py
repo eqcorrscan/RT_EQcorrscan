@@ -71,10 +71,14 @@ def _eq_map(
         max(-90, all_lats.max() + (all_lat_range * (pad / 100))),
     ]
     region = [
-        lons.min() - max(search_radius_deg, lon_range * (pad / 100)),
-        lons.max() + max(search_radius_deg, lon_range * (pad / 100)),
-        min(90, lats.min() - max(search_radius_deg, lat_range * (pad / 100))),
-        max(-90, lats.max() + max(search_radius_deg, lat_range * (pad / 100))),
+        # lons.min() - max(search_radius_deg, lon_range * (pad / 100)),
+        # lons.max() + max(search_radius_deg, lon_range * (pad / 100)),
+        # min(90, lats.min() - max(search_radius_deg, lat_range * (pad / 100))),
+        # max(-90, lats.max() + max(search_radius_deg, lat_range * (pad / 100))),
+        lons.min() - search_radius_deg,
+        lons.max() + search_radius_deg,
+        min(90, lats.min() - search_radius_deg),
+        max(-90, lats.max() + search_radius_deg),
     ]
     # Work out resolution for topography
     if topo_res is True:
