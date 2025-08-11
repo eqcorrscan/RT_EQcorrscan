@@ -651,17 +651,18 @@ def _eq_map_summary(
                 panel=[0, 0],
             )
             # plot outliers
-            fig.plot(
-                x=lons_o,
-                y=lats_o,
-                size=0.02 * 2**mags_o,
-                fill=depths_o,
-                cmap=True,
-                style="cc",
-                pen="white",
-                transparency=50,
-                panel=[0, 0],
-            )
+            if len(lons_o):
+                fig.plot(
+                    x=lons_o,
+                    y=lats_o,
+                    size=0.02 * 2**mags_o,
+                    fill=depths_o,
+                    cmap=True,
+                    style="cc",
+                    pen="white",
+                    transparency=50,
+                    panel=[0, 0],
+                )
             fig.colorbar(
                 position="jBR+o0.88c/0.8c+h+w4c/0.25c+ml",
                 frame=["xa10f10+lDepth", "y+lkm"],
