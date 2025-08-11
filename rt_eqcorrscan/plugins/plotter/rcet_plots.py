@@ -2254,6 +2254,8 @@ def plot_geometry_with_time(
 
     ax2.title.set_text("Depths")
     _additional_plot_elements(ax=ax2)
+    # Plot depths around the other way
+    ax2.invert_yaxis()
     ax2.plot(
         times,
         mean_depths,
