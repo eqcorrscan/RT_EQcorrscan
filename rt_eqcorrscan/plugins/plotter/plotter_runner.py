@@ -13,6 +13,7 @@ from typing import Iterable, List, Union, Tuple
 
 from obspy import read_events, UTCDateTime, Inventory, read_inventory
 from obspy.core.event import Event
+from obspy.geodetics import kilometer2degrees
 
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
@@ -281,7 +282,8 @@ class Plotter(_Plugin):
             topo_cmap="terra",
             inventory=self.inventory,
             hillshade=False,
-            colours='depth')
+            colours='depth',
+            search_radius_deg=kilometer2degrees(self.config.search_radius))
 
         summary_fig.savefig(
             f"{self.config.out_dir}/Aftershock_extent_depth_map_latest.png",
@@ -481,6 +483,7 @@ class Plotter(_Plugin):
         template_map = aftershock_map(
             catalog=self.template_dict.values(),
             mainshock=mainshock,
+            relocated_mainshock=None,
             search_radius=self.config.search_radius,
             inventory=self.inventory,
             topo_res="03s",
@@ -500,6 +503,7 @@ class Plotter(_Plugin):
         detected_map = aftershock_map(
             catalog=self.events,
             mainshock=mainshock,
+            relocated_mainshock=self._get_relocated_mainshock(),
             search_radius=self.config.search_radius,
             inventory=self.inventory,
             topo_res="03s",
