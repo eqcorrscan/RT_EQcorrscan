@@ -198,7 +198,7 @@ PLUGIN_CONFIG_MAPPER.update({"magnitude": MagnitudeConfig})
 
 
 class Magnituder(_Plugin):
-    name = "Magnituder"
+    name = "Magnitude"
     inventory_cache = (None, None, None)  # Tuple of (inventory, file, mtime)
     station_correction_cache = (None, None, None)  # Tuple of (station corrections, file, mtime)
 
