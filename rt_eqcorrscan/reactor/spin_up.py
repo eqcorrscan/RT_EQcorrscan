@@ -99,7 +99,7 @@ def run(
             # We need to handle the stationxml file and velocity file here
             config.plugins[plug].station_file = os.path.join(
                 working_dir, "inventory.xml")
-    for plug in ["plotter", "outputter"]:
+    for plug in ["plotter", "output"]:
         if config.plugins[plug]:
             config.plugins[plug].mainshock_id = triggering_event.resource_id.id.split('/')[-1]
     detect_interval = config.rt_match_filter.get(
