@@ -360,7 +360,8 @@ class Picker(_Plugin):
                             chans=["1", "2", "N", "E"], iaspei_standard=False,
                             var_wintype=True, winlen=internal_config.winlen,
                             ps_multiplier=internal_config.ps_multiplier,
-                            win_from_p=True)
+                            win_from_p=True,
+                            velocity=True)  # Using velocity=True to be compatible with GeoNet
                         # Change here requires this PR:
                         # https://github.com/eqcorrscan/EQcorrscan/pull/572
                     except Exception as e:
