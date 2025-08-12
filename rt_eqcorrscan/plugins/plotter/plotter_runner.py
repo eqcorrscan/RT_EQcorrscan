@@ -262,7 +262,6 @@ class Plotter(_Plugin):
             geonet_mainshock_depth_uncertainty=geonet_mainshock_depth_uncertainty,
             output_dir=out_dir)
 
-        # TODO: pass args?
         Logger.info("Making summary figure")
         summary_fig = output_aftershock_map(
             catalog=self.events,
@@ -352,7 +351,7 @@ class Plotter(_Plugin):
             return self_dets[0]
 
     #### Plotting methods
-    def _plot_geometry_with_time(self, summary_file: str):
+    def _plot_geometry_with_time(self, summary_file: str, min_events: int = 5):
         # Arguments come from summary file apparently, so lets see if we can
         # guess what Emily thinks should be in here.
         df = pd.read_csv(summary_file)
@@ -361,13 +360,13 @@ class Plotter(_Plugin):
             times=df.Elapsed_secs.to_list(),
             events=df.N_evs.to_list(),
             geonet_events=df.N_geonet_evs.to_list(),
-            mean_depths=df.Mean_depth.to_list(),
+            mean_depths=df.Mean_depth.where(df.N_evs > min_events).to_list(),
             Relocated_depths=df.Relocated_depth.to_list(),
             Relocated_depth_uncerts=df.Relocated_depth_unc.to_list(),
-            lengths=df.Length.to_list(),
-            azimuths=df.Azimuth.to_list(),
-            dips=df.Dip.to_list(),
-            mags=df.Scaled_mag.to_list(),
+            lengths=df.Length.where(df.N_evs > min_events).to_list(),
+            azimuths=df.Azimuth.where(df.N_evs > min_events).to_list(),
+            dips=df.Dip.where(df.N_evs > min_events).to_list(),
+            mags=df.Scaled_mag.where(df.N_evs > min_events).to_list(),
             GeoNet_mags=df.GeoNet_mag.to_list(),
             GeoNet_mags_uncerts=df.GeoNet_mag_unc.to_list(),
             GeoNet_depths=df.GeoNet_ms_depth.to_list(),
