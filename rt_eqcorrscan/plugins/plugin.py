@@ -35,6 +35,7 @@ REGISTERED_PLUGINS = {
     "picker": "rteqcorrscan-plugin-picker",
     "hyp": "rteqcorrscan-plugin-hyp",
     "nll": "rteqcorrscan-plugin-nll",
+    "magnituder": "rteqcorrscan-plugin-magnituder",
     "plotter": "rteqcorrscan-plugin-plotter",
     "growclust": "rteqcorrscan-plugin-growclust",
     "outputter": "rteqcorrscan-plugin-outputter",
@@ -45,8 +46,8 @@ ORDERED_PLUGINS = [
     "picker",
     "hyp",
     "nll",
+    "magnituder",
     "growclust",
-    "mag_calc",
     "outputter",
     "plotter"
 ]

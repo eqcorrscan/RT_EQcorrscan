@@ -10,16 +10,17 @@ Steps:
 
 Designed to be run as continuously running subprocess managed by rt_eqcorrscan
 """
-
+import json
+import os
 import logging
 
 from math import log10
-from typing import List
+from typing import List, Union
 
 from obspy.geodetics import gps2dist_azimuth
 from obspy.core.event import (
     Event, Amplitude, StationMagnitude, CreationInfo, Magnitude)
-from obspy import Inventory, UTCDateTime
+from obspy import Inventory, UTCDateTime, read_events, read_inventory
 
 from rt_eqcorrscan.config.config import _PluginConfig, PLUGIN_CONFIG_MAPPER
 from rt_eqcorrscan.plugins.plugin import _Plugin
@@ -184,8 +185,8 @@ class MagnitudeConfig(_PluginConfig):
     """
     defaults = _PluginConfig.defaults.copy()
     defaults.update({
-        "magnitude-function": "MLNZ20",
-        "station_correction_file": None,
+        "magnitude_function": "MLNZ20",
+        "station_correction_file": None,  # Should be a json.
     })
     readonly = []
 
@@ -198,9 +199,78 @@ PLUGIN_CONFIG_MAPPER.update({"magnitude": MagnitudeConfig})
 
 class Magnituder(_Plugin):
     name = "Magnituder"
+    inventory_cache = (None, None, None)  # Tuple of (inventory, file, mtime)
+    station_correction_cache = (None, None, None)  # Tuple of (station corrections, file, mtime)
 
     def _read_config(self, config_file: str):
         return MagnitudeConfig.read(config_file=config_file)
 
+    @property
+    def inventory(self) -> Union[Inventory, None]:
+        return self.inventory_cache[0]
+
+    @property
+    def station_corrections(self) -> Union[dict, None]:
+        return self.station_correction_cache[0]
+
     def core(self, new_files: List[str]) -> List[str]:
-        pass
+        processed_files = []
+
+        # Load the stations
+        Logger.info("Getting inventory")
+        read_inv = False
+        if self.inventory_cache[2] is not None:
+            # We have read the inventory file, check if we need to re-read
+            if self.inventory_cache[1] != self.config.station_file:
+                # Different file, we need to read
+                read_inv = True
+            elif os.path.getmtime(self.config.station_file) > self.inventory_cache[2]:
+                # Updated, we need to read
+                read_inv = True
+        else:
+            # No file has been read previously
+            read_inv = True
+        if read_inv:
+            self.inventory_cache = (
+                read_inventory(self.config.station_file),
+                self.config.station_file,
+                os.path.getmtime(self.config.station_file))
+
+        # Getting station corections
+        Logger.info("Getting station corrections")
+        read_corrections = False
+        if self.station_correction_cache[2] is not None:
+            if self.station_correction_cache[1] != self.config.station_correction_file:
+                read_corrections = True
+            elif os.path.getmtime(self.config.station_correction_file) > self.station_correction_cache[2]:
+                read_corrections = True
+        else:
+            read_corrections = True
+
+        if read_corrections:
+            with open(self.config.station_correction_file, "r") as f:
+                stn_corrs = json.load(f)
+            self.station_correction_cache = (
+                stn_corrs,
+                self.config.station_correction_file,
+                os.path.getmtime(self.config.station_correction_file))
+
+
+        Logger.info(f"Processing {len(new_files)} events")
+        for f in new_files:
+            self.process_event(filename=f)
+            processed_files.append(f)
+        return processed_files
+
+    def process_event(self, filename: str):
+        cat = read_events(filename)
+        for ev in cat:
+            MAG_FUNCS.get(self.config.magnitude_function)(
+                event=ev, inventory=self.inventory,
+                station_corrections=self.station_corrections)
+        fname = os.path.basename(filename)
+        outpath = os.path.join(self.config.out_dir, fname)
+        if not os.path.isdir(os.path.dirname(outpath)):
+            os.makedirs(os.path.dirname(outpath))
+        cat.write(outpath, format="QUAKEML")
+        return
