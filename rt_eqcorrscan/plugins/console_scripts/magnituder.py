@@ -1,20 +1,20 @@
 """
-Console entry point for growclust runner.
+Console entry point for magnitude runner.
 """
 
 import logging
 
 from rt_eqcorrscan.config.config import _setup_logging
-from rt_eqcorrscan.plugins.relocation.growclust_runner import GrowClust
+from rt_eqcorrscan.plugins.magnitudes.local_magnitudes import Magnituder
 
 
-Logger = logging.getLogger("growclust-plugin")
+Logger = logging.getLogger("magnitude-plugin")
 
 
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="GrowClust Plugin")
+    parser = argparse.ArgumentParser(description="Magnitude Plugin")
 
     parser.add_argument(
         "--config", "-c", type=str,
@@ -26,7 +26,7 @@ def main():
         default="%(asctime)s\t[%(processName)s:%(threadName)s]: " \
                 "%(name)s\t%(levelname)s\t%(message)s")
     parser.add_argument(
-        "--log-file", type=str, default="growclust.log")
+        "--log-file", type=str, default="magnitude.log")
     parser.add_argument(
         "--log-to-screen", "-s", action="store_true")
     parser.add_argument(
@@ -40,7 +40,7 @@ def main():
         log_level=args.log_level, log_formatter=args.log_formatter,
         screen=args.log_to_screen, file=True, filename=args.log_file)
 
-    growclust = GrowClust(config_file=args.config)
+    growclust = Magnituder(config_file=args.config)
     if args.simulation:
         Logger.info("Setting simulation to True")
         growclust._write_sim_catalogues = True

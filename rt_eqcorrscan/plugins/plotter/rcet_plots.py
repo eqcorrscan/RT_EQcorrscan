@@ -24,6 +24,8 @@ import pyproj, math
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 
+from rt_eqcorrscan.helpers.sparse_event import get_origin_attr
+
 GEODESIC = pyproj.Geod(ellps="WGS84")
 
 import statsmodels.api as sm
@@ -52,14 +54,10 @@ def _eq_map(
     timestamp: Union[UTCDateTime, datetime]
 ) -> pygmt.Figure:
     """ """
-    all_lons = np.concatenate([lons, station_lons])
-    all_lats = np.concatenate([lats, station_lats])
-    # PyGMT copes with longitudes > 180
-    # If longitudes cross the dateline, convert them to work
-    if all_lons.max() - all_lons.min() > 180:
-        all_lons %= 360
-    all_lon_range = all_lons.max() - all_lons.min()
-    all_lat_range = all_lats.max() - all_lats.min()
+    if station_lons.max() - station_lons.min() > 180:
+        station_lons %= 360
+    station_lon_range = station_lons.max() - station_lons.min()
+    station_lat_range = station_lats.max() - station_lats.min()
 
     if lons.max() - lons.min() > 180:
         lons %= 360
@@ -67,10 +65,10 @@ def _eq_map(
     lat_range = lats.max() - lats.min()
 
     large_region = [
-        all_lons.min() - (all_lon_range * (pad / 100)),
-        all_lons.max() + (all_lon_range * (pad / 100)),
-        max(-90, all_lats.min() - (all_lat_range * (pad / 100))),
-        min(90, all_lats.max() + (all_lat_range * (pad / 100))),
+        station_lons.min() - (station_lon_range * (pad / 100)),
+        station_lons.max() + (station_lon_range * (pad / 100)),
+        max(-90, station_lats.min() - (station_lat_range * (pad / 100))),
+        min(90, station_lats.max() + (station_lat_range * (pad / 100))),
     ]
     if middle_lon and middle_lat:
         region = [
@@ -201,6 +199,7 @@ def _eq_map(
 def aftershock_map(
     catalog: Catalog,
     mainshock: Event,
+    relocated_mainshock: Event,
     search_radius: float,
     inventory: Inventory = None,
     pad: float = 50.0,
@@ -293,6 +292,15 @@ def aftershock_map(
         fill="gold",
         pen="black",
     )
+
+    if relocated_mainshock is not None:
+        fig.plot(
+            x=get_origin_attr(relocated_mainshock, "longitude"),
+            y=get_origin_attr(relocated_mainshock, "latitude"),
+            style=f"a{mainshock_size}c",
+            fill="yellow",
+            pen="black"
+        )
 
     # TODO: Emily left an empty plt.text here?
     # plt.text
@@ -438,6 +446,7 @@ def _eq_map_summary(
     colours: str,
     mainshock,
     RT_mainshock,
+    search_radius_deg,
 ) -> pygmt.Figure:
     """ """
 
@@ -453,11 +462,17 @@ def _eq_map_summary(
     else:
         total_range = lon_range
 
+    # map_region = [
+    #     all_lons.min() - (total_range * (pad / 100)),
+    #     all_lons.max() + (total_range * (pad / 100)),
+    #     min(90, all_lats.min() - (total_range * (pad / 100))),
+    #     max(-90, all_lats.max() + (total_range * (pad / 100))),
+    # ]
     map_region = [
-        all_lons.min() - (total_range * (pad / 100)),
-        all_lons.max() + (total_range * (pad / 100)),
-        min(90, all_lats.min() - (total_range * (pad / 100))),
-        max(-90, all_lats.max() + (total_range * (pad / 100))),
+        mainshock.longitude - search_radius_deg,
+        mainshock.longitude + search_radius_deg,
+        min(90, mainshock.latitude - search_radius_deg),
+        max(-90, mainshock.latitude + search_radius_deg)
     ]
 
     mags_round_no = np.array([int(str(m).split(".")[0]) for m in mags])
@@ -855,6 +870,7 @@ def output_aftershock_map(
     topo_res: str = None,
     topo_cmap: str = "geo",
     hillshade: bool = False,
+    search_radius_deg: float = 2,
 ) -> pygmt.Figure:
     """
     Make a summary aftershock map for magnitudes
@@ -987,6 +1003,7 @@ def output_aftershock_map(
         magcut=magcut,
         mainshock=mainshock,
         RT_mainshock=RT_mainshock,
+        search_radius_deg=search_radius_deg,
     )
 
     return fig
@@ -2015,6 +2032,9 @@ def summary_files(
         dictwriter_object.writerow(output_dictionary)
         f.close()
 
+    # Use a timedelta for nicer string formatting
+    elapsed_time = datetime.timedelta(seconds=elapsed_secs)
+
     # write out file with text inputs for plotting next to aftershock map
     font_size = "12"
     with open(".plotting_text.txt", "w") as f:
@@ -2030,10 +2050,10 @@ def summary_files(
             + "\n"
         )
         f.write(
-            "0.2 9 0 " + font_size + "p,Helvetica-Bold,black ML Elapsed seconds: \n"
+            "0.2 9 0 " + font_size + "p,Helvetica-Bold,black ML Elapsed time: \n"
         )
         f.write(
-            "5.5 9 0 " + font_size + "p,Helvetica,black ML " + str(elapsed_secs) + "\n"
+            "5.5 9 0 " + font_size + "p,Helvetica,black ML " + str(elapsed_time) + "\n"
         )
         f.write("0.2 8 0 " + font_size + "p,Helvetica-Bold,black ML Total events: \n")
         f.write(
@@ -2168,9 +2188,15 @@ def plot_geometry_with_time(
     ax0 = fig.add_subplot(4, 2, 1)
     ax0.axis("off")
 
+    # Plot x-axis upper limit
+    max_time = max(86400, times[-1])
+
+    # Convert trigger time to datetime for string formatting
+    elapsed_time = datetime.timedelta(seconds=times[-1])
+
     summary_text = [
         ["Trigger ID:", mainshock.resource_id.id.split("/")[-1]],
-        ["Time since trigger:", f"{times[-1]:.2f} seconds"],
+        ["Time since trigger:", f"{elapsed_time}"],
         ["Total events:", f"{events[-1]}"],
         ["Fault length:", f"{lengths[-1]:.2f} km"],
         ["Fault azimuth:", f"{azimuths[-1]:.2f} degrees"],
@@ -2203,12 +2229,12 @@ def plot_geometry_with_time(
         horizontalalignment="center",
     )
 
-    def _additional_plot_elements(ax):
+    def _additional_plot_elements(ax, xlim_upper=86400):
         ax.axvline(x=60, color="r", linestyle="-")
         ax.axvline(x=360, color="r", linestyle="-.")
         ax.axvline(x=3600, color="r", linestyle="dashed")
         ax.axvline(x=86400, color="r", linestyle="dotted")
-        ax.set_xlim(10, (86400 * 7))
+        ax.set_xlim(10, xlim_upper)
 
     # Plot events
     ax1 = fig.add_subplot(4, 2, 3)
@@ -2243,7 +2269,7 @@ def plot_geometry_with_time(
             color="red")
     ax1.text(66400, min(events + geonet_events), "1 day", rotation=90,
             color="red")
-    _additional_plot_elements(ax=ax1)
+    _additional_plot_elements(ax=ax1, xlim_upper=max_time)
     ax1.legend(loc="upper left")
     ax1.set_ylabel("Number of detected events")
 
@@ -2253,7 +2279,7 @@ def plot_geometry_with_time(
         ax2.set_xscale("log")
 
     ax2.title.set_text("Depths")
-    _additional_plot_elements(ax=ax2)
+    _additional_plot_elements(ax=ax2, xlim_upper=max_time)
     # Plot depths around the other way
     ax2.invert_yaxis()
     ax2.plot(
@@ -2315,7 +2341,7 @@ def plot_geometry_with_time(
         label="2$\sigma$ Length",
         color="lightblue",
     )
-    _additional_plot_elements(ax=ax3)
+    _additional_plot_elements(ax=ax3, xlim_upper=max_time)
     ax3.legend()
     ax3.set_ylabel("Length (km)")
 
@@ -2334,7 +2360,7 @@ def plot_geometry_with_time(
         label="Azimuths",
         color="orange",
     )
-    _additional_plot_elements(ax=ax4)
+    _additional_plot_elements(ax=ax4, xlim_upper=max_time)
     ax4.legend()
     if log == True:
         ax4.set_xlabel("log(seconds since mainshock)")
@@ -2357,7 +2383,7 @@ def plot_geometry_with_time(
         label="Dips",
         color="green",
     )
-    _additional_plot_elements(ax=ax5)
+    _additional_plot_elements(ax=ax5, xlim_upper=max_time)
     ax5.legend()
     if log == True:
         ax5.set_xlabel("log(seconds since mainshock)")
@@ -2370,7 +2396,7 @@ def plot_geometry_with_time(
     if log == True:
         ax6.set_xscale("log")
     ax6.title.set_text("Magnitudes")
-    _additional_plot_elements(ax=ax6)
+    _additional_plot_elements(ax=ax6, xlim_upper=max_time)
     ax6.plot(
         times,
         mags,
