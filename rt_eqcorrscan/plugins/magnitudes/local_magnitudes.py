@@ -213,7 +213,7 @@ class Magnituder(_Plugin):
     def station_corrections(self) -> Union[dict, None]:
         return self.station_correction_cache[0]
 
-    def core(self, new_files: List[str]) -> List[str]:
+    def core(self, new_files: List[str], cleanup: bool) -> List[str]:
         processed_files = []
 
         # Load the stations
