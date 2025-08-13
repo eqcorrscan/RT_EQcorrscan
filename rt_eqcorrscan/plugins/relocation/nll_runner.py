@@ -233,6 +233,12 @@ def setup_nll(
     min_y /= 1000.
     max_y /= 1000.
 
+    # Region pad to try to avoid locations pinned to stations
+    min_x -= 0.25 * (abs(max_x - min_x))
+    max_x += 0.25 * (abs(max_x - min_x))
+    min_y -= 0.25 * (abs(max_y - min_y))
+    max_y += 0.25 * (abs(max_y - min_y))
+
     # Note Donna's models use a r-hand (+ve E) coord system, NLL uses
     # l-hand (+ve W), both +ve down and +ve N
     # numbers from transformer are +ve E
