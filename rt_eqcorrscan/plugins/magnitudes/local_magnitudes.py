@@ -87,7 +87,7 @@ def mlnz20(
     origin = event.preferred_origin() or event.origins[-1]
     station_magnitudes = []
     for amplitude in event.amplitudes:
-        if amplitude.type not in ["ML", "MLv"]:
+        if amplitude.type not in ["ML", "MLv", "AML", "IAML"]:
             Logger.info(f"Skipping amplitude of type {amplitude.type}")
         # Find the related station
         station = inventory.select(
@@ -146,12 +146,15 @@ def mlnz20(
                 MLNZ20_CONSTANTS["gamma"] * log10(slant_dist_km) +
                 MLNZ20_CONSTANTS["delta"] * h40 +
                 station_correction))
+        mag_type = "ML"
+        if amplitude.waveform_id.channel_code and amplitude.waveform_id.channel_code.endswith("Z"):
+            mag_type = "MLv"
         station_mag = StationMagnitude(
             origin_id=origin.resource_id,
             mag=station_mag,
             station_magnitude_type=amplitude.type,
             amplitude_id=amplitude.resource_id,
-            waveform_id=amplitude.waveform_id,
+            waveform_id=mag_type,
             creation_info=CreationInfo(
                 agency_id="RTEQC",
                 author="RTEQcorrscan",
