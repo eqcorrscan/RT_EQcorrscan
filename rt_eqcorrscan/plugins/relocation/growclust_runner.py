@@ -821,7 +821,7 @@ class GrowClust(_Plugin):
         outdir = internal_config.pop("out_dir")
         station_file = internal_config.pop("station_file")
         inv = read_inventory(station_file)
-        used_stations = {s for n in inv for s in n}
+        used_stations = {s.code for n in inv for s in n}
         growclust_script = internal_config.pop(
             "growclust_script", GROWCLUST_SCRIPT)
         vmodel_file = internal_config.pop(
