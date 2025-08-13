@@ -225,6 +225,7 @@ class _PluginConfig(_ConfigAttribDict):
         "template_dir": None,
         "wavebank_dir": None,
         "out_dir": None,
+        "sleep_interval": 60.,
     }
     readonly = []
 
