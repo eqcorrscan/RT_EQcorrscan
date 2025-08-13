@@ -94,7 +94,7 @@ def run(
             f"km of the trigger matching your templates, not running")
         return None, None
     inventory.write("inventory.xml", format="STATIONXML")
-    for plug in ['hyp', 'picker', 'nll', 'growclust', 'plotter']:
+    for plug in ['hyp', 'picker', 'nll', 'growclust', 'plotter', "magnitude"]:
         if config.plugins[plug]:
             # We need to handle the stationxml file and velocity file here
             config.plugins[plug].station_file = os.path.join(

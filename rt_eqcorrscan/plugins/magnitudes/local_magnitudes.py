@@ -187,6 +187,7 @@ class MagnitudeConfig(_PluginConfig):
     defaults.update({
         "magnitude_function": "MLNZ20",
         "station_correction_file": None,  # Should be a json.
+        "station_file": None,
     })
     readonly = []
 
