@@ -8,6 +8,7 @@ import os
 import sys
 
 from yaml import load, dump
+
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
 except ImportError:  # pragma: no cover
@@ -224,6 +225,7 @@ class _PluginConfig(_ConfigAttribDict):
         "template_dir": None,
         "wavebank_dir": None,
         "out_dir": None,
+        "sleep_interval": 60.,
     }
     readonly = []
 
@@ -256,6 +258,8 @@ class PluginConfigs(_ConfigAttribDict):
         GrowClustConfig
     from rt_eqcorrscan.plugins.relocation.nll_runner import NLLConfig
     from rt_eqcorrscan.plugins.output.output_runner import OutputConfig
+    from rt_eqcorrscan.plugins.magnitudes.local_magnitudes import \
+        MagnitudeConfig
 
     defaults = {
         "picker": None,
@@ -263,8 +267,10 @@ class PluginConfigs(_ConfigAttribDict):
         "plotter": None,
         "growclust": None,
         "nll": None,
+        "magnitude": None,
         "output": None,
-        "order": ["picker", "hyp", "nll", "growclust", "plotter", "output"],
+        "order": ["picker", "hyp", "nll", "magnitude", "growclust",
+                  "plotter", "output"],
     }
     readonly = []
     __subclasses = {
@@ -273,7 +279,8 @@ class PluginConfigs(_ConfigAttribDict):
         "nll": NLLConfig,
         "growclust": GrowClustConfig,
         "plotter": PlotConfig,
-        "outputter": OutputConfig,
+        "output": OutputConfig,
+        "magnitude": MagnitudeConfig,
     }
 
     def __init__(self, *args, **kwargs):

@@ -19,7 +19,8 @@ from typing import List, Union
 
 from obspy.geodetics import gps2dist_azimuth
 from obspy.core.event import (
-    Event, Amplitude, StationMagnitude, CreationInfo, Magnitude)
+    Event, Amplitude, StationMagnitude, CreationInfo, Magnitude,
+    StationMagnitudeContribution)
 from obspy import Inventory, UTCDateTime, read_events, read_inventory
 
 from rt_eqcorrscan.config.config import _PluginConfig, PLUGIN_CONFIG_MAPPER
@@ -86,7 +87,7 @@ def mlnz20(
     origin = event.preferred_origin() or event.origins[-1]
     station_magnitudes = []
     for amplitude in event.amplitudes:
-        if amplitude.type not in ["ML", "MLv"]:
+        if amplitude.type not in ["ML", "MLv", "AML", "IAML"]:
             Logger.info(f"Skipping amplitude of type {amplitude.type}")
         # Find the related station
         station = inventory.select(
@@ -145,12 +146,15 @@ def mlnz20(
                 MLNZ20_CONSTANTS["gamma"] * log10(slant_dist_km) +
                 MLNZ20_CONSTANTS["delta"] * h40 +
                 station_correction))
+        mag_type = "ML"
+        if amplitude.waveform_id.channel_code and amplitude.waveform_id.channel_code.endswith("Z"):
+            mag_type = "MLv"
         station_mag = StationMagnitude(
             origin_id=origin.resource_id,
             mag=station_mag,
             station_magnitude_type=amplitude.type,
             amplitude_id=amplitude.resource_id,
-            waveform_id=amplitude.waveform_id,
+            waveform_id=mag_type,
             creation_info=CreationInfo(
                 agency_id="RTEQC",
                 author="RTEQcorrscan",
@@ -170,7 +174,10 @@ def mlnz20(
                 agency_id="RTEQC",
                 author="RTEQcorrscan",
                 creation_time=UTCDateTime.now()),
-            station_magnitude_contributions=magnitudes))
+            station_magnitude_contributions=[
+                StationMagnitudeContribution(sm.resource_id)
+                for sm in station_magnitudes]))
+
     return event
 
 
@@ -187,6 +194,7 @@ class MagnitudeConfig(_PluginConfig):
     defaults.update({
         "magnitude_function": "MLNZ20",
         "station_correction_file": None,  # Should be a json.
+        "station_file": None,
     })
     readonly = []
 
@@ -198,7 +206,7 @@ PLUGIN_CONFIG_MAPPER.update({"magnitude": MagnitudeConfig})
 
 
 class Magnituder(_Plugin):
-    name = "Magnituder"
+    name = "Magnitude"
     inventory_cache = (None, None, None)  # Tuple of (inventory, file, mtime)
     station_correction_cache = (None, None, None)  # Tuple of (station corrections, file, mtime)
 
@@ -213,7 +221,7 @@ class Magnituder(_Plugin):
     def station_corrections(self) -> Union[dict, None]:
         return self.station_correction_cache[0]
 
-    def core(self, new_files: List[str]) -> List[str]:
+    def core(self, new_files: List[str], cleanup: bool) -> List[str]:
         processed_files = []
 
         # Load the stations

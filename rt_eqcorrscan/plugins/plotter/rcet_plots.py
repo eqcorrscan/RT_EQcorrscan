@@ -11,7 +11,7 @@ import numpy as np
 
 from typing import Union, Tuple
 
-from datetime import datetime
+import datetime
 
 from matplotlib.font_manager import FontProperties
 from obspy import UTCDateTime
@@ -51,7 +51,7 @@ def _eq_map(
     topo_res: Union[bool, str],
     topo_cmap: str,
     hillshade: bool,
-    timestamp: Union[UTCDateTime, datetime]
+    timestamp: Union[UTCDateTime, datetime.datetime]
 ) -> pygmt.Figure:
     """ """
     if station_lons.max() - station_lons.min() > 180:
@@ -209,7 +209,7 @@ def aftershock_map(
     topo_res: Union[bool, str] = True,
     topo_cmap: str = "geo",
     hillshade: bool = False,
-    timestamp: Union[UTCDateTime, datetime] = UTCDateTime.now(),
+    timestamp: Union[UTCDateTime, datetime.datetime] = UTCDateTime.now(),
 ) -> pygmt.Figure:
     """
     Make a basic aftershock map.

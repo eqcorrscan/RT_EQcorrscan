@@ -40,11 +40,11 @@ def main():
         log_level=args.log_level, log_formatter=args.log_formatter,
         screen=args.log_to_screen, file=True, filename=args.log_file)
 
-    growclust = Magnituder(config_file=args.config)
+    mag_plug = Magnituder(config_file=args.config)
     if args.simulation:
         Logger.info("Setting simulation to True")
-        growclust._write_sim_catalogues = True
-    growclust.run()
+        mag_plug._write_sim_catalogues = True
+    mag_plug.run()
 
 
 if __name__ == "__main__":

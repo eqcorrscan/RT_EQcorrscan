@@ -820,6 +820,8 @@ class GrowClust(_Plugin):
         # indir = internal_config.pop("in_dir")
         outdir = internal_config.pop("out_dir")
         station_file = internal_config.pop("station_file")
+        inv = read_inventory(station_file)
+        used_stations = {s.code for n in inv for s in n}
         growclust_script = internal_config.pop(
             "growclust_script", GROWCLUST_SCRIPT)
         vmodel_file = internal_config.pop(
@@ -839,7 +841,12 @@ class GrowClust(_Plugin):
                     Logger.warning(
                         f"No picks for event: {ev.resource_id.id}, not relocating")
                     continue
-                new_events.append(SparseEvent.from_event(ev))
+                sparse_ev = SparseEvent.from_event(ev)
+                # Remove picks on stations that we are not using
+                sparse_ev.picks = [
+                    p for p in sparse_ev.picks
+                    if p.waveform_id.station_code in used_stations]
+                new_events.append(sparse_ev)
                 self._all_event_files.update({ev.resource_id.id: f})
 
         Logger.info(f"Computing correlations for {len(new_events)} events")
