@@ -11,7 +11,7 @@ import numpy as np
 
 from typing import Union, Tuple
 
-from datetime import datetime
+import datetime
 
 from matplotlib.font_manager import FontProperties
 from obspy import UTCDateTime
