@@ -19,7 +19,8 @@ from typing import List, Union
 
 from obspy.geodetics import gps2dist_azimuth
 from obspy.core.event import (
-    Event, Amplitude, StationMagnitude, CreationInfo, Magnitude)
+    Event, Amplitude, StationMagnitude, CreationInfo, Magnitude,
+    StationMagnitudeContribution)
 from obspy import Inventory, UTCDateTime, read_events, read_inventory
 
 from rt_eqcorrscan.config.config import _PluginConfig, PLUGIN_CONFIG_MAPPER
@@ -170,7 +171,10 @@ def mlnz20(
                 agency_id="RTEQC",
                 author="RTEQcorrscan",
                 creation_time=UTCDateTime.now()),
-            station_magnitude_contributions=magnitudes))
+            station_magnitude_contributions=[
+                StationMagnitudeContribution(sm.resource_id)
+                for sm in station_magnitudes]))
+
     return event
 
 
