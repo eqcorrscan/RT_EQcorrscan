@@ -469,10 +469,10 @@ def _eq_map_summary(
     #     max(-90, all_lats.max() + (total_range * (pad / 100))),
     # ]
     map_region = [
-        mainshock.longitude - search_radius_deg,
-        mainshock.longitude + search_radius_deg,
-        min(90, mainshock.latitude - search_radius_deg),
-        max(-90, mainshock.latitude + search_radius_deg)
+        get_origin_attr(mainshock, "longitude") - search_radius_deg,
+        get_origin_attr(mainshock, "longitude") + search_radius_deg,
+        min(90, get_origin_attr(mainshock, "latitude") - search_radius_deg),
+        max(-90, get_origin_attr(mainshock, "latitude") + search_radius_deg)
     ]
 
     mags_round_no = np.array([int(str(m).split(".")[0]) for m in mags])

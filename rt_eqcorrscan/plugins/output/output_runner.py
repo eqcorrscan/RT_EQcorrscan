@@ -99,7 +99,27 @@ def template_possible_self_dets(
     return self_dets
 
 
-# TODO: Add a column of GeoNet ID if self-detection
+def _get_comment_val(value_name: str, event: Event) -> Union[float, None]:
+    value = None
+    for comment in event.comments:
+        if value_name in comment.text:
+            try:
+                value = float(comment.text.split('=')[-1])
+            except Exception as e:
+                Logger.exception(
+                    f"Could not get {value_name} {comment.text} due to {e}")
+            else:
+                break
+    return value
+
+
+def get_threshold(event: Event) -> Union[float, None]:
+    return _get_comment_val(value_name="threshold", event=event)
+
+def get_det_val(event: Event) -> Union[float, None]:
+    return _get_comment_val(value_name="detect_val", event=event)
+
+
 def catalog_to_csv(
     catalog: Union[Catalog, List[SparseEvent]],
     csv_filename: str
@@ -124,6 +144,9 @@ def catalog_to_csv(
         "Depth (km)": "(get_origin_attr(event, 'depth') or 0.0) / 1000.0",
         "Magnitude": "get_magnitude_attr(event, 'mag')",
         "Location Method ID": "get_origin_attr(event, 'method_id')",
+        "N Picks": "len(event.picks)",
+        "Detection threshold": "get_threshold(event)",
+        "Detection value": "get_det_val(event)",
         "Self Detection ID": "event._self_det_id",
     })
 
