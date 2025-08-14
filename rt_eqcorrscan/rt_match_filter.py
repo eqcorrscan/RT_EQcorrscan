@@ -743,13 +743,14 @@ class RealTimeTribe(Tribe):
             self._plugin_order = self.plugin_config.pop("order")
         except KeyError:
             self._plugin_order = ORDERED_PLUGINS
-        outputter_in_dirs = [in_dir]
+        outputter_in_dirs = []
         for i, plugin_name in enumerate(self._plugin_order):
             config = self.plugin_config.get(plugin_name, None)
             if config is None:
                 continue
             config.out_dir = f"{self.name}/{plugin_name}_out"
-            if plugin_name not in ["outputter"]:
+            # We only want to output events that have passed the hyp stage
+            if plugin_name not in ["outputter", "picker"]:
                 outputter_in_dirs.append(config.out_dir)
                 # Add outputs to outputter, don't add plotting output
                 # Don't add the outputters output!
