@@ -750,11 +750,11 @@ class RealTimeTribe(Tribe):
                 continue
             config.out_dir = f"{self.name}/{plugin_name}_out"
             # We only want to output events that have passed the hyp stage
-            if plugin_name not in ["outputter", "picker"]:
+            if plugin_name not in ["output", "picker"]:
                 outputter_in_dirs.append(config.out_dir)
                 # Add outputs to outputter, don't add plotting output
                 # Don't add the outputters output!
-            if plugin_name in ["outputter"]:
+            if plugin_name in ["output"]:
                 # The outputter wants all the intermediate outputs
                 config.in_dir = outputter_in_dirs
             else:
