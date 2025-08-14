@@ -75,6 +75,14 @@ class SparseMagnitude:
 
 
 @dataclass
+class SparseComment:
+    text: str = None
+
+    def get(self, key: str, default=None):
+        return self.__dict__.get(key, default) or default
+
+
+@dataclass
 class SparseWaveform_ID:
     network_code: str = None
     station_code: str = None
@@ -112,11 +120,13 @@ class SparseEvent:
                  magnitudes: Iterable[SparseMagnitude] = [],
                  picks: Iterable[SparsePick] = [],
                  preferred_origin_index: int = None,
-                 preferred_magnitude_index: int = None):
+                 preferred_magnitude_index: int = None,
+                 comments: Iterable[SparseComment] = []):
         self.resource_id = resource_id
         self.origins = tuple(origins)
         self.magnitudes = tuple(magnitudes)
         self.picks = tuple(picks)
+        self.comments = tuple(comments)
         if preferred_origin_index is not None:
             self.preferred_origin_index = preferred_origin_index
 
@@ -225,12 +235,13 @@ def _sparsify_pick(pick: Pick) -> SparsePick:
 def _sparsify_event(event: Event, include_picks: bool = False) -> SparseEvent:
     origins = [_sparsify_origin(ori) for ori in event.origins]
     magnitudes = [_sparsify_magnitude(mag) for mag in event.magnitudes]
+    comments = [SparseComment(text=comment.text) for comment in event.comments]
     picks = []
     if include_picks:
         picks = [_sparsify_pick(pick) for pick in event.picks]
     ev = SparseEvent(resource_id=SparseID(event.resource_id.id),
                      origins=origins, magnitudes=magnitudes,
-                     picks=picks)
+                     picks=picks, comments=comments)
     pref_ind = None
     if event.preferred_origin_id:
         for i, ori in enumerate(event.origins):
