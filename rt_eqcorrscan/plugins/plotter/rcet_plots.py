@@ -247,7 +247,7 @@ def aftershock_map(
     depths = np.array(
         [(ev.preferred_origin() or ev.origins[-1]).depth / 1000.0 for ev in catalog]
     )
-    mags = [get_magnitude_attr(ev, "mag") or 3.0 for ev in catalog]
+    mags = np.array([get_magnitude_attr(ev, "mag") or 3.0 for ev in catalog])
 
     times = np.array(
         [(ev.preferred_origin() or ev.origins[-1]).time.datetime for ev in catalog]
@@ -932,14 +932,14 @@ def output_aftershock_map(
         ]
     )
 
-    mags = [get_magnitude_attr(ev, "mag") or 2.0 for ev in catalog]
-    ref_mags = [get_magnitude_attr(ev, "mag") or 2.0 for ev in reference_catalog]
+    mags = np.array([get_magnitude_attr(ev, "mag") or 2.0 for ev in catalog])
+    ref_mags = np.array([get_magnitude_attr(ev, "mag") or 2.0 for ev in reference_catalog])
 
     times = np.array(
         [(ev.preferred_origin() or ev.origins[-1]).time.datetime for ev in catalog]
     )
 
-    mags_o = [get_magnitude_attr(ev, "mag") or 2.0 for ev in outlier_catalog]
+    mags_o = np.array([get_magnitude_attr(ev, "mag") or 2.0 for ev in outlier_catalog])
 
     times_o = np.array(
         [
