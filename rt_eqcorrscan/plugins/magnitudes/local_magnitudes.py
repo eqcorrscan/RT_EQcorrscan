@@ -81,8 +81,9 @@ def _mlnz20(
         h40 = (depth_m / 1000.0) - 40.0
     else:
         h40 = 0.0
+    # We have to multiple the mm amplitude by 4 to get comparable amplitudes to GeoNet
     station_mag = (
-            log10(amplitude_mm) - (
+            log10(amplitude_mm * 4) - (
             MLNZ20_CONSTANTS["alpha"] +
             MLNZ20_CONSTANTS["beta"] * slant_dist_km +
             MLNZ20_CONSTANTS["gamma"] * log10(slant_dist_km) +
@@ -208,14 +209,14 @@ def _ml(
         slant_dist_km = slant_dist_m / 1000.0
 
         # Cope with differences between seiscomp and EQcorrscan
-        if amplitude.unit and amplitude.unit == "m/s":
-            amp = amplitude.generic_amplitude * 100.0
-            # For some reason we have to scale by 100 to match GeoNet amplitudes...
-        elif amplitude.unit == None:
-            amp = amplitude.generic_amplitude
-        else:
-            Logger.error("Unknown amplitude type")
-            continue
+        # if amplitude.unit and amplitude.unit == "m/s":
+        #     amp = amplitude.generic_amplitude * 100.0
+        #     # For some reason we have to scale by 100 to match GeoNet amplitudes...
+        # elif amplitude.unit == None:
+        #     amp = amplitude.generic_amplitude
+        # else:
+        #     Logger.error("Unknown amplitude type")
+        #     continue
         station_correction = station_corrections.get(
             amplitude.waveform_id.station_code, None)
         if station_correction is None:
@@ -223,7 +224,8 @@ def _ml(
                            f"{amplitude.waveform_id.station_code}, setting to 0")
             station_correction = 0.0
         station_mag = mag_func(
-            amplitude_mm=amp, depth_m=origin.depth,
+            amplitude_mm=amplitude.generic_amplitude * 1000.0,
+            depth_m=origin.depth,
             slant_dist_km=slant_dist_km,
             station_correction=station_correction)
         mag_type = "ML"
