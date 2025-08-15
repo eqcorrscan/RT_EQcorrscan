@@ -15,7 +15,7 @@ import os
 import logging
 
 from math import log10
-from typing import List, Union
+from typing import List, Union, Callable
 
 from obspy.geodetics import gps2dist_azimuth
 from obspy.core.event import (
@@ -59,14 +59,102 @@ def get_amplitude_time(amplitude: Amplitude) -> UTCDateTime:
         return amplitude.time_window.reference
     raise NotImplementedError(f"No time found for amplitude:\n{amplitude}")
 
+def _mliaspei(
+    amplitude_mm: float,
+    slant_dist_km: float,
+    *args, **kwargs) -> float:
+    """ Compute station magnitude IASPEI standard from chpt.3 NMSOP."""
+    return (log10(amplitude_mm * 1000) + (1.11 * log10(slant_dist_km)) +
+            (0.00189 * slant_dist_km) - 2.09)
+
+
+def _mlnz20(
+    amplitude_mm: float,
+    depth_m: float,
+    slant_dist_km: float,
+    station_correction: float,
+    *args, **kwargs) -> float:
+    """
+    Compute magnitude according to MLNZ20 scale: Rhoades et al., 2021
+    """
+    if depth_m > 40000:
+        h40 = (depth_m / 1000.0) - 40.0
+    else:
+        h40 = 0.0
+    # We have to multiple the mm amplitude by 4 to get comparable amplitudes to GeoNet
+    station_mag = (
+            log10(amplitude_mm * 4) - (
+            MLNZ20_CONSTANTS["alpha"] +
+            MLNZ20_CONSTANTS["beta"] * slant_dist_km +
+            MLNZ20_CONSTANTS["gamma"] * log10(slant_dist_km) +
+            MLNZ20_CONSTANTS["delta"] * h40 +
+            station_correction))
+    return station_mag
+
+def ml_iaspei(
+    event: Event,
+    inventory: Inventory,
+    station_corrections: dict,
+    *args, **kwargs) -> Event:
+    """
+    Compute magnitude using the IASPEI standard scale (Chpt. 3 NMSOP).
+
+    Parameters
+    ----------
+    event:
+        The event to compute magnitudes for - will
+        append to magnitude and station magnitudes
+    inventory:
+        The stations used for the event - must have at least station
+        locations.
+    station_corrections:
+        Station corrections dictionary keyed by station. If station is
+        not in dictionary a default correction of 0.0 will be applied.
+
+    Returns
+    -------
+    Original event with station magnitudes and magnitudes appended.
+    """
+    return _ml(event=event, inventory=inventory,
+              station_corrections=station_corrections, mag_func=_mliaspei)
+
+
 def mlnz20(
     event: Event,
     inventory: Inventory,
     station_corrections: dict,
+    *args, **kwargs) -> Event:
+    """
+    Compute magnitude using the Rhoades et al. 2021 magnitude scale
+
+    Parameters
+    ----------
+    event:
+        The event to compute magnitudes for - will
+        append to magnitude and station magnitudes
+    inventory:
+        The stations used for the event - must have at least station
+        locations.
+    station_corrections:
+        Station corrections dictionary keyed by station. If station is
+        not in dictionary a default correction of 0.0 will be applied.
+
+    Returns
+    -------
+    Original event with station magnitudes and magnitudes appended.
+    """
+    return _ml(event=event, inventory=inventory,
+              station_corrections=station_corrections, mag_func=_mlnz20)
+
+def _ml(
+    event: Event,
+    inventory: Inventory,
+    station_corrections: dict,
+    mag_func: Callable,
     *args, **kwargs
 ) -> Event:
     """
-    Compute magnitude using the Rhoades et al. 2021 magnitude scale
+    Compute magnitude using provided magnitude scale
 
     Parameters
     ----------
@@ -121,31 +209,25 @@ def mlnz20(
         slant_dist_km = slant_dist_m / 1000.0
 
         # Cope with differences between seiscomp and EQcorrscan
-        if amplitude.unit and amplitude.unit == "m/s":
-            amp = amplitude.generic_amplitude * 100.0
-            # For some reason we have to scale by 100 to match GeoNet amplitudes...
-        elif amplitude.unit == None:
-            amp = amplitude.generic_amplitude
-        else:
-            Logger.error("Unknown amplitude type")
-            continue
+        # if amplitude.unit and amplitude.unit == "m/s":
+        #     amp = amplitude.generic_amplitude * 100.0
+        #     # For some reason we have to scale by 100 to match GeoNet amplitudes...
+        # elif amplitude.unit == None:
+        #     amp = amplitude.generic_amplitude
+        # else:
+        #     Logger.error("Unknown amplitude type")
+        #     continue
         station_correction = station_corrections.get(
             amplitude.waveform_id.station_code, None)
         if station_correction is None:
             Logger.warning(f"No station correction found for "
                            f"{amplitude.waveform_id.station_code}, setting to 0")
             station_correction = 0.0
-        if origin.depth > 40000:
-            h40 = (origin.depth / 1000.0) - 40.0
-        else:
-            h40 = 0.0
-        station_mag = (
-            log10(amp) - (
-                MLNZ20_CONSTANTS["alpha"] +
-                MLNZ20_CONSTANTS["beta"] * slant_dist_km +
-                MLNZ20_CONSTANTS["gamma"] * log10(slant_dist_km) +
-                MLNZ20_CONSTANTS["delta"] * h40 +
-                station_correction))
+        station_mag = mag_func(
+            amplitude_mm=amplitude.generic_amplitude * 1000.0,
+            depth_m=origin.depth,
+            slant_dist_km=slant_dist_km,
+            station_correction=station_correction)
         mag_type = "ML"
         if amplitude.waveform_id.channel_code and amplitude.waveform_id.channel_code.endswith("Z"):
             mag_type = "MLv"
@@ -183,7 +265,10 @@ def mlnz20(
 
 # ----------------------- Management --------------------------------
 
-MAG_FUNCS = {"MLNZ20": mlnz20}  # Cache of possible magnitude functions
+MAG_FUNCS = {
+    "MLNZ20": mlnz20,
+    "IASPEI": ml_iaspei
+}  # Cache of possible magnitude functions
 
 
 class MagnitudeConfig(_PluginConfig):
