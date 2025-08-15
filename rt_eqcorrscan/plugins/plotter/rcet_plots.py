@@ -24,7 +24,8 @@ import pyproj, math
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 
-from rt_eqcorrscan.helpers.sparse_event import get_origin_attr
+from rt_eqcorrscan.helpers.sparse_event import get_origin_attr, \
+    get_magnitude_attr
 
 GEODESIC = pyproj.Geod(ellps="WGS84")
 
@@ -246,12 +247,8 @@ def aftershock_map(
     depths = np.array(
         [(ev.preferred_origin() or ev.origins[-1]).depth / 1000.0 for ev in catalog]
     )
-    try:
-        mags = np.array(
-            [(ev.preferred_magnitude() or ev.magnitudes[-1]).mag for ev in catalog]
-        )
-    except IndexError:
-        mags = 3 * np.ones(len(catalog))
+    mags = [get_magnitude_attr(ev, "mag") or 3.0 for ev in catalog]
+
     times = np.array(
         [(ev.preferred_origin() or ev.origins[-1]).time.datetime for ev in catalog]
     )
@@ -935,32 +932,15 @@ def output_aftershock_map(
         ]
     )
 
-    try:
-        mags = np.array(
-            [(ev.preferred_magnitude() or ev.magnitudes[-1]).mag for ev in catalog]
-        )
-        ref_mags = np.array(
-            [
-                (ev.preferred_magnitude() or ev.magnitudes[-1]).mag
-                for ev in reference_catalog
-            ]
-        )
-    except IndexError:
-        mags = np.array([2.0 for ev in catalog])
-        ref_mags = np.array([2.0 for ev in reference_catalog])
+    mags = [get_magnitude_attr(ev, "mag") or 2.0 for ev in catalog]
+    ref_mags = [get_magnitude_attr(ev, "mag") or 2.0 for ev in reference_catalog]
+
     times = np.array(
         [(ev.preferred_origin() or ev.origins[-1]).time.datetime for ev in catalog]
     )
 
-    try:
-        mags_o = np.array(
-            [
-                (ev.preferred_magnitude() or ev.magnitudes[-1]).mag
-                for ev in outlier_catalog
-            ]
-        )
-    except IndexError:
-        mags_o = np.array([2.0 for ev in outlier_catalog])
+    mags_o = [get_magnitude_attr(ev, "mag") or 2.0 for ev in outlier_catalog]
+
     times_o = np.array(
         [
             (ev.preferred_origin() or ev.origins[-1]).time.datetime
