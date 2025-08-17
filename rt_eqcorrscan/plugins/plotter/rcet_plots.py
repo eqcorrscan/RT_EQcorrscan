@@ -13,6 +13,7 @@ from typing import Union, Tuple
 
 import datetime
 
+from jmespath.ast import projection
 from matplotlib.font_manager import FontProperties
 from obspy import UTCDateTime
 from obspy.geodetics import kilometer2degrees
@@ -65,11 +66,16 @@ def _eq_map(
     lon_range = lons.max() - lons.min()
     lat_range = lats.max() - lats.min()
 
+    all_lons = np.concatenate([station_lons, lons])
+    all_lats = np.concatenate([station_lats, lats])
+    all_lon_range = all_lons.max() - all_lons.min()
+    all_lat_range = all_lats.max() - all_lats.min()
+
     large_region = [
-        station_lons.min() - (station_lon_range * (pad / 100)),
-        station_lons.max() + (station_lon_range * (pad / 100)),
-        max(-90, station_lats.min() - (station_lat_range * (pad / 100))),
-        min(90, station_lats.max() + (station_lat_range * (pad / 100))),
+        all_lons.min() - (0.15 * all_lon_range),
+        all_lons.max() + (all_lon_range * 0.15),
+        max(-90, all_lats.min() - (all_lat_range * 0.15)),
+        min(90, all_lats.max() + (all_lat_range * 0.15)),
     ]
     if middle_lon and middle_lat:
         region = [
@@ -164,22 +170,26 @@ def _eq_map(
         # Mercator
         inset_proj = f"M{inset_width}c"
 
-    with fig.inset(position=f"jBL+w{inset_width}c"): #+o0.1c"):
+    with fig.inset(
+        position=f"jBL",
+        region=inset_region,
+        projection=inset_proj,
+    ): #+o0.1c"):
         fig.coast(
-            region=inset_region,
-            projection=inset_proj,
             land="gray",
             water="white",
             frame=inset_frame,
         )
         rectangle = [[region[0], region[2], region[1], region[3]]]
-        fig.plot(data=rectangle, style="r+s", pen="2p,red", projection=inset_proj)
+        fig.plot(data=rectangle, style="r+s", pen="2p,red")
 
     # Station inset
-    with fig.inset(position=f"jTL+w{inset_width}c"): #+o0.1c"):
+    with fig.inset(
+        position=f"jTL",
+        region=large_region,
+        projection=f"M{inset_width}c"
+    ): #+o0.1c"):
         fig.coast(
-            region=large_region,
-            projection=f"M{inset_width}c",
             land="gray",
             water="white",
             frame=True,

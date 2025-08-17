@@ -5,19 +5,22 @@ Defaults to output the "best" catalogue - e.g. will include
 all template events and detections with NLL locations and
 growclust locations.
 """
-
+import datetime
 import logging
 import glob
 import os
 import time
 import shutil
 import pickle
+import numpy as np
 
 from typing import List, Union, Set
 from collections import OrderedDict
 
 from obspy import read_events, Catalog, UTCDateTime
 from obspy.core.event import Event
+
+from eqcorrscan.utils.findpeaks import decluster
 
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
@@ -103,21 +106,94 @@ def _get_comment_val(value_name: str, event: Event) -> Union[float, None]:
     value = None
     for comment in event.comments:
         if value_name in comment.text:
-            try:
-                value = float(comment.text.split('=')[-1])
-            except Exception as e:
-                Logger.exception(
-                    f"Could not get {value_name} {comment.text} due to {e}")
-            else:
-                break
+            if "=" in comment.text:
+                # Should be a number
+                try:
+                    value = float(comment.text.split('=')[-1])
+                except ValueError:
+                    # Leave as a string
+                    break
+                except Exception as e:
+                    Logger.exception(
+                        f"Could not get {value_name} {comment.text} due to {e}")
+                else:
+                    break
+            elif ":" in comment.text:
+                # Should be a string
+                try:
+                    value = comment.text.split(": ")[-1]
+                except Exception as e:
+                    Logger.exception(
+                        f"Could not get {value_name} from {comment.text} due to {e}")
+                else:
+                    break
     return value
 
 
 def get_threshold(event: Event) -> Union[float, None]:
     return _get_comment_val(value_name="threshold", event=event)
 
+
 def get_det_val(event: Event) -> Union[float, None]:
     return _get_comment_val(value_name="detect_val", event=event)
+
+
+def get_det_time(event: Event) -> UTCDateTime:
+    try:
+        rid = event.resource_id.id.split('/')[-1]
+    except IndexError:
+        Logger.error("RID poorly formed.")
+        return get_origin_attr(event, "time")
+    template = _get_comment_val("Template", event)
+    if template not in rid:
+        # Not an EQcorrscan detection RID, return origin time
+        Logger.warning(f"{rid} is not an EQcorrscan detection, returning origin time")
+        return get_origin_attr(event, "time")
+    try:
+        det_time = rid.split("_")[-1]
+    except IndexError:
+        Logger.error("RID poorly formed")
+        return get_origin_attr(event, "time")
+    return UTCDateTime(det_time)
+
+
+def decluster_catalog(
+    catalog: Union[Catalog, List[SparseEvent]],
+    trig_int: float,
+) -> Union[Catalog, List[SparseEvent]]:
+    """
+    Decluster catalogue based on detection time.
+
+    Parameters
+    ----------
+    catalog
+        Catalog of events to decluster
+    trig_int
+        Minimum inter-event time in seconds.
+
+    Returns
+    -------
+    Declustered catalog
+    """
+    detect_vals = np.array([get_det_val(ev) for ev in catalog])
+    detect_times = [get_det_time(ev) for ev in catalog]
+    min_det_time = min(detect_times).datetime
+    # Convert to microseconds
+    detect_times = np.array([(d_t.datetime - min_det_time).total_seconds()
+                             for d_t in detect_times])
+    detect_times *= 10 ** 6
+    detect_times = detect_times.astype(int)
+    peaks_out = decluster(
+                peaks=detect_vals, index=detect_times,
+                trig_int=trig_int * 10 ** 6)
+    # Peaks out is tuples of (detect_val, detect_time)
+    declustered_catalog = []
+    for ind in peaks_out:
+        matching_time_indices = np.where(detect_times == ind[-1])[0]
+        matches = matching_time_indices[
+            np.where(detect_vals[matching_time_indices] == ind[0])[0][0]]
+        declustered_catalog.append(catalog[matches])
+    return declustered_catalog
 
 
 def catalog_to_csv(
@@ -176,6 +252,7 @@ class OutputConfig(_PluginConfig):
         "output_templates": True,
         "retain_history": False,
         "mainshock_id": None,
+        "trig_int": 2.0,
     })
     readonly = []
 
@@ -203,6 +280,18 @@ class Outputter(_Plugin):
     def output_catalog(self) -> List[SparseEvent]:
         """ Get the output events. """
         return [v[1] for v in self.output_events.values()]
+
+    def decluster(self):
+        # TODO: Work out how to decluster the dict of events...
+        original_cat_len = len(self.output_events)
+        declustered_cat = decluster_catalog(
+            self.output_catalog(), trig_int=self.config.trig_int)
+        declustered_dict = {k: ev for k, ev in self.output_events
+                            if ev in declustered_cat}
+        Logger.info(f"Declustering at {self.config.trig_int} s removed "
+                    f"{len(declustered_dict) - original_cat_len} events")
+        self.output_events = declustered_dict
+        return
 
     @property
     def _mainshock_time(self) -> UTCDateTime:
@@ -340,6 +429,10 @@ class Outputter(_Plugin):
                     f"from {len(self.template_dict)} templates.")
         Logger.info(f"Of these templates, {len(template_outputs)} have no "
                     f"self-detections")
+        # Decluster
+        if self.config.trig_int:
+            self.decluster()
+
         for value in self.output_events.values():
             ev_file, ev = value
             output_events.append(ev)
