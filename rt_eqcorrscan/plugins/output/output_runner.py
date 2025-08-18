@@ -282,14 +282,17 @@ class Outputter(_Plugin):
         return [v[1] for v in self.output_events.values()]
 
     def decluster(self):
-        # TODO: Work out how to decluster the dict of events...
         original_cat_len = len(self.output_events)
+        if original_cat_len <= 1:
+            Logger.info(f"Only {original_cat_len} events, not declustering")
+            return
         declustered_cat = decluster_catalog(
             self.output_catalog(), trig_int=self.config.trig_int)
-        declustered_dict = {k: ev for k, ev in self.output_events.items()
-                            if ev in declustered_cat}
+        declustered_dict = {
+            evid: (f, ev) for evid, (f, ev) in self.output_events.items()
+            if ev in declustered_cat}
         Logger.info(f"Declustering at {self.config.trig_int} s removed "
-                    f"{len(declustered_dict) - original_cat_len} events")
+                    f"{original_cat_len - len(declustered_dict)} events")
         self.output_events = declustered_dict
         return
 
@@ -367,10 +370,10 @@ class Outputter(_Plugin):
                 else:
                     Logger.info(f"New file read, but with lower priority, not updating {event.resource_id.id}")
                     continue
-            # If we got to hear, we either have a new event id, or an update
+            # If we got to here, we either have a new event id, or an update
             self.output_events.update({event.resource_id.id: (file, event)})
         toc = time.perf_counter()
-        Logger.info(f"Reading new events took {toc - tic:.2f} s")
+        Logger.info(f"Reading {len(self.output_events)} new events took {toc - tic:.2f} s")
 
         tic = time.perf_counter()
         # Add in templates as needed
@@ -417,9 +420,12 @@ class Outputter(_Plugin):
         # Clear old output
         if os.path.isdir(f"{out_dir}/catalog"):
             if retain_history:
-                shutil.move(
-                    f"{out_dir}/catalog.csv",
-                    f"{out_dir}/history/catalog_{UTCDateTime.now().strftime('%Y%m%dT%H%M%S')}.csv")
+                try:
+                    shutil.move(
+                        f"{out_dir}/catalog.csv",
+                        f"{out_dir}/history/catalog_{UTCDateTime.now().strftime('%Y%m%dT%H%M%S')}.csv")
+                except FileNotFoundError as e:
+                    Logger.exception(f"Could not write catalog history due to {e}")
             shutil.rmtree(f"{out_dir}/catalog")
         os.makedirs(f"{out_dir}/catalog")
 
