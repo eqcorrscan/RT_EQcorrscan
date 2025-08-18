@@ -286,7 +286,7 @@ class Outputter(_Plugin):
         original_cat_len = len(self.output_events)
         declustered_cat = decluster_catalog(
             self.output_catalog(), trig_int=self.config.trig_int)
-        declustered_dict = {k: ev for k, ev in self.output_events
+        declustered_dict = {k: ev for k, ev in self.output_events.items()
                             if ev in declustered_cat}
         Logger.info(f"Declustering at {self.config.trig_int} s removed "
                     f"{len(declustered_dict) - original_cat_len} events")
