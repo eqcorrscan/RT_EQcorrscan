@@ -81,9 +81,11 @@ def _mlnz20(
         h40 = (depth_m / 1000.0) - 40.0
     else:
         h40 = 0.0
-    # We have to multiple the mm amplitude by 4 to get comparable amplitudes to GeoNet
+    # We have to multiply the mm amplitude by 3 to get comparable amplitudes
+    # to GeoNet based on work by Codee-Leigh Williams comparing 4 years of
+    # amplitude picks
     station_mag = (
-            log10(amplitude_mm * 4) - (
+            log10(amplitude_mm * 3) - (
             MLNZ20_CONSTANTS["alpha"] +
             MLNZ20_CONSTANTS["beta"] * slant_dist_km +
             MLNZ20_CONSTANTS["gamma"] * log10(slant_dist_km) +
