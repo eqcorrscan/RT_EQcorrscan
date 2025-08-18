@@ -150,14 +150,14 @@ def catalog_to_csv(
         "Self Detection ID": "event._self_det_id",
     })
 
-    lines = [", ".join(columns.keys())]
+    lines = [",".join(columns.keys())]
     # Sort in increasing time, with any events without an origin time coming last
     for event in sorted(catalog, key=lambda e: get_origin_attr(e, "time") or UTCDateTime(9999, 1, 1)):
         l = []
         # NB: Needs to be in loop rather than listcomp to get "event" defined
         for method in columns.values():
             l.append(str(eval(method)))
-        lines.append(", ".join(l))
+        lines.append(",".join(l))
 
     lines = "\n".join(lines)
     with open(csv_filename, "w") as f:
