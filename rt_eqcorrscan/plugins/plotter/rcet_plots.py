@@ -13,6 +13,7 @@ from typing import Union, Tuple
 
 import datetime
 
+from jmespath.ast import projection
 from matplotlib.font_manager import FontProperties
 from obspy import UTCDateTime
 from obspy.geodetics import kilometer2degrees
@@ -65,11 +66,16 @@ def _eq_map(
     lon_range = lons.max() - lons.min()
     lat_range = lats.max() - lats.min()
 
+    all_lons = np.concatenate([station_lons, lons])
+    all_lats = np.concatenate([station_lats, lats])
+    all_lon_range = all_lons.max() - all_lons.min()
+    all_lat_range = all_lats.max() - all_lats.min()
+
     large_region = [
-        station_lons.min() - (station_lon_range * (pad / 100)),
-        station_lons.max() + (station_lon_range * (pad / 100)),
-        max(-90, station_lats.min() - (station_lat_range * (pad / 100))),
-        min(90, station_lats.max() + (station_lat_range * (pad / 100))),
+        all_lons.min() - (0.15 * all_lon_range),
+        all_lons.max() + (all_lon_range * 0.15),
+        max(-90, all_lats.min() - (all_lat_range * 0.15)),
+        min(90, all_lats.max() + (all_lat_range * 0.15)),
     ]
     if middle_lon and middle_lat:
         region = [
@@ -164,22 +170,26 @@ def _eq_map(
         # Mercator
         inset_proj = f"M{inset_width}c"
 
-    with fig.inset(position=f"jBL+w{inset_width}c"): #+o0.1c"):
+    with fig.inset(
+        position=f"jBL",
+        region=inset_region,
+        projection=inset_proj,
+    ): #+o0.1c"):
         fig.coast(
-            region=inset_region,
-            projection=inset_proj,
             land="gray",
             water="white",
             frame=inset_frame,
         )
         rectangle = [[region[0], region[2], region[1], region[3]]]
-        fig.plot(data=rectangle, style="r+s", pen="2p,red", projection=inset_proj)
+        fig.plot(data=rectangle, style="r+s", pen="2p,red")
 
     # Station inset
-    with fig.inset(position=f"jTL+w{inset_width}c"): #+o0.1c"):
+    with fig.inset(
+        position=f"jTL",
+        region=large_region,
+        projection=f"M{inset_width}c"
+    ): #+o0.1c"):
         fig.coast(
-            region=large_region,
-            projection=f"M{inset_width}c",
             land="gray",
             water="white",
             frame=True,
@@ -1109,6 +1119,19 @@ def get_len_theta(x, y, sd):
 
 
 def get_len_LOWESS(x, y, frac):
+    """
+    Calculate the cumulative distance of the lowess fit to coordinates
+
+    x, y:
+        Coordinates (cartesian, non-rotated)
+    frac:
+        Fractal smoothing for lowess
+
+    Returns
+        Length of lowess (units same as coordinates input)
+    """
+    from scipy.spatial import distance
+    
     x_95_lims = np.percentile(x, [2.5, 97.5])
     y_95_lims = np.percentile(y, [2.5, 97.5])
     x_95, y_95 = [], []
@@ -1122,7 +1145,6 @@ def get_len_LOWESS(x, y, frac):
             x_95.append(j)
             y_95.append(y[i])
     smoothed = sm.nonparametric.lowess(exog=y_95, endog=x_95, frac=frac)
-    from scipy.spatial import distance
 
     su = []
     for b in range(0, len(smoothed) - 1):
@@ -1336,6 +1358,28 @@ def outliers_simple(values, k):
 
 
 def find_outliers(x, y, x1, y1, k, catalog_origins):
+    """
+    Find outliers based on rotated coordinates.
+
+    x, y:
+        Non-rotated coordinates
+    x1, y1:
+        Rotated coordinates
+    k:
+        Multiplier of inter-quartile range to identify outliers
+    catalog_origins:
+        Catalog of events (in the same order as coordinates)
+
+    Returns:
+    x_o, y_o
+        Outlier coordinate (non-rotated)
+    x_no, y_no:
+        Non-outlier coordinates (non-rotated)
+    catalog:
+        Catalog on non-outlier events
+    catalog_outliers:
+        Catalog of outlier events
+    """
     from scipy.stats import iqr
 
     catalog_outliers = []
@@ -1345,8 +1389,6 @@ def find_outliers(x, y, x1, y1, k, catalog_origins):
     IQR = iqr(x1)
     Q1 = np.percentile(x1, 25)
     Q3 = np.percentile(x1, 75)
-    # TODO: What are these supposed to be doing?
-    IQR == Q3 - Q1
 
     x1_upper = Q3 + k * IQR
     x1_lower = Q1 - k * IQR
@@ -1354,8 +1396,6 @@ def find_outliers(x, y, x1, y1, k, catalog_origins):
     IQR = iqr(y1)
     Q1 = np.percentile(y1, 25)
     Q3 = np.percentile(y1, 75)
-    # TODO: What are these supposed to be doing?
-    IQR == Q3 - Q1
 
     y1_upper = Q3 + k * IQR
     y1_lower = Q1 - k * IQR
@@ -1432,7 +1472,7 @@ def plot_confidence_ellipsoid_vertical(
     )
     # get_cov_ellipse(cov, (x_mean, y_mean), nstd=1, ax=ax_nstd, label=r'$1\sigma$', edgecolor='firebrick', linestyle='--', fc='none')
     # get_cov_ellipse(cov, (x_mean, y_mean), nstd=3, ax=ax_nstd, label=r'$3\sigma$', edgecolor='lightpink', linestyle='--', fc='none')
-    if LOWESS == True and len(x) > 40:
+    if LOWESS == True and len(x) > 20:
         ax_nstd.plot(smoothed[:, 1], smoothed[:, 0], c="k", label="Lowess")
     # if len(xo) > 0:
     #    ax_nstd.scatter(xo, yo, s=1, marker='x', color='lightblue', label='Outliers')
@@ -1498,7 +1538,7 @@ def ellipse_plots(
         radius_km=radius_km,
         t=catalog[-1].origins[-1].time.datetime - mainshock.origins[-1].time.datetime,
     )
-    # len_lowess=get_len_LOWESS(x=x_no, y=y_no, frac=lowess_f)
+    len_lowess = get_len_LOWESS(x=x_no, y=y_no, frac=lowess_f)
     # write figure to file
     # need to colour by depth
 
@@ -1545,6 +1585,7 @@ def ellipse_plots(
 
     ellipse_output = {
         "length": length,
+        "length_lowess": len_lowess,
         "azimuth": azimuth,
         "width": width,
         "length_z": length_z,
@@ -1921,10 +1962,12 @@ def summary_files(
     catalog_geonet,
     catalog_outliers,
     length,
+    length_lowess,
     azimuth,
     dip,
     length_z,
     scaled_mag,
+    lowess_scaled_mag,
     geonet_mainshock_mag,
     geonet_mainshock_mag_uncertainty,
     mean_depth,
@@ -1947,10 +1990,12 @@ def summary_files(
         "Geonet_no_origin",
         "Geonet_no_mag",
         "Length",
+        "Length_lowess",
         "Azimuth",
         "Dip",
         "Width",
         "Scaled_mag",
+        "Lowess_Scaled_mag",
         "GeoNet_mag",
         "GeoNet_mag_unc",
         "Mean_depth",
@@ -1972,10 +2017,12 @@ def summary_files(
         "Geonet_no_origin": str(cat_counts[2]),
         "Geonet_no_mag": str(cat_counts[3]),
         "Length": str(round(length, 1)),
+        "Length_lowess": str(round(length_lowess, 1)),
         "Azimuth": str(int(azimuth)).zfill(3),
         "Dip": str(int(dip)).zfill(2),
         "Width": str(round(length_z, 1)),
         "Scaled_mag": str(scaled_mag),
+        "Lowess_Scaled_mag": str(lowess_scaled_mag),
         "GeoNet_mag": str(geonet_mainshock_mag),
         "GeoNet_mag_unc": str(geonet_mainshock_mag_uncertainty),
         "Mean_depth": str(mean_depth),
@@ -2146,9 +2193,11 @@ def plot_geometry_with_time(
     Relocated_depths,
     Relocated_depth_uncerts,
     lengths,
+    lowess_lengths,
     azimuths,
     dips,
     mags,
+    lowess_mags,
     GeoNet_mags,
     GeoNet_mags_uncerts,
     GeoNet_depths,
@@ -2182,6 +2231,7 @@ def plot_geometry_with_time(
         ["Fault azimuth:", f"{azimuths[-1]:.2f} degrees"],
         ["Fault dip:", f"{dips[-1]:.2f} degrees"],
         ["Scaled magnitude:", f"{mags[-1]:.1f}"],
+        ["Lowess scaled magnitude:", f"{lowess_mags[-1]:.1f}"],
         ["GeoNet magnitude:", f"{GeoNet_mags[-1]:.1f}"],
         ["Mean aftershock depth:", f"{mean_depths[-1]:.2f} km"],
         ["RT/GN mainshock depth:", f"{Relocated_depths[-1]:.1f}/{GeoNet_depths[-1]:.1f} km"]
@@ -2322,8 +2372,20 @@ def plot_geometry_with_time(
         color="lightblue",
     )
     _additional_plot_elements(ax=ax3, xlim_upper=max_time)
-    ax3.legend()
     ax3.set_ylabel("Length (km)")
+
+    # Lowess length
+    ax3.plot(
+        times,
+        lowess_lengths,
+        linestyle="-",
+        marker=".",
+        markersize="0.01",
+        linewidth=3,
+        label="2$\sigma$ Lowess Length",
+        color="cadetblue",
+    )
+    ax3.legend()
 
     # plot azimuths
     ax4 = fig.add_subplot(4, 2, 7)
@@ -2386,6 +2448,16 @@ def plot_geometry_with_time(
         linewidth=3,
         label="Scaled magnitude",
         color="blue",
+    )
+    ax6.plot(
+        times,
+        lowess_mags,
+        linestyle="-",
+        marker=".",
+        markersize="0.01",
+        linewidth=3,
+        label="Lowess scaled magnitude",
+        color="midnightblue",
     )
     ax6.plot(
         times,

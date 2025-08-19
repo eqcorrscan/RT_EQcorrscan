@@ -12,6 +12,7 @@ import glob
 
 from collections import Counter
 from typing import List, Union
+from multiprocessing import Pool
 
 from obspy import read_events, Inventory, UTCDateTime, Stream
 from obspy.core.event import Event
@@ -33,6 +34,15 @@ def _read_event_list(fname: str) -> List[str]:
     with open(fname, "r") as f:
         event_ids = [line.strip() for line in f]
     return event_ids
+
+
+def _read_template(t_file: str) -> Tribe:
+    try:
+        tribe = Tribe().read(t_file)
+    except Exception as e:
+        Logger.exception(f"Could not read from {t_file} due to {e}")
+        tribe = Tribe()
+    return tribe
 
 
 def run(
@@ -62,11 +72,15 @@ def run(
     # # Remove file to avoid re-reading it
     # os.remove("tribe.tgz")
     tribe = Tribe()
-    for tf in tqdm.tqdm(glob.glob("tribe/*")):
-        try:
-            tribe += Tribe().read(tf)
-        except Exception as e:
-            Logger.error(f"Could not read from {tf} due to {e}")
+    with Pool() as pool:
+        results = pool.map(_read_template, glob.glob("tribe/*.tgz"))
+    for result in results:
+        tribe += result
+    # for tf in tqdm.tqdm(glob.glob("tribe/*")):
+    #     try:
+    #         tribe += Tribe().read(tf)
+    #     except Exception as e:
+    #         Logger.error(f"Could not read from {tf} due to {e}")
     shutil.rmtree("tribe")
 
     Logger.info("Read in {0} templates".format(len(tribe)))

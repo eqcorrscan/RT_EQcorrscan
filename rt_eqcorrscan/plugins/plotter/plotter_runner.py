@@ -180,8 +180,20 @@ class Plotter(_Plugin):
                     continue
             # File is either new or updated. Read
             if os.path.isfile(f):
-                # Cope with files being changed while we work...
-                cat = sparsify_catalog(read_events(f), include_picks=True)
+                attempts = 0
+                while attempts <= 3:
+                    # Cope with files being changed while we work...
+                    try:
+                        cat = sparsify_catalog(read_events(f), include_picks=True)
+                    except Exception as e:
+                        Logger.exception("Could not read from {f} due to {e}")
+                        attempts += 1
+                    else:
+                        break
+                else:
+                    Logger.error(
+                        f"Failed to read from {f} after {attempts - 1} tries. Skipping")
+                    continue
             else:
                 # We can ignore it.
                 continue
@@ -229,6 +241,15 @@ class Plotter(_Plugin):
             Logger.exception(
                 f"Could not plot magnitude relationships due to {e}",
                 exc_info=True)
+        Logger.info("Calculating lowess magnitude")
+        try:
+            _, _, _, lowess_scaled_mag = make_scaled_mag_list(
+                length=ellipse_stats['length_lowess'], 
+                width=ellipse_stats['length_z'],
+                rupture_area=self.config.rupture_area,
+                scaled_mag_relation=self.config.scaled_mag_relation)
+        except Exception as e:
+            Logger.exception(f"Could not compute lowess magnitude due to {e}")
         Logger.info("Making summary files")
         (geonet_mainshock_mag, geonet_mainshock_mag_uncertainty,
          geonet_mainshock_depth, geonet_mainshock_depth_uncertainty,
@@ -249,10 +270,12 @@ class Plotter(_Plugin):
             catalog_geonet=self._aftershock_templates,
             catalog_outliers=catalog_outliers,
             length=ellipse_stats['length'],
+            length_lowess=ellipse_stats['length_lowess'],
             azimuth=ellipse_stats['azimuth'],
             dip=ellipse_stats['dip'],
             length_z=ellipse_stats['length_z'],
             scaled_mag=scaled_mag,
+            lowess_scaled_mag=lowess_scaled_mag,
             geonet_mainshock_mag=geonet_mainshock_mag,
             geonet_mainshock_mag_uncertainty=geonet_mainshock_mag_uncertainty,
             mean_depth=np.mean([get_origin_attr(ev, "depth") / 1000.0 for ev in self.events
@@ -366,9 +389,11 @@ class Plotter(_Plugin):
             Relocated_depths=df.Relocated_depth.to_list(),
             Relocated_depth_uncerts=df.Relocated_depth_unc.to_list(),
             lengths=df.Length.where(df.N_evs > min_events).to_list(),
+            lowess_lengths=df.Length_lowess.where(df.N_evs > min_events).to_list(),
             azimuths=df.Azimuth.where(df.N_evs > min_events).to_list(),
             dips=df.Dip.where(df.N_evs > min_events).to_list(),
             mags=df.Scaled_mag.where(df.N_evs > min_events).to_list(),
+            lowess_mags=df.Lowess_Scaled_mag.where(df.N_evs > min_events).to_list(),
             GeoNet_mags=df.GeoNet_mag.to_list(),
             GeoNet_mags_uncerts=df.GeoNet_mag_unc.to_list(),
             GeoNet_depths=df.GeoNet_ms_depth.to_list(),
