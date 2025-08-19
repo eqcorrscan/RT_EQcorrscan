@@ -180,8 +180,20 @@ class Plotter(_Plugin):
                     continue
             # File is either new or updated. Read
             if os.path.isfile(f):
-                # Cope with files being changed while we work...
-                cat = sparsify_catalog(read_events(f), include_picks=True)
+                attempts = 0
+                while attempts <= 3:
+                    # Cope with files being changed while we work...
+                    try:
+                        cat = sparsify_catalog(read_events(f), include_picks=True)
+                    except Exception as e:
+                        Logger.exception("Could not read from {f} due to {e}")
+                        attempts += 1
+                    else:
+                        break
+                else:
+                    Logger.error(
+                        f"Failed to read from {f} after {attempts - 1} tries. Skipping")
+                    continue
             else:
                 # We can ignore it.
                 continue

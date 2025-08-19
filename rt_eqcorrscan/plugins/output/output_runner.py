@@ -445,8 +445,7 @@ class Outputter(_Plugin):
                         f"{out_dir}/history/catalog_{UTCDateTime.now().strftime('%Y%m%dT%H%M%S')}.csv")
                 except FileNotFoundError as e:
                     Logger.exception(f"Could not write catalog history due to {e}")
-            shutil.rmtree(f"{out_dir}/catalog")
-        os.makedirs(f"{out_dir}/catalog")
+        os.makedirs(f"{out_dir}/.catalog")
 
         # Link events
         output_events = []
@@ -462,7 +461,7 @@ class Outputter(_Plugin):
             ev_file, ev = value
             output_events.append(ev)
             ev_file_fname = os.path.basename(ev_file)
-            shutil.copyfile(ev_file, f"{out_dir}/catalog/{ev_file_fname}")
+            shutil.copyfile(ev_file, f"{out_dir}/.catalog/{ev_file_fname}")
         if internal_config.output_templates:
             for value in template_outputs.values():
                 ev_file, ev = value
@@ -476,12 +475,18 @@ class Outputter(_Plugin):
                     with open(ev_file, "rb") as f:
                         t = pickle.load(f)
                     t.event.write(
-                        f"{out_dir}/catalog/"
+                        f"{out_dir}/.catalog/"
                         f"{os.path.splitext(ev_file_fname)[0]}.xml",
                         format="QUAKEML")
                 else:
                     shutil.copyfile(
-                        ev_file, f"{out_dir}/catalog/{ev_file_fname}")
+                        ev_file, f"{out_dir}/.catalog/{ev_file_fname}")
+        # Overwrite old output - wait until we can put the *new* output 
+        # out to remove the old, otherwise the next process is likely 
+        # to run into missing files.
+        if os.path.isdir(f"{out_dir}/catalog"):
+            shutil.rmtree(f"{out_dir}/catalog")
+        shutil.move(f"{out_dir}/.catalog", f"{out_dir}/catalog")
         toc = time.perf_counter()
         Logger.info(f"Took {toc - tic:.2f}s to write catalog output")
         tic = time.perf_counter()
