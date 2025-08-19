@@ -198,6 +198,7 @@ def decluster_catalog(
 
 def catalog_to_csv(
     catalog: Union[Catalog, List[SparseEvent]],
+    cluster_ids: List | None = None,
     csv_filename: str
 ) -> None:
     """
@@ -224,11 +225,27 @@ def catalog_to_csv(
         "Detection threshold": "get_threshold(event)",
         "Detection value": "get_det_val(event)",
         "Self Detection ID": "event._self_det_id",
+        "Cluster ID": "cluster_id",
     })
 
     lines = [",".join(columns.keys())]
+    if isinstance(catalog, Catalog):
+        catalog = catalog.events
+    
+    if cluster_ids is None:
+        cluster_ids = [0 for _ in catalog]
+    if len(cluster_ids) != len(catalog):
+        Logger.warning("Cluster IDs not the same length as catalog, not outputting")
+        cluster_ids = [0 for _ in catalog]
+    
     # Sort in increasing time, with any events without an origin time coming last
-    for event in sorted(catalog, key=lambda e: get_origin_attr(e, "time") or UTCDateTime(9999, 1, 1)):
+    origin_times = np.array(
+        [(get_origin_attr(ev, "time") or UTCDateTime(9999, 1, 1)).datetime
+         for ev in catalog])
+    order = np.argsort(origin_times)
+    
+    for index in order:
+        event, cluster_id = catalog[index], cluster_ids[index]
         l = []
         # NB: Needs to be in loop rather than listcomp to get "event" defined
         for method in columns.values():
@@ -253,6 +270,8 @@ class OutputConfig(_PluginConfig):
         "retain_history": False,
         "mainshock_id": None,
         "trig_int": 2.0,
+        "cluster": True,
+        "search_radius": 100.0,
     })
     readonly = []
 
@@ -466,8 +485,26 @@ class Outputter(_Plugin):
         toc = time.perf_counter()
         Logger.info(f"Took {toc - tic:.2f}s to write catalog output")
         tic = time.perf_counter()
-        catalog_to_csv(catalog=output_events,
-                       csv_filename=f"{out_dir}/catalog.csv")
+        
+        # Do the clustering
+        cluster_ids = np.zeros(len(output_events))
+        if self.config.cluster:
+            groups = catalog_cluster(
+                output_events, self.config.search_radius)
+            # put cluster ids in order
+            for cluster_id, group in enumerate(groups):
+                for ev in group:
+                    try:
+                        ev_index = output_events.index(ev)
+                    except ValueError:
+                        Logger.warning("Event not found after grouping - this shouldn't happen, but ignoring")
+                        continue
+                    cluster_ids[ev_index] = cluster_id            
+
+        catalog_to_csv(
+            catalog=output_events,
+            cluster_ids=cluster_ids,           
+            csv_filename=f"{out_dir}/catalog.csv")
         toc = time.perf_counter()
         Logger.info(f"Took {toc - tic:.2f}s to write csv output")
 
