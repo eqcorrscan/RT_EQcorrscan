@@ -12,6 +12,7 @@ import os
 import time
 import shutil
 import pickle
+import json
 import numpy as np
 
 from typing import List, Union, Set
@@ -19,6 +20,8 @@ from collections import OrderedDict
 
 from obspy import read_events, Catalog, UTCDateTime
 from obspy.core.event import Event
+
+from obsplus.events.json import cat_to_json
 
 from eqcorrscan.utils.findpeaks import decluster
 
@@ -490,7 +493,11 @@ class Outputter(_Plugin):
         toc = time.perf_counter()
         Logger.info(f"Took {toc - tic:.2f}s to write catalog output")
         tic = time.perf_counter()
-        
+       
+        # Output json of full catalog - used by plotting for faster IO
+        with open(f"{out_dir}/catalog.json", "w") as f:
+            json.dump(cat_to_json(output_events), f)
+
         # Do the clustering
         cluster_ids = np.zeros(len(output_events))
         if self.config.cluster:
