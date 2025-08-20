@@ -554,8 +554,8 @@ class Outputter(_Plugin):
         # Do the clustering
         cluster_ids = np.zeros(len(output_events))
         if self.config.cluster and len(output_events) > 1:
-            groups = catalog_sparse_cluster(
-                catalog=output_events, thresh=self.config.search_radius)
+            groups = cluster_sparse_catalog(
+                sparse_catalog=output_events, thresh=self.config.search_radius)
             # put cluster ids in order
             for cluster_id, group in enumerate(groups):
                 for ev in group:
