@@ -255,6 +255,7 @@ class Plotter(_Plugin):
             else:
                 Logger.warning("Could not find mainshock in cat, not clustering")
 
+        Logger.info(f"Making plots for {len(self.events)} events")
 
         # TODO: Make maps after ellipse plots and scale to the non-outlier catalogue
         Logger.info("Making earthquake maps")
@@ -303,6 +304,7 @@ class Plotter(_Plugin):
                 scaled_mag_relation=self.config.scaled_mag_relation)
         except Exception as e:
             Logger.exception(f"Could not compute lowess magnitude due to {e}")
+            lowess_scaled_mag = np.nan
         Logger.info("Making summary files")
         (geonet_mainshock_mag, geonet_mainshock_mag_uncertainty,
          geonet_mainshock_depth, geonet_mainshock_depth_uncertainty,
