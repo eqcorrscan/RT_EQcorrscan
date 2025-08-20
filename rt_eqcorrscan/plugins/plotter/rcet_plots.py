@@ -2382,7 +2382,7 @@ def plot_geometry_with_time(
         marker=".",
         markersize="0.01",
         linewidth=3,
-        label="2$\sigma$ Lowess Length",
+        label="Lowess Length",
         color="cadetblue",
     )
     ax3.legend()
