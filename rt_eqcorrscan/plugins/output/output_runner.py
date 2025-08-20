@@ -12,7 +12,6 @@ import os
 import time
 import shutil
 import pickle
-import json
 import numpy as np
 
 from typing import List, Union, Set
@@ -23,8 +22,6 @@ from scipy.cluster.hierarchy import linkage, fcluster, dendrogram
 
 from obspy import read_events, Catalog, UTCDateTime
 from obspy.core.event import Event, Comment
-
-from obsplus.events.json import cat_to_json
 
 from eqcorrscan.utils.findpeaks import decluster
 from eqcorrscan.utils.clustering import dist_mat_km
@@ -570,10 +567,10 @@ class Outputter(_Plugin):
                         continue
                     cluster_ids[ev_index] = cluster_id
 
-        # Output json of full catalog - used by plotting for faster IO
+        # Output pkl of full catalog - used by plotting for faster IO
         if len(output_events):
-            with open(f"{out_dir}/catalog.json", "w") as f:
-                json.dump(cat_to_json(output_events), f)
+            with open(f"{out_dir}/catalog.pkl", "wb") as f:
+                pickle.dump(output_events, f)
 
         catalog_to_csv(
             catalog=output_events,

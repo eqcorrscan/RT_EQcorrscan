@@ -6,7 +6,6 @@ import os
 import logging
 import shutil
 import glob
-import json
 import numpy as np
 import pandas as pd
 
@@ -15,8 +14,6 @@ from typing import Iterable, List, Union, Tuple
 from obspy import read_events, UTCDateTime, Inventory, read_inventory, Catalog
 from obspy.core.event import Event
 from obspy.geodetics import kilometer2degrees
-
-from obsplus.events.json import json_to_cat
 
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
@@ -74,7 +71,7 @@ PLUGIN_CONFIG_MAPPER.update({"plotter": PlotConfig})
 
 class Plotter(_Plugin):
     name = "Plotter"
-    watch_pattern = "catalog.json"  # Only watch for the json
+    watch_pattern = "catalog.pkl"  # Only watch for the pkl
     event_cache = {}  # Dict of SparseEvents keyed by event id
     # event_files = {}  # Dict of (event-id, mtime) keyed by event-file
     inventory_cache = (None, None, None)  # Tuple of (inventory, file, mtime)
@@ -221,12 +218,12 @@ class Plotter(_Plugin):
         #     self.event_files.update(
         #         {f: (ev.resource_id.id, mtime)})
 
-        # Read from json
+        # Read from pkl
         cat = Catalog()
         for f in copied_files:
-            with open(f, "r") as _f:
+            with open(f, "rb") as _f:
                 try:
-                    cat += json_to_cat(json.load(_f))
+                    cat += pickle.load(f)
                 except Exception as e:
                     Logger.exception(f"Could not read from {f} due to {e}")
             # Cleanup
