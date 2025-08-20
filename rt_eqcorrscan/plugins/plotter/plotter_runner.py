@@ -6,14 +6,17 @@ import os
 import logging
 import shutil
 import glob
+import json
 import numpy as np
 import pandas as pd
 
 from typing import Iterable, List, Union, Tuple
 
-from obspy import read_events, UTCDateTime, Inventory, read_inventory
+from obspy import read_events, UTCDateTime, Inventory, read_inventory, Catalog
 from obspy.core.event import Event
 from obspy.geodetics import kilometer2degrees
+
+from obsplus.events.json import json_to_cat
 
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
@@ -71,8 +74,9 @@ PLUGIN_CONFIG_MAPPER.update({"plotter": PlotConfig})
 
 class Plotter(_Plugin):
     name = "Plotter"
+    watch_pattern = "catalog.json"  # Only watch for the json
     event_cache = {}  # Dict of SparseEvents keyed by event id
-    event_files = {}  # Dict of (event-id, mtime) keyed by event-file
+    # event_files = {}  # Dict of (event-id, mtime) keyed by event-file
     inventory_cache = (None, None, None)  # Tuple of (inventory, file, mtime)
     simulation_time_offset = 0.0  # Seconds to subtract from now to get the simulated time.
 
@@ -115,6 +119,19 @@ class Plotter(_Plugin):
         if not os.path.isdir(f"{out_dir}/history"):
             os.makedirs(f"{out_dir}/history")
 
+        # Immediately copy the files to avoid them being overwritten
+        if not os.path.isdir(f"{out_dir}/.plotter_cache"):
+            os.makedirs(f"{out_dir}/.plotter_cache")
+        copied_files = []
+        for new_file in new_files:
+            copied_file = f"{out_dir}/.plotter_cache/{os.path.basename(new_file)}"
+            try:
+                shutil.copy(new_file, copied_file)
+            except Exception as e:
+                Logger.exception(f"Could not copy {new_file} due to {e}")
+            else:
+                copied_files.append(copied_file)
+
         """
         Things we need for the plots:
         1. The real-time catalogue - ideally we could split this into different origins
@@ -132,6 +149,7 @@ class Plotter(_Plugin):
         the faulting type and rupture area type - these should be update-able 
         in the config file.
         """
+
         # Load template events
         Logger.info("Getting template events")
         self.get_template_events()
@@ -158,50 +176,63 @@ class Plotter(_Plugin):
 
         # Remove expired events (e.g. those in our cache that do not appear
         # in new_files)
-        Logger.info("Checking expired files")
-        expired_files = set(self.event_files.keys()).difference(set(new_files))
-        for expired_file in expired_files:
-            expired_id, _ = self.event_files.pop(expired_file)
-            # Remove from event cache
-            self.event_cache.pop(expired_id)
+        # Logger.info("Checking expired files")
+        # expired_files = set(self.event_files.keys()).difference(set(new_files))
+        # for expired_file in expired_files:
+        #     expired_id, _ = self.event_files.pop(expired_file)
+        #     # Remove from event cache
+        #     self.event_cache.pop(expired_id)
+        #
+        # # Read detected events - we need to re-check all events everytime to
+        # # cope with updates
+        # Logger.info("Reading events")
+        # for f in new_files:
+        #     if not os.path.isfile(f):
+        #         # File no longer exists.
+        #         continue
+        #     mtime = os.path.getmtime(f)
+        #     if f in self.event_files.keys():
+        #         # Check if the file has changed since we last read from it
+        #         if mtime <= self.event_files[f][1]:
+        #             # File has not been updated. Skip reading
+        #             continue
+        #     # File is either new or updated. Read
+        #     if os.path.isfile(f):
+        #         attempts = 0
+        #         while attempts <= 3:
+        #             # Cope with files being changed while we work...
+        #             try:
+        #                 cat = sparsify_catalog(read_events(f), include_picks=True)
+        #             except Exception as e:
+        #                 Logger.exception("Could not read from {f} due to {e}")
+        #                 attempts += 1
+        #             else:
+        #                 break
+        #         else:
+        #             Logger.error(
+        #                 f"Failed to read from {f} after {attempts - 1} tries. Skipping")
+        #             continue
+        #     else:
+        #         # We can ignore it.
+        #         continue
+        #     assert len(cat) == 1, f"More than one event in {f}"
+        #     ev = cat[0]
+        #     self.event_cache.update({ev.resource_id.id: ev})
+        #     self.event_files.update(
+        #         {f: (ev.resource_id.id, mtime)})
 
-        # Read detected events - we need to re-check all events everytime to
-        # cope with updates
-        Logger.info("Reading events")
-        for f in new_files:
-            if not os.path.isfile(f):
-                # File no longer exists.
-                continue
-            mtime = os.path.getmtime(f)
-            if f in self.event_files.keys():
-                # Check if the file has changed since we last read from it
-                if mtime <= self.event_files[f][1]:
-                    # File has not been updated. Skip reading
-                    continue
-            # File is either new or updated. Read
-            if os.path.isfile(f):
-                attempts = 0
-                while attempts <= 3:
-                    # Cope with files being changed while we work...
-                    try:
-                        cat = sparsify_catalog(read_events(f), include_picks=True)
-                    except Exception as e:
-                        Logger.exception("Could not read from {f} due to {e}")
-                        attempts += 1
-                    else:
-                        break
-                else:
-                    Logger.error(
-                        f"Failed to read from {f} after {attempts - 1} tries. Skipping")
-                    continue
-            else:
-                # We can ignore it.
-                continue
-            assert len(cat) == 1, f"More than one event in {f}"
-            ev = cat[0]
+        # Read from json
+        cat = Catalog()
+        for f in copied_files:
+            with open(f, "r") as _f:
+                try:
+                    cat += json_to_cat(json.load(_f))
+                except Exception as e:
+                    Logger.exception("Could not read from {f} due to {e}")
+            # Cleanup
+            os.remove(f)
+        for ev in cat:
             self.event_cache.update({ev.resource_id.id: ev})
-            self.event_files.update(
-                {f: (ev.resource_id.id, mtime)})
 
         # TODO: Make maps after ellipse plots and scale to the non-outlier catalogue
         Logger.info("Making earthquake maps")

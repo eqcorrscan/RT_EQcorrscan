@@ -19,11 +19,12 @@ from typing import List, Union, Set
 from collections import OrderedDict
 
 from obspy import read_events, Catalog, UTCDateTime
-from obspy.core.event import Event
+from obspy.core.event import Event, Comment
 
 from obsplus.events.json import cat_to_json
 
 from eqcorrscan.utils.findpeaks import decluster
+from eqcorrscan.utils.clustering import catalog_cluster
 
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
@@ -201,8 +202,8 @@ def decluster_catalog(
 
 def catalog_to_csv(
     catalog: Union[Catalog, List[SparseEvent]],
+    csv_filename: str,
     cluster_ids: List | None = None,
-    csv_filename: str
 ) -> None:
     """
     Write catalog to a csv file.
@@ -493,10 +494,6 @@ class Outputter(_Plugin):
         toc = time.perf_counter()
         Logger.info(f"Took {toc - tic:.2f}s to write catalog output")
         tic = time.perf_counter()
-       
-        # Output json of full catalog - used by plotting for faster IO
-        with open(f"{out_dir}/catalog.json", "w") as f:
-            json.dump(cat_to_json(output_events), f)
 
         # Do the clustering
         cluster_ids = np.zeros(len(output_events))
@@ -506,16 +503,24 @@ class Outputter(_Plugin):
             # put cluster ids in order
             for cluster_id, group in enumerate(groups):
                 for ev in group:
+                    # Add cluster ID to event as a comment
+                    ev.comments.append(
+                        Comment(text=f"ClusterID: {cluster_id}"))
                     try:
                         ev_index = output_events.index(ev)
                     except ValueError:
-                        Logger.warning("Event not found after grouping - this shouldn't happen, but ignoring")
+                        Logger.warning("Event not found after grouping - "
+                                       "this shouldn't happen, but ignoring")
                         continue
-                    cluster_ids[ev_index] = cluster_id            
+                    cluster_ids[ev_index] = cluster_id
+
+        # Output json of full catalog - used by plotting for faster IO
+        with open(f"{out_dir}/catalog.json", "w") as f:
+            json.dump(cat_to_json(output_events), f)
 
         catalog_to_csv(
             catalog=output_events,
-            cluster_ids=cluster_ids,           
+            cluster_ids=list(cluster_ids),
             csv_filename=f"{out_dir}/catalog.csv")
         toc = time.perf_counter()
         Logger.info(f"Took {toc - tic:.2f}s to write csv output")
