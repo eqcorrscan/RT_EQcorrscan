@@ -237,7 +237,7 @@ class Plotter(_Plugin):
             # find the mainshock in cat
             try:
                 clustered_mainshock = [
-                    ev for ev in cat if ev.resource_id == self.config.mainshock_id][0]
+                    ev for ev in cat if ev.resource_id.id == self.config.mainshock_id][0]
             except IndexError:
                 clustered_mainshock = None
 
