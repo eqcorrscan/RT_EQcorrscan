@@ -18,13 +18,16 @@ import numpy as np
 from typing import List, Union, Set
 from collections import OrderedDict
 
+from scipy.spatial.distance import squareform
+from scipy.cluster.hierarchy import linkage, fcluster, dendrogram
+
 from obspy import read_events, Catalog, UTCDateTime
 from obspy.core.event import Event, Comment
 
 from obsplus.events.json import cat_to_json
 
 from eqcorrscan.utils.findpeaks import decluster
-from eqcorrscan.utils.clustering import catalog_cluster
+from eqcorrscan.utils.clustering import dist_mat_km
 
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
@@ -33,6 +36,60 @@ from rt_eqcorrscan.helpers.sparse_event import (
     sparsify_catalog, get_origin_attr, get_magnitude_attr, SparseEvent)
 
 Logger = logging.getLogger(__name__)
+
+
+def cluster_sparse_catalog(sparse_catalog, thresh, show=True):
+    """
+    Cluster a catalog by distance only. Adapted from EQcorrscan
+
+    Will compute the matrix of physical distances between events and utilize
+    the :mod:`scipy.clustering.hierarchy` module to perform the clustering.
+
+    :type catalog: obspy.core.event.Catalog
+    :param catalog: Catalog of events to clustered
+    :type thresh: float
+    :param thresh:
+        Maximum separation, either in km (`metric="distance"`) or in seconds
+        (`metric="time"`)
+    :type metric: str
+    :param metric: Either "distance" or "time"
+
+    :returns: list of :class:`obspy.core.event.Catalog` objects
+    :rtype: list
+    """
+    import matplotlib.pyplot as plt
+    # Compute the distance matrix and linkage
+    dist_mat = dist_mat_km(sparse_catalog)
+    dist_vec = squareform(dist_mat)
+    Z = linkage(dist_vec, method='average')
+
+    # Cluster the linkage using the given threshold as the cutoff
+    indices = fcluster(Z, t=thresh, criterion='distance')
+    group_ids = list(set(indices))
+    indices = [(indices[i], i) for i in range(len(indices))]
+
+    if show:
+        # Plot the dendrogram...if it's not way too huge
+        dendrogram(Z, color_threshold=thresh, distance_sort='ascending')
+        plt.show()
+
+    # Sort by group id
+    indices.sort(key=lambda tup: tup[0])
+    groups = []
+    for group_id in group_ids:
+        group = []
+        for ind in indices:
+            if ind[0] == group_id:
+                group.append(sparse_catalog[ind[1]])
+            elif ind[0] > group_id:
+                # Because we have sorted by group id, when the index is greater
+                # than the group_id we can break the inner loop.
+                # Patch applied by CJC 05/11/2015
+                groups.append(group)
+                break
+    groups.append(group)
+    return groups
+
 
 def similar_picks(
     event1: Union[Event, SparseEvent],
@@ -497,8 +554,8 @@ class Outputter(_Plugin):
         # Do the clustering
         cluster_ids = np.zeros(len(output_events))
         if self.config.cluster and len(output_events) > 1:
-            groups = catalog_cluster(
-                output_events, self.config.search_radius)
+            groups = catalog_sparse_cluster(
+                catalog=output_events, thresh=self.config.search_radius)
             # put cluster ids in order
             for cluster_id, group in enumerate(groups):
                 for ev in group:
@@ -514,8 +571,9 @@ class Outputter(_Plugin):
                     cluster_ids[ev_index] = cluster_id
 
         # Output json of full catalog - used by plotting for faster IO
-        with open(f"{out_dir}/catalog.json", "w") as f:
-            json.dump(cat_to_json(output_events), f)
+        if len(output_events):
+            with open(f"{out_dir}/catalog.json", "w") as f:
+                json.dump(cat_to_json(output_events), f)
 
         catalog_to_csv(
             catalog=output_events,
