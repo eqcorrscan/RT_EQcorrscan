@@ -232,14 +232,16 @@ class Plotter(_Plugin):
             # Cleanup
             os.remove(f)
 
+        # Put catalog into event cache
+        self.event_cache = {ev.resource_id.id: ev for ev in cat}
+        # Note, don't need to update because we re-read the whole cat every time now
+        # for ev in cat:
+        #     self.event_cache.update({ev.resource_id.id: ev})
+
         # If we are clustering this, then we want to find the mainshock cluster
         if self.config.cluster:
             # find the mainshock in cat
-            try:
-                clustered_mainshock = [
-                    ev for ev in cat if ev.resource_id.id == self.config.mainshock_id][0]
-            except IndexError:
-                clustered_mainshock = None
+            clustered_mainshock = self._get_relocated_mainshock()
 
             if clustered_mainshock:
                 cluster_id = _get_comment_val("ClusterID", clustered_mainshock)
@@ -248,14 +250,11 @@ class Plotter(_Plugin):
                 else:
                     cluster = [ev for ev in cat if
                                _get_comment_val("ClusterID", ev) == cluster_id]
-                    # Overload cat and use just this cluster for plotting
-                    cat = cluster
+                    # Overload event_cache and use just this cluster for plotting
+                    self.event_cache = {ev.resource_id.id: ev for ev in cluster}
             else:
                 Logger.warning("Could not find mainshock in cat, not clustering")
 
-
-        for ev in cat:
-            self.event_cache.update({ev.resource_id.id: ev})
 
         # TODO: Make maps after ellipse plots and scale to the non-outlier catalogue
         Logger.info("Making earthquake maps")
