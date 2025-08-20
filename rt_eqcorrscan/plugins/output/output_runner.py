@@ -12,18 +12,19 @@ import os
 import time
 import shutil
 import pickle
-import json
 import numpy as np
 
 from typing import List, Union, Set
 from collections import OrderedDict
 
-from obspy import read_events, Catalog, UTCDateTime
-from obspy.core.event import Event
+from scipy.spatial.distance import squareform
+from scipy.cluster.hierarchy import linkage, fcluster, dendrogram
 
-from obsplus.events.json import cat_to_json
+from obspy import read_events, Catalog, UTCDateTime
+from obspy.core.event import Event, Comment
 
 from eqcorrscan.utils.findpeaks import decluster
+from eqcorrscan.utils.clustering import dist_mat_km
 
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
@@ -32,6 +33,60 @@ from rt_eqcorrscan.helpers.sparse_event import (
     sparsify_catalog, get_origin_attr, get_magnitude_attr, SparseEvent)
 
 Logger = logging.getLogger(__name__)
+
+
+def cluster_sparse_catalog(sparse_catalog, thresh, show=True):
+    """
+    Cluster a catalog by distance only. Adapted from EQcorrscan
+
+    Will compute the matrix of physical distances between events and utilize
+    the :mod:`scipy.clustering.hierarchy` module to perform the clustering.
+
+    :type catalog: obspy.core.event.Catalog
+    :param catalog: Catalog of events to clustered
+    :type thresh: float
+    :param thresh:
+        Maximum separation, either in km (`metric="distance"`) or in seconds
+        (`metric="time"`)
+    :type metric: str
+    :param metric: Either "distance" or "time"
+
+    :returns: list of :class:`obspy.core.event.Catalog` objects
+    :rtype: list
+    """
+    import matplotlib.pyplot as plt
+    # Compute the distance matrix and linkage
+    dist_mat = dist_mat_km(sparse_catalog)
+    dist_vec = squareform(dist_mat)
+    Z = linkage(dist_vec, method='average')
+
+    # Cluster the linkage using the given threshold as the cutoff
+    indices = fcluster(Z, t=thresh, criterion='distance')
+    group_ids = list(set(indices))
+    indices = [(indices[i], i) for i in range(len(indices))]
+
+    if show:
+        # Plot the dendrogram...if it's not way too huge
+        dendrogram(Z, color_threshold=thresh, distance_sort='ascending')
+        plt.show()
+
+    # Sort by group id
+    indices.sort(key=lambda tup: tup[0])
+    groups = []
+    for group_id in group_ids:
+        group = []
+        for ind in indices:
+            if ind[0] == group_id:
+                group.append(sparse_catalog[ind[1]])
+            elif ind[0] > group_id:
+                # Because we have sorted by group id, when the index is greater
+                # than the group_id we can break the inner loop.
+                # Patch applied by CJC 05/11/2015
+                groups.append(group)
+                break
+    groups.append(group)
+    return groups
+
 
 def similar_picks(
     event1: Union[Event, SparseEvent],
@@ -201,8 +256,8 @@ def decluster_catalog(
 
 def catalog_to_csv(
     catalog: Union[Catalog, List[SparseEvent]],
+    csv_filename: str,
     cluster_ids: List | None = None,
-    csv_filename: str
 ) -> None:
     """
     Write catalog to a csv file.
@@ -439,15 +494,14 @@ class Outputter(_Plugin):
 
         # Output csv and QMLs
         tic = time.perf_counter()
-        # Clear old output
-        if os.path.isdir(f"{out_dir}/catalog"):
-            if retain_history:
-                try:
-                    shutil.move(
-                        f"{out_dir}/catalog.csv",
-                        f"{out_dir}/history/catalog_{UTCDateTime.now().strftime('%Y%m%dT%H%M%S')}.csv")
-                except FileNotFoundError as e:
-                    Logger.exception(f"Could not write catalog history due to {e}")
+        # Move old output
+        if retain_history and os.path.isfile(f"{out_dir}/catalog.csv"):
+            try:
+                shutil.move(
+                    f"{out_dir}/catalog.csv",
+                    f"{out_dir}/history/catalog_{UTCDateTime.now().strftime('%Y%m%dT%H%M%S')}.csv")
+            except FileNotFoundError as e:
+                Logger.exception(f"Could not write catalog history due to {e}")
         os.makedirs(f"{out_dir}/.catalog")
 
         # Link events
@@ -493,29 +547,34 @@ class Outputter(_Plugin):
         toc = time.perf_counter()
         Logger.info(f"Took {toc - tic:.2f}s to write catalog output")
         tic = time.perf_counter()
-       
-        # Output json of full catalog - used by plotting for faster IO
-        with open(f"{out_dir}/catalog.json", "w") as f:
-            json.dump(cat_to_json(output_events), f)
 
         # Do the clustering
         cluster_ids = np.zeros(len(output_events))
-        if self.config.cluster:
-            groups = catalog_cluster(
-                output_events, self.config.search_radius)
+        if self.config.cluster and len(output_events) > 1:
+            groups = cluster_sparse_catalog(
+                sparse_catalog=output_events, thresh=self.config.search_radius)
             # put cluster ids in order
             for cluster_id, group in enumerate(groups):
                 for ev in group:
+                    # Add cluster ID to event as a comment
+                    ev.comments.append(
+                        Comment(text=f"ClusterID: {cluster_id}"))
                     try:
                         ev_index = output_events.index(ev)
                     except ValueError:
-                        Logger.warning("Event not found after grouping - this shouldn't happen, but ignoring")
+                        Logger.warning("Event not found after grouping - "
+                                       "this shouldn't happen, but ignoring")
                         continue
-                    cluster_ids[ev_index] = cluster_id            
+                    cluster_ids[ev_index] = cluster_id
+
+        # Output pkl of full catalog - used by plotting for faster IO
+        if len(output_events):
+            with open(f"{out_dir}/catalog.pkl", "wb") as f:
+                pickle.dump(output_events, f)
 
         catalog_to_csv(
             catalog=output_events,
-            cluster_ids=cluster_ids,           
+            cluster_ids=list(cluster_ids),
             csv_filename=f"{out_dir}/catalog.csv")
         toc = time.perf_counter()
         Logger.info(f"Took {toc - tic:.2f}s to write csv output")
