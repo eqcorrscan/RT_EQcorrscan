@@ -19,6 +19,7 @@ from obspy.geodetics import kilometer2degrees
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
     PLUGIN_CONFIG_MAPPER, _Plugin)
+from rt_eqcorrscan.plugins.output.output_runner import _get_comment_val
 from rt_eqcorrscan.helpers.sparse_event import sparsify_catalog, SparseEvent, \
     get_origin_attr, get_magnitude_attr
 from rt_eqcorrscan.plugins.plotter.rcet_plots import (
@@ -58,6 +59,7 @@ class PlotConfig(_PluginConfig):
         "lowess_f": 0.5,
         "magcut": 3.0,
         "search_radius": 100.0,
+        "cluster": True,
     })
     readonly = []
 
@@ -220,15 +222,38 @@ class Plotter(_Plugin):
         #         {f: (ev.resource_id.id, mtime)})
 
         # Read from pkl
-        cat = Catalog()
+        cat = []  # We read SparseEvents, so this has to be a list
         for f in copied_files:
-            with open(f, "rb") as _f:
+            with open(f, "rb") as fp:
                 try:
-                    cat += pickle.load(f)
+                    cat.extend(pickle.load(fp))
                 except Exception as e:
                     Logger.exception(f"Could not read from {f} due to {e}")
             # Cleanup
             os.remove(f)
+
+        # If we are clustering this, then we want to find the mainshock cluster
+        if self.config.cluster:
+            # find the mainshock in cat
+            try:
+                clustered_mainshock = [
+                    ev for ev in cat if ev.resource_id == self.config.mainshock_id][0]
+            except IndexError:
+                clustered_mainshock = None
+
+            if clustered_mainshock:
+                cluster_id = _get_comment_val("ClusterID", clustered_mainshock)
+                if cluster_id is None:
+                    Logger.warning("Cluster IDs not found in catalog, not clustering")
+                else:
+                    cluster = [ev for ev in cat if
+                               _get_comment_val("ClusterID", ev) == cluster_id]
+                    # Overload cat and use just this cluster for plotting
+                    cat = cluster
+            else:
+                Logger.warning("Could not find mainshock in cat, not clustering")
+
+
         for ev in cat:
             self.event_cache.update({ev.resource_id.id: ev})
 

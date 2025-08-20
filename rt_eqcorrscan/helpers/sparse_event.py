@@ -123,10 +123,10 @@ class SparseEvent:
                  preferred_magnitude_index: int = None,
                  comments: Iterable[SparseComment] = []):
         self.resource_id = resource_id
-        self.origins = tuple(origins)
-        self.magnitudes = tuple(magnitudes)
-        self.picks = tuple(picks)
-        self.comments = tuple(comments)
+        self.origins = list(origins)
+        self.magnitudes = list(magnitudes)
+        self.picks = list(picks)
+        self.comments = list(comments)
         if preferred_origin_index is not None:
             self.preferred_origin_index = preferred_origin_index
 
