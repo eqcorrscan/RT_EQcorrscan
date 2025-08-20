@@ -440,15 +440,14 @@ class Outputter(_Plugin):
 
         # Output csv and QMLs
         tic = time.perf_counter()
-        # Clear old output
-        if os.path.isdir(f"{out_dir}/catalog"):
-            if retain_history:
-                try:
-                    shutil.move(
-                        f"{out_dir}/catalog.csv",
-                        f"{out_dir}/history/catalog_{UTCDateTime.now().strftime('%Y%m%dT%H%M%S')}.csv")
-                except FileNotFoundError as e:
-                    Logger.exception(f"Could not write catalog history due to {e}")
+        # Move old output
+        if retain_history and os.path.isfile(f"{out_dir}/catalog.csv"):
+            try:
+                shutil.move(
+                    f"{out_dir}/catalog.csv",
+                    f"{out_dir}/history/catalog_{UTCDateTime.now().strftime('%Y%m%dT%H%M%S')}.csv")
+            except FileNotFoundError as e:
+                Logger.exception(f"Could not write catalog history due to {e}")
         os.makedirs(f"{out_dir}/.catalog")
 
         # Link events
@@ -497,7 +496,7 @@ class Outputter(_Plugin):
 
         # Do the clustering
         cluster_ids = np.zeros(len(output_events))
-        if self.config.cluster:
+        if self.config.cluster and len(output_events) > 1:
             groups = catalog_cluster(
                 output_events, self.config.search_radius)
             # put cluster ids in order
