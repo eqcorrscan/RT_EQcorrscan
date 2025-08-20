@@ -228,7 +228,7 @@ class Plotter(_Plugin):
                 try:
                     cat += json_to_cat(json.load(_f))
                 except Exception as e:
-                    Logger.exception("Could not read from {f} due to {e}")
+                    Logger.exception(f"Could not read from {f} due to {e}")
             # Cleanup
             os.remove(f)
         for ev in cat:
