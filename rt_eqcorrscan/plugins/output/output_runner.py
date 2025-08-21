@@ -61,6 +61,7 @@ def cluster_sparse_catalog(
 
     # Cluster the linkage using the given threshold as the cutoff
     indices = fcluster(Z, t=thresh, criterion='distance')
+    Logger.info(f"Clustered catalog into {len(set(indices))} clusters")
 
     # Put cluster IDs into events as a comment
     for cluster_id, ev in zip(indices, sparse_catalog):

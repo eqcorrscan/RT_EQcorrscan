@@ -76,7 +76,7 @@ class Plotter(_Plugin):
     name = "Plotter"
     watch_pattern = "catalog.pkl"  # Only watch for the pkl
     event_cache = {}  # Dict of SparseEvents keyed by event id
-    # event_files = {}  # Dict of (event-id, mtime) keyed by event-file
+    _mainshock_cluster_ids = None
     inventory_cache = (None, None, None)  # Tuple of (inventory, file, mtime)
     simulation_time_offset = 0.0  # Seconds to subtract from now to get the simulated time.
 
@@ -89,6 +89,13 @@ class Plotter(_Plugin):
             if ori_time >= mainshock_time:
                 aftershock_templates.append(ev)
         return aftershock_templates
+
+    @property
+    def mainshock_cluster(self) -> List:
+        if self._mainshock_cluster_ids:
+            return [self.event_cache.get(eid)
+                    for eid in self._mainshock_cluster_ids]
+        return self.events
 
     @property
     def events(self) -> List:
@@ -174,53 +181,6 @@ class Plotter(_Plugin):
                 internal_config.station_file,
                 os.path.getmtime(internal_config.station_file))
 
-        # Remove expired events (e.g. those in our cache that do not appear
-        # in new_files)
-        # Logger.info("Checking expired files")
-        # expired_files = set(self.event_files.keys()).difference(set(new_files))
-        # for expired_file in expired_files:
-        #     expired_id, _ = self.event_files.pop(expired_file)
-        #     # Remove from event cache
-        #     self.event_cache.pop(expired_id)
-        #
-        # # Read detected events - we need to re-check all events everytime to
-        # # cope with updates
-        # Logger.info("Reading events")
-        # for f in new_files:
-        #     if not os.path.isfile(f):
-        #         # File no longer exists.
-        #         continue
-        #     mtime = os.path.getmtime(f)
-        #     if f in self.event_files.keys():
-        #         # Check if the file has changed since we last read from it
-        #         if mtime <= self.event_files[f][1]:
-        #             # File has not been updated. Skip reading
-        #             continue
-        #     # File is either new or updated. Read
-        #     if os.path.isfile(f):
-        #         attempts = 0
-        #         while attempts <= 3:
-        #             # Cope with files being changed while we work...
-        #             try:
-        #                 cat = sparsify_catalog(read_events(f), include_picks=True)
-        #             except Exception as e:
-        #                 Logger.exception("Could not read from {f} due to {e}")
-        #                 attempts += 1
-        #             else:
-        #                 break
-        #         else:
-        #             Logger.error(
-        #                 f"Failed to read from {f} after {attempts - 1} tries. Skipping")
-        #             continue
-        #     else:
-        #         # We can ignore it.
-        #         continue
-        #     assert len(cat) == 1, f"More than one event in {f}"
-        #     ev = cat[0]
-        #     self.event_cache.update({ev.resource_id.id: ev})
-        #     self.event_files.update(
-        #         {f: (ev.resource_id.id, mtime)})
-
         # Read from pkl
         cat = []  # We read SparseEvents, so this has to be a list
         for f in copied_files:
@@ -235,8 +195,6 @@ class Plotter(_Plugin):
         # Put catalog into event cache
         self.event_cache = {ev.resource_id.id: ev for ev in cat}
         # Note, don't need to update because we re-read the whole cat every time now
-        # for ev in cat:
-        #     self.event_cache.update({ev.resource_id.id: ev})
 
         # If we are clustering this, then we want to find the mainshock cluster
         if self.config.cluster:
@@ -251,7 +209,8 @@ class Plotter(_Plugin):
                     cluster = [ev for ev in cat if
                                _get_comment_val("ClusterID", ev) == cluster_id]
                     # Overload event_cache and use just this cluster for plotting
-                    self.event_cache = {ev.resource_id.id: ev for ev in cluster}
+                    # Have a seperate mainshock cluster that is used for stats calcs
+                    self._mainshock_cluster_ids = {ev.resource_id.id for ev in cluster}
             else:
                 Logger.warning("Could not find mainshock in cat, not clustering")
 
@@ -511,7 +470,7 @@ class Plotter(_Plugin):
         mainshock = self._get_mainshock()
         (ellipse_stats, catalog_outliers, ellipse_map,
          ellipse_xsection) = ellipse_plots(
-            catalog_origins=self.events,
+            catalog_origins=self.mainshock_cluster,  # self.events,
             mainshock=mainshock,
             relocated_mainshock=self._get_relocated_mainshock(),
             fabric_angle=self.config.fabric_angle,
