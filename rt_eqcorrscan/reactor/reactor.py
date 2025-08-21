@@ -21,6 +21,7 @@ from rt_eqcorrscan.database.database_manager import (
     TemplateBank, check_tribe_quality)
 from rt_eqcorrscan.event_trigger.listener import _Listener
 from rt_eqcorrscan.config import Config
+from rt_eqcorrscan.helpers.sparse_event import get_origin_attr
 from rt_eqcorrscan.reactor.scaling_relations import get_scaling_relation
 
 
@@ -381,10 +382,16 @@ class Reactor(object):
             Event that triggered this run - needs to have at-least an origin.
         """
         triggering_event_id = triggering_event.resource_id.id.split('/')[-1]
+        if get_origin_attr(triggering_event, "depth") > self.config.reactor.scaling_depth_switch:
+            scaling_relation = self.config.reactor.scaling_relation_deep
+        else:
+            scaling_relation = self.config.reactor.scaling_relation_shallow
+        Logger.info(f"Using {scaling_relation} to determine search region")
         region = estimate_region(
             triggering_event,
             multiplier=self.config.reactor.scaling_multiplier or 1.0,
-            min_length=self.config.reactor.minimum_lookup_radius or 50.0)
+            min_length=self.config.reactor.minimum_lookup_radius or 50.0,
+            scaling_relation=scaling_relation)
         if region is None:
             return
         region.update(
@@ -529,7 +536,13 @@ def estimate_region(
 
     if magnitude:
         if not callable(scaling_relation):
-            scaling_relation = get_scaling_relation(scaling_relation)
+            try:
+                scaling_relation = get_scaling_relation(scaling_relation)
+            except Exception as e:
+                Logger.exception(
+                    f"Could not get {scaling_relation} scaling due to {e}. "
+                    f"Reverting to default")
+                scaling_relation = get_scaling_relation("default")
         length = scaling_relation(magnitude.mag)
         length *= multiplier
     else:

@@ -189,7 +189,9 @@ class ReactorConfig(_ConfigAttribDict):
         "minimum_events_in_bin": 10,
         "catalog_lookup_kwargs": dict(),
         "max_run_length": None,
-        "scaling_relation": "wells_coppersmith_subsurface",
+        "scaling_relation_shallow": "wells_coppersmith_surface",
+        "scaling_relation_deep": "wells_coppersmith_subsurface",
+        "scaling_depth_switch": 5.0,
         "scaling_multiplier": 1.5,
         "minimum_lookup_radius": 50.0,  # Minimum look-up radius in km.
     }
