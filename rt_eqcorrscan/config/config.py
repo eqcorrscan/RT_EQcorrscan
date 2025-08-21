@@ -198,9 +198,9 @@ class ReactorConfig(_ConfigAttribDict):
     readonly = []
 
     def __init__(self, *args, **kwargs):
-        from rt_eqcorrscan.reactor.scaling_relations import set_scaling_relation
+        # from rt_eqcorrscan.reactor.scaling_relations import set_scaling_relation
         super().__init__(*args, **kwargs)
-        set_scaling_relation(self.scaling_relation)
+        # set_scaling_relation(self.scaling_relation_deep)
 
 
 class PlotConfig(_ConfigAttribDict):
