@@ -2196,6 +2196,7 @@ def summary_files(
 def plot_geometry_with_time(
     times,
     events,
+    mainshock_cluster,
     geonet_events,
     mean_depths,
     Relocated_depths,
@@ -2235,6 +2236,7 @@ def plot_geometry_with_time(
         ["Trigger ID:", mainshock.resource_id.id.split("/")[-1]],
         ["Time since trigger:", f"{elapsed_time}"],
         ["Total events:", f"{events[-1]}"],
+        ["Events in mainshock cluster:", f"{mainshock_cluster[-1]}"],
         ["Fault length:", f"{lengths[-1]:.2f} km"],
         ["Fault azimuth:", f"{azimuths[-1]:.2f} degrees"],
         ["Fault dip:", f"{dips[-1]:.2f} degrees"],
@@ -2287,6 +2289,16 @@ def plot_geometry_with_time(
         linewidth=3,
         label="N events (RT-EQcorrscan)",
         color="firebrick",
+    )
+    ax1.plot(
+        times,
+        mainshock_cluster,
+        linestyle="-",
+        marker=".",
+        markersize="0.01",
+        linewidth=3,
+        label="N events (mainshock cluster)",
+        color="lightcoral",
     )
     ax1.plot(
         times,

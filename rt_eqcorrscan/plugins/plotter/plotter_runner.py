@@ -399,6 +399,7 @@ class Plotter(_Plugin):
         fig = plot_geometry_with_time(
             times=df.Elapsed_secs.to_list(),
             events=df.N_evs.to_list(),
+            mainshock_cluster=df.N_mainshock_cluster.to_list(),
             geonet_events=df.N_geonet_evs.to_list(),
             mean_depths=df.Mean_depth.where(df.N_evs > min_events).to_list(),
             Relocated_depths=df.Relocated_depth.to_list(),
