@@ -2429,10 +2429,7 @@ def plot_geometry_with_time(
     )
     _additional_plot_elements(ax=ax4, xlim_upper=max_time)
     ax4.legend()
-    if log == True:
-        ax4.set_xlabel("log(seconds since mainshock)")
-    else:
-        ax4.set_xlabel("seconds since mainshock")
+    ax4.set_xlabel("Seconds since mainshock")
     ax4.set_ylabel("Degrees ($\degree$)")
 
     # plot dips
@@ -2452,10 +2449,7 @@ def plot_geometry_with_time(
     )
     _additional_plot_elements(ax=ax5, xlim_upper=max_time)
     ax5.legend()
-    if log == True:
-        ax5.set_xlabel("log(seconds since mainshock)")
-    else:
-        ax5.set_xlabel("seconds since mainshock")
+    ax5.set_xlabel("Seconds since mainshock")
     ax5.set_ylabel("Degrees ($\degree$)")
 
     # plot magnitudes
