@@ -119,7 +119,7 @@ def _eq_map(
         fig.grdimage(grid=grid, cmap=topo_cmap)
     fig.coast(shorelines="1/0.5p", water="white")
 
-    depth_range = [detphs.min(), depths.max()]
+    depth_range = [depths.min(), depths.max()]
     if depth_range[0] == depth_range[1]:
         depth_range[0] -= 5
         depth_range[1] += 5
@@ -678,7 +678,11 @@ def _eq_map_summary(
 
         # Plot earthquakes
         if colours == "depth":
-            pygmt.makecpt(cmap="plasma", series=[depths.min(), depths.max()])
+            depth_range = [depths.min(), depths.max()]
+            if depth_range[0] == depth_range[1]:
+                depth_range[0] -= 5
+                depth_range[1] += 5
+            pygmt.makecpt(cmap="plasma", series=depth_range)
             # plot used earthquakes
             fig.plot(
                 x=lons,
