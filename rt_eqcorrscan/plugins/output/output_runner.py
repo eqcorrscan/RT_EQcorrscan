@@ -65,6 +65,8 @@ def cluster_sparse_catalog(
 
     # Put cluster IDs into events as a comment
     for cluster_id, ev in zip(indices, sparse_catalog):
+        # Remove old cluster id
+        ev.comments = [c for c in ev.comments if "ClusterID" not in c.text]
         ev.comments.append(SparseComment(text=f"ClusterID: {cluster_id}"))
 
     return sparse_catalog, indices
