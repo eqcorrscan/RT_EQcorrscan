@@ -281,6 +281,7 @@ class Plotter(_Plugin):
                 len([t for t in self.template_dict.values() if len(t.origins) == 0]),
                 len([t for t in self.template_dict.values() if len(t.magnitudes) == 0])
             ],
+            mainshock_cluster=self.mainshock_cluster,
             catalog_geonet=self._aftershock_templates,
             catalog_outliers=catalog_outliers,
             length=ellipse_stats['length'],
