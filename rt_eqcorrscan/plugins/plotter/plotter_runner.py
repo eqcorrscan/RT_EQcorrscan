@@ -480,7 +480,8 @@ class Plotter(_Plugin):
             ellipse_std=self.config.ellipse_std,
             lowess=self.config.lowess,
             lowess_f=self.config.lowess_f,
-            radius_km=self.config.search_radius)
+            radius_km=self.config.search_radius,
+            elapsed_secs=self.now - get_origin_attr(self._get_mainshock(), "time"))
 
         ellipse_map.savefig(
             f'{self.config.out_dir}/confidence_ellipsoid_latest.png',

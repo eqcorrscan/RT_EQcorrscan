@@ -1264,7 +1264,7 @@ def plot_confidence_ellipsoid(
 
     ax_nstd.set_title(
         "Time since trigger = "
-        + str(t).split(".")[0]
+        + str(datetime.timedelta(seconds=t)).split(".")[0]
         + " (days, HH:MM:SS)"
         + "\n"
         + "$2\sigma$ length = "
@@ -1488,7 +1488,7 @@ def plot_confidence_ellipsoid_vertical(
 
     ax_nstd.set_title(
         "Time since trigger = "
-        + str(t).split(".")[0]
+        + str(datetime.timedelta(seconds=t)).split(".")[0]
         + " (days, HH:MM:SS)"
         + "\n"
         + "$2\sigma$ length (width) = "
@@ -1512,6 +1512,7 @@ def ellipse_plots(
     lowess,
     lowess_f,
     radius_km,
+    elapsed_secs,
 ):
 
     # Calculate metrics
@@ -1545,7 +1546,7 @@ def ellipse_plots(
         mainshock=mainshock,
         sd=ellipse_std,
         radius_km=radius_km,
-        t=catalog[-1].origins[-1].time.datetime - mainshock.origins[-1].time.datetime,
+        t=elapsed_secs,
     )
     len_lowess = get_len_LOWESS(x=x_no, y=y_no, frac=lowess_f)
     # write figure to file
@@ -1588,7 +1589,7 @@ def ellipse_plots(
         sd=ellipse_std,
         LOWESS=True,  # TODO: Emily has this hard-coded to True rather than the var?
         frac=lowess_f,
-        t=catalog[-1].origins[-1].time.datetime - mainshock.origins[-1].time.datetime,
+        t=elapsed_secs,
         w=width,
     )
 
@@ -2238,7 +2239,7 @@ def plot_geometry_with_time(
 
     summary_text = [
         ["Trigger ID:", mainshock.resource_id.id.split("/")[-1]],
-        ["Time since trigger:", f"{elapsed_time}"],
+        ["Time since trigger:", str(elapsed_time).split(".")[0]],
         ["Total events:", f"{events[-1]}"],
         ["Events in mainshock cluster:", f"{mainshock_cluster[-1]}"],
         ["Fault length:", f"{lengths[-1]:.2f} km"],
