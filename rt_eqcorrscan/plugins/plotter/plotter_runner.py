@@ -19,6 +19,7 @@ from obspy.geodetics import kilometer2degrees
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
     PLUGIN_CONFIG_MAPPER, _Plugin)
+from rt_eqcorrscan.plugins.output.output_runner import _get_comment_val
 from rt_eqcorrscan.helpers.sparse_event import sparsify_catalog, SparseEvent, \
     get_origin_attr, get_magnitude_attr
 from rt_eqcorrscan.plugins.plotter.rcet_plots import (
@@ -58,6 +59,7 @@ class PlotConfig(_PluginConfig):
         "lowess_f": 0.5,
         "magcut": 3.0,
         "search_radius": 100.0,
+        "cluster": True,
     })
     readonly = []
 
@@ -74,7 +76,7 @@ class Plotter(_Plugin):
     name = "Plotter"
     watch_pattern = "catalog.pkl"  # Only watch for the pkl
     event_cache = {}  # Dict of SparseEvents keyed by event id
-    # event_files = {}  # Dict of (event-id, mtime) keyed by event-file
+    _mainshock_cluster_ids = None
     inventory_cache = (None, None, None)  # Tuple of (inventory, file, mtime)
     simulation_time_offset = 0.0  # Seconds to subtract from now to get the simulated time.
 
@@ -87,6 +89,13 @@ class Plotter(_Plugin):
             if ori_time >= mainshock_time:
                 aftershock_templates.append(ev)
         return aftershock_templates
+
+    @property
+    def mainshock_cluster(self) -> List:
+        if self._mainshock_cluster_ids:
+            return [self.event_cache.get(eid)
+                    for eid in self._mainshock_cluster_ids]
+        return self.events
 
     @property
     def events(self) -> List:
@@ -172,65 +181,40 @@ class Plotter(_Plugin):
                 internal_config.station_file,
                 os.path.getmtime(internal_config.station_file))
 
-        # Remove expired events (e.g. those in our cache that do not appear
-        # in new_files)
-        # Logger.info("Checking expired files")
-        # expired_files = set(self.event_files.keys()).difference(set(new_files))
-        # for expired_file in expired_files:
-        #     expired_id, _ = self.event_files.pop(expired_file)
-        #     # Remove from event cache
-        #     self.event_cache.pop(expired_id)
-        #
-        # # Read detected events - we need to re-check all events everytime to
-        # # cope with updates
-        # Logger.info("Reading events")
-        # for f in new_files:
-        #     if not os.path.isfile(f):
-        #         # File no longer exists.
-        #         continue
-        #     mtime = os.path.getmtime(f)
-        #     if f in self.event_files.keys():
-        #         # Check if the file has changed since we last read from it
-        #         if mtime <= self.event_files[f][1]:
-        #             # File has not been updated. Skip reading
-        #             continue
-        #     # File is either new or updated. Read
-        #     if os.path.isfile(f):
-        #         attempts = 0
-        #         while attempts <= 3:
-        #             # Cope with files being changed while we work...
-        #             try:
-        #                 cat = sparsify_catalog(read_events(f), include_picks=True)
-        #             except Exception as e:
-        #                 Logger.exception("Could not read from {f} due to {e}")
-        #                 attempts += 1
-        #             else:
-        #                 break
-        #         else:
-        #             Logger.error(
-        #                 f"Failed to read from {f} after {attempts - 1} tries. Skipping")
-        #             continue
-        #     else:
-        #         # We can ignore it.
-        #         continue
-        #     assert len(cat) == 1, f"More than one event in {f}"
-        #     ev = cat[0]
-        #     self.event_cache.update({ev.resource_id.id: ev})
-        #     self.event_files.update(
-        #         {f: (ev.resource_id.id, mtime)})
-
         # Read from pkl
-        cat = Catalog()
+        cat = []  # We read SparseEvents, so this has to be a list
         for f in copied_files:
-            with open(f, "rb") as _f:
+            with open(f, "rb") as fp:
                 try:
-                    cat += pickle.load(f)
+                    cat.extend(pickle.load(fp))
                 except Exception as e:
                     Logger.exception(f"Could not read from {f} due to {e}")
             # Cleanup
             os.remove(f)
-        for ev in cat:
-            self.event_cache.update({ev.resource_id.id: ev})
+
+        # Put catalog into event cache
+        self.event_cache = {ev.resource_id.id: ev for ev in cat}
+        # Note, don't need to update because we re-read the whole cat every time now
+
+        # If we are clustering this, then we want to find the mainshock cluster
+        if self.config.cluster:
+            # find the mainshock in cat
+            clustered_mainshock = self._get_relocated_mainshock()
+
+            if clustered_mainshock:
+                cluster_id = _get_comment_val("ClusterID", clustered_mainshock)
+                if cluster_id is None:
+                    Logger.warning("Cluster IDs not found in catalog, not clustering")
+                else:
+                    cluster = [ev for ev in cat if
+                               _get_comment_val("ClusterID", ev) == cluster_id]
+                    # Overload event_cache and use just this cluster for plotting
+                    # Have a seperate mainshock cluster that is used for stats calcs
+                    self._mainshock_cluster_ids = {ev.resource_id.id for ev in cluster}
+            else:
+                Logger.warning("Could not find mainshock in cat, not clustering")
+
+        Logger.info(f"Making plots for {len(self.events)} events")
 
         # TODO: Make maps after ellipse plots and scale to the non-outlier catalogue
         Logger.info("Making earthquake maps")
@@ -279,6 +263,7 @@ class Plotter(_Plugin):
                 scaled_mag_relation=self.config.scaled_mag_relation)
         except Exception as e:
             Logger.exception(f"Could not compute lowess magnitude due to {e}")
+            lowess_scaled_mag = np.nan
         Logger.info("Making summary files")
         (geonet_mainshock_mag, geonet_mainshock_mag_uncertainty,
          geonet_mainshock_depth, geonet_mainshock_depth_uncertainty,
@@ -296,6 +281,7 @@ class Plotter(_Plugin):
                 len([t for t in self.template_dict.values() if len(t.origins) == 0]),
                 len([t for t in self.template_dict.values() if len(t.magnitudes) == 0])
             ],
+            mainshock_cluster=self.mainshock_cluster,
             catalog_geonet=self._aftershock_templates,
             catalog_outliers=catalog_outliers,
             length=ellipse_stats['length'],
@@ -413,6 +399,7 @@ class Plotter(_Plugin):
         fig = plot_geometry_with_time(
             times=df.Elapsed_secs.to_list(),
             events=df.N_evs.to_list(),
+            mainshock_cluster=df.N_mainshock_cluster.to_list(),
             geonet_events=df.N_geonet_evs.to_list(),
             mean_depths=df.Mean_depth.where(df.N_evs > min_events).to_list(),
             Relocated_depths=df.Relocated_depth.to_list(),
@@ -485,7 +472,7 @@ class Plotter(_Plugin):
         mainshock = self._get_mainshock()
         (ellipse_stats, catalog_outliers, ellipse_map,
          ellipse_xsection) = ellipse_plots(
-            catalog_origins=self.events,
+            catalog_origins=self.mainshock_cluster,  # self.events,
             mainshock=mainshock,
             relocated_mainshock=self._get_relocated_mainshock(),
             fabric_angle=self.config.fabric_angle,
@@ -493,7 +480,8 @@ class Plotter(_Plugin):
             ellipse_std=self.config.ellipse_std,
             lowess=self.config.lowess,
             lowess_f=self.config.lowess_f,
-            radius_km=self.config.search_radius)
+            radius_km=self.config.search_radius,
+            elapsed_secs=self.now - get_origin_attr(self._get_mainshock(), "time"))
 
         ellipse_map.savefig(
             f'{self.config.out_dir}/confidence_ellipsoid_latest.png',

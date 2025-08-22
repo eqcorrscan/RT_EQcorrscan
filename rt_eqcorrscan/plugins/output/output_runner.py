@@ -14,14 +14,14 @@ import shutil
 import pickle
 import numpy as np
 
-from typing import List, Union, Set
+from typing import List, Union, Set, Tuple
 from collections import OrderedDict
 
 from scipy.spatial.distance import squareform
 from scipy.cluster.hierarchy import linkage, fcluster, dendrogram
 
 from obspy import read_events, Catalog, UTCDateTime
-from obspy.core.event import Event, Comment
+from obspy.core.event import Event
 
 from eqcorrscan.utils.findpeaks import decluster
 from eqcorrscan.utils.clustering import dist_mat_km
@@ -30,31 +30,30 @@ from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
     PLUGIN_CONFIG_MAPPER, _Plugin)
 from rt_eqcorrscan.helpers.sparse_event import (
-    sparsify_catalog, get_origin_attr, get_magnitude_attr, SparseEvent)
+    sparsify_catalog, get_origin_attr, get_magnitude_attr, SparseEvent,
+    SparseComment)
 
 Logger = logging.getLogger(__name__)
 
 
-def cluster_sparse_catalog(sparse_catalog, thresh, show=True):
+def cluster_sparse_catalog(
+    sparse_catalog: List[SparseEvent],
+    thresh: float
+) -> Tuple[List[SparseEvent], np.ndarray]:
     """
     Cluster a catalog by distance only. Adapted from EQcorrscan
 
     Will compute the matrix of physical distances between events and utilize
     the :mod:`scipy.clustering.hierarchy` module to perform the clustering.
 
-    :type catalog: obspy.core.event.Catalog
-    :param catalog: Catalog of events to clustered
-    :type thresh: float
-    :param thresh:
-        Maximum separation, either in km (`metric="distance"`) or in seconds
-        (`metric="time"`)
-    :type metric: str
-    :param metric: Either "distance" or "time"
+    sparse_catalog:
+        Sparse Catalog of events to clustered
+    thresh:
+        Maximum separation in km between centre of clusters
 
-    :returns: list of :class:`obspy.core.event.Catalog` objects
-    :rtype: list
+    returns:
+        Catalog with comments of event id, cluster IDs ordered as input catalog
     """
-    import matplotlib.pyplot as plt
     # Compute the distance matrix and linkage
     dist_mat = dist_mat_km(sparse_catalog)
     dist_vec = squareform(dist_mat)
@@ -62,30 +61,15 @@ def cluster_sparse_catalog(sparse_catalog, thresh, show=True):
 
     # Cluster the linkage using the given threshold as the cutoff
     indices = fcluster(Z, t=thresh, criterion='distance')
-    group_ids = list(set(indices))
-    indices = [(indices[i], i) for i in range(len(indices))]
+    Logger.info(f"Clustered catalog into {len(set(indices))} clusters")
 
-    if show:
-        # Plot the dendrogram...if it's not way too huge
-        dendrogram(Z, color_threshold=thresh, distance_sort='ascending')
-        plt.show()
+    # Put cluster IDs into events as a comment
+    for cluster_id, ev in zip(indices, sparse_catalog):
+        # Remove old cluster id
+        ev.comments = [c for c in ev.comments if "ClusterID" not in c.text]
+        ev.comments.append(SparseComment(text=f"ClusterID: {cluster_id}"))
 
-    # Sort by group id
-    indices.sort(key=lambda tup: tup[0])
-    groups = []
-    for group_id in group_ids:
-        group = []
-        for ind in indices:
-            if ind[0] == group_id:
-                group.append(sparse_catalog[ind[1]])
-            elif ind[0] > group_id:
-                # Because we have sorted by group id, when the index is greater
-                # than the group_id we can break the inner loop.
-                # Patch applied by CJC 05/11/2015
-                groups.append(group)
-                break
-    groups.append(group)
-    return groups
+    return sparse_catalog, indices
 
 
 def similar_picks(
@@ -551,21 +535,8 @@ class Outputter(_Plugin):
         # Do the clustering
         cluster_ids = np.zeros(len(output_events))
         if self.config.cluster and len(output_events) > 1:
-            groups = cluster_sparse_catalog(
+            output_events, cluster_ids = cluster_sparse_catalog(
                 sparse_catalog=output_events, thresh=self.config.search_radius)
-            # put cluster ids in order
-            for cluster_id, group in enumerate(groups):
-                for ev in group:
-                    # Add cluster ID to event as a comment
-                    ev.comments.append(
-                        Comment(text=f"ClusterID: {cluster_id}"))
-                    try:
-                        ev_index = output_events.index(ev)
-                    except ValueError:
-                        Logger.warning("Event not found after grouping - "
-                                       "this shouldn't happen, but ignoring")
-                        continue
-                    cluster_ids[ev_index] = cluster_id
 
         # Output pkl of full catalog - used by plotting for faster IO
         if len(output_events):

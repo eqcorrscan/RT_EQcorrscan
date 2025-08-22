@@ -189,16 +189,18 @@ class ReactorConfig(_ConfigAttribDict):
         "minimum_events_in_bin": 10,
         "catalog_lookup_kwargs": dict(),
         "max_run_length": None,
-        "scaling_relation": "wells_coppersmith_subsurface",
+        "scaling_relation_shallow": "wells_coppersmith_surface",
+        "scaling_relation_deep": "wells_coppersmith_subsurface",
+        "scaling_depth_switch": 5.0,
         "scaling_multiplier": 1.5,
         "minimum_lookup_radius": 50.0,  # Minimum look-up radius in km.
     }
     readonly = []
 
     def __init__(self, *args, **kwargs):
-        from rt_eqcorrscan.reactor.scaling_relations import set_scaling_relation
+        # from rt_eqcorrscan.reactor.scaling_relations import set_scaling_relation
         super().__init__(*args, **kwargs)
-        set_scaling_relation(self.scaling_relation)
+        # set_scaling_relation(self.scaling_relation_deep)
 
 
 class PlotConfig(_ConfigAttribDict):

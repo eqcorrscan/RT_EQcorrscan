@@ -119,7 +119,12 @@ def _eq_map(
         fig.grdimage(grid=grid, cmap=topo_cmap)
     fig.coast(shorelines="1/0.5p", water="white")
 
-    pygmt.makecpt(cmap="plasma", series=[depths.min(), depths.max()])
+    depth_range = [depths.min(), depths.max()]
+    if depth_range[0] == depth_range[1]:
+        depth_range[0] -= 5
+        depth_range[1] += 5
+
+    pygmt.makecpt(cmap="plasma", series=depth_range)
 
     # Plot earthquakes
     fig.plot(
@@ -673,7 +678,11 @@ def _eq_map_summary(
 
         # Plot earthquakes
         if colours == "depth":
-            pygmt.makecpt(cmap="plasma", series=[depths.min(), depths.max()])
+            depth_range = [depths.min(), depths.max()]
+            if depth_range[0] == depth_range[1]:
+                depth_range[0] -= 5
+                depth_range[1] += 5
+            pygmt.makecpt(cmap="plasma", series=depth_range)
             # plot used earthquakes
             fig.plot(
                 x=lons,
@@ -1255,7 +1264,7 @@ def plot_confidence_ellipsoid(
 
     ax_nstd.set_title(
         "Time since trigger = "
-        + str(t).split(".")[0]
+        + str(datetime.timedelta(seconds=t)).split(".")[0]
         + " (days, HH:MM:SS)"
         + "\n"
         + "$2\sigma$ length = "
@@ -1479,7 +1488,7 @@ def plot_confidence_ellipsoid_vertical(
 
     ax_nstd.set_title(
         "Time since trigger = "
-        + str(t).split(".")[0]
+        + str(datetime.timedelta(seconds=t)).split(".")[0]
         + " (days, HH:MM:SS)"
         + "\n"
         + "$2\sigma$ length (width) = "
@@ -1503,6 +1512,7 @@ def ellipse_plots(
     lowess,
     lowess_f,
     radius_km,
+    elapsed_secs,
 ):
 
     # Calculate metrics
@@ -1536,7 +1546,7 @@ def ellipse_plots(
         mainshock=mainshock,
         sd=ellipse_std,
         radius_km=radius_km,
-        t=catalog[-1].origins[-1].time.datetime - mainshock.origins[-1].time.datetime,
+        t=elapsed_secs,
     )
     len_lowess = get_len_LOWESS(x=x_no, y=y_no, frac=lowess_f)
     # write figure to file
@@ -1579,7 +1589,7 @@ def ellipse_plots(
         sd=ellipse_std,
         LOWESS=True,  # TODO: Emily has this hard-coded to True rather than the var?
         frac=lowess_f,
-        t=catalog[-1].origins[-1].time.datetime - mainshock.origins[-1].time.datetime,
+        t=elapsed_secs,
         w=width,
     )
 
@@ -1959,6 +1969,7 @@ def summary_files(
     elapsed_secs,
     catalog_RT,
     cat_counts,
+    mainshock_cluster,
     catalog_geonet,
     catalog_outliers,
     length,
@@ -1986,6 +1997,7 @@ def summary_files(
         "N_evs",
         "No_origin",
         "No_mag",
+        "N_mainshock_cluster",
         "N_geonet_evs",
         "Geonet_no_origin",
         "Geonet_no_mag",
@@ -2013,6 +2025,7 @@ def summary_files(
         "N_evs": str(len(catalog_RT)),
         "No_origin": str(cat_counts[0]),
         "No_mag": str(cat_counts[1]),
+        "N_mainshock_cluster": str(len(mainshock_cluster)),
         "N_geonet_evs": str(len(catalog_geonet)),
         "Geonet_no_origin": str(cat_counts[2]),
         "Geonet_no_mag": str(cat_counts[3]),
@@ -2188,6 +2201,7 @@ def summary_files(
 def plot_geometry_with_time(
     times,
     events,
+    mainshock_cluster,
     geonet_events,
     mean_depths,
     Relocated_depths,
@@ -2225,8 +2239,9 @@ def plot_geometry_with_time(
 
     summary_text = [
         ["Trigger ID:", mainshock.resource_id.id.split("/")[-1]],
-        ["Time since trigger:", f"{elapsed_time}"],
+        ["Time since trigger:", str(elapsed_time).split(".")[0]],
         ["Total events:", f"{events[-1]}"],
+        ["Events in mainshock cluster:", f"{mainshock_cluster[-1]}"],
         ["Fault length:", f"{lengths[-1]:.2f} km"],
         ["Fault azimuth:", f"{azimuths[-1]:.2f} degrees"],
         ["Fault dip:", f"{dips[-1]:.2f} degrees"],
@@ -2279,6 +2294,16 @@ def plot_geometry_with_time(
         linewidth=3,
         label="N events (RT-EQcorrscan)",
         color="firebrick",
+    )
+    ax1.plot(
+        times,
+        mainshock_cluster,
+        linestyle="-",
+        marker=".",
+        markersize="0.01",
+        linewidth=3,
+        label="N events (mainshock cluster)",
+        color="lightcoral",
     )
     ax1.plot(
         times,
@@ -2382,7 +2407,7 @@ def plot_geometry_with_time(
         marker=".",
         markersize="0.01",
         linewidth=3,
-        label="2$\sigma$ Lowess Length",
+        label="Lowess Length",
         color="cadetblue",
     )
     ax3.legend()
@@ -2404,10 +2429,7 @@ def plot_geometry_with_time(
     )
     _additional_plot_elements(ax=ax4, xlim_upper=max_time)
     ax4.legend()
-    if log == True:
-        ax4.set_xlabel("log(seconds since mainshock)")
-    else:
-        ax4.set_xlabel("seconds since mainshock")
+    ax4.set_xlabel("Seconds since mainshock")
     ax4.set_ylabel("Degrees ($\degree$)")
 
     # plot dips
@@ -2427,10 +2449,7 @@ def plot_geometry_with_time(
     )
     _additional_plot_elements(ax=ax5, xlim_upper=max_time)
     ax5.legend()
-    if log == True:
-        ax5.set_xlabel("log(seconds since mainshock)")
-    else:
-        ax5.set_xlabel("seconds since mainshock")
+    ax5.set_xlabel("Seconds since mainshock")
     ax5.set_ylabel("Degrees ($\degree$)")
 
     # plot magnitudes
