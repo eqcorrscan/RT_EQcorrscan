@@ -287,6 +287,21 @@ def get_origin_attr(event: Union[Event, SparseEvent], attr: str):
     return None
 
 
+def get_event_time(event: Event | SparseEvent) -> UTCDateTime | None:
+    try:
+        time = get_origin_attr(event, "time")
+    except Exception as e:
+        Logger.exception(f"Could not get origin time due to {e}")
+        time = None
+    if time is None:
+        pick_times = [p.time for p in event.picks]
+        if len(pick_times) == 0:
+            Logger.error("Could not find a time")
+            return None
+        time = min(pick_times)
+    return time
+
+
 def get_magnitude(event: Union[Event, SparseEvent]) -> Union[Magnitude, SparseMagnitude, None]:
     if len(event.magnitudes) == 0:
         return None

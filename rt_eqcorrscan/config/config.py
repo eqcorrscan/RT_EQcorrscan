@@ -229,7 +229,7 @@ class _PluginConfig(_ConfigAttribDict):
         "wavebank_dir": None,
         "out_dir": None,
         "sleep_interval": 60.,
-        "zero-time": UTCDateTime(1900, 1, 1),
+        "zero_time": UTCDateTime(1900, 1, 1),
     }
     readonly = []
 

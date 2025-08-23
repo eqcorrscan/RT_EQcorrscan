@@ -20,7 +20,7 @@ from obspy.io.nordic.core import read_nordic, write_select
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
     PLUGIN_CONFIG_MAPPER, _Plugin)
-from rt_eqcorrscan.helpers.sparse_event import get_origin_attr
+from rt_eqcorrscan.helpers.sparse_event import get_event_time
 
 
 Logger = logging.getLogger(__name__)
@@ -448,7 +448,7 @@ class Hyp(_Plugin):
                 continue
             _cat_to_locate = Catalog()
             for event in _cat:
-                if get_origin_attr(event[0], "time") < self.config.zero_time:
+                if get_event_time(event) < self.config.zero_time:
                     # Don't worry about events before our trigger event - this
                     # should just be template events
                     Logger.info(f"Skipping {event.resource_id.id}: before trigger")
