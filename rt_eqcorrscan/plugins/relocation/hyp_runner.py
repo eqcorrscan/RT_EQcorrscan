@@ -20,6 +20,7 @@ from obspy.io.nordic.core import read_nordic, write_select
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
     PLUGIN_CONFIG_MAPPER, _Plugin)
+from rt_eqcorrscan.helpers.sparse_event import get_origin_attr
 
 
 Logger = logging.getLogger(__name__)
@@ -264,7 +265,7 @@ def iterate_over_event(
     min_stations: int = 5,
     clean: bool = True,
     remodel: bool = True,
-) -> Event:
+) -> Event | None:
     """ Iteratively remove picks until quality criteria are met. """
     n_stations = len({p.waveform_id.station_code for p in locatable_picks(event)})
     if n_stations < min_stations:
@@ -445,9 +446,20 @@ class Hyp(_Plugin):
                 Logger.error(f"Could not read {infile} due to {e}",
                              exc_info=True)
                 continue
+            _cat_to_locate = Catalog()
+            for event in _cat:
+                if get_origin_attr(event[0], "time") < self.config.zero_time:
+                    # Don't worry about events before our trigger event - this
+                    # should just be template events
+                    Logger.info(f"Skipping {event.resource_id.id}: before trigger")
+                else:
+                    _cat_to_locate += event
+            if len(_cat_to_locate) == 0:
+                processed_files.append(infile)  # Don't re-read this file.
+                continue
             cat_out = Catalog()
             failed = False
-            for event in _cat:
+            for event in _cat_to_locate:
                 try:
                     event_located = iterate_over_event(
                         event=event, inventory=inv,

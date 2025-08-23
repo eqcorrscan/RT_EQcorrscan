@@ -357,21 +357,21 @@ class Outputter(_Plugin):
         self.output_events = declustered_dict
         return
 
-    @property
-    def _mainshock_time(self) -> UTCDateTime:
-        if self.config.mainshock_id is None:
-            return UTCDateTime(0)
-        mainshock = [ev for ev in self.template_dict.values()
-                     if self.config.mainshock_id in ev.resource_id.id]
-        if len(mainshock) == 0:
-            Logger.error(f"Did not find mainshock ({self.config.mainshock_id}) "
-                         f"in templates")
-            return UTCDateTime(0)
-        elif len(mainshock) > 1:
-            Logger.error(f"Found multiple matches for mainshock "
-                         f"({self.config.mainshock_id}) in templates")
-        mainshock.sort(key=lambda ev: get_origin_attr(ev, "time"))
-        return get_origin_attr(mainshock[0], "time")
+    # @property
+    # def _mainshock_time(self) -> UTCDateTime:
+    #     if self.config.mainshock_id is None:
+    #         return UTCDateTime(0)
+    #     mainshock = [ev for ev in self.template_dict.values()
+    #                  if self.config.mainshock_id in ev.resource_id.id]
+    #     if len(mainshock) == 0:
+    #         Logger.error(f"Did not find mainshock ({self.config.mainshock_id}) "
+    #                      f"in templates")
+    #         return UTCDateTime(0)
+    #     elif len(mainshock) > 1:
+    #         Logger.error(f"Found multiple matches for mainshock "
+    #                      f"({self.config.mainshock_id}) in templates")
+    #     mainshock.sort(key=lambda ev: get_origin_attr(ev, "time"))
+    #     return get_origin_attr(mainshock[0], "time")
 
     def core(self, new_files: List[str], cleanup: bool) -> List:
         internal_config = self.config.copy()
@@ -402,7 +402,7 @@ class Outputter(_Plugin):
             event = read_events(file)
             assert len(event) == 1, f"Multiple events in {file} - not supported"
             # We don't want to output events from before our mainshock
-            if get_origin_attr(event[0], "time") < self._mainshock_time - 60:
+            if get_origin_attr(event[0], "time") < self.config.zero_time:
                 # Don't output template events before our trigger event
                 Logger.info(f"Skipping {event.resource_id.id}: before trigger")
                 self._read_files.append(file)  # Don't re-read this file.
@@ -441,7 +441,7 @@ class Outputter(_Plugin):
         template_outputs = dict()
         if internal_config.output_templates:
             for t_file, t_event in self.template_dict.items():
-                if t_file in self._skipped_templates or get_origin_attr(t_event, "time") < self._mainshock_time - 60:
+                if t_file in self._skipped_templates or get_origin_attr(t_event, "time") < self.config.zero_Time:
                     # Don't output template events before our trigger event
                     Logger.debug(f"Skipping template {t_event.resource_id.id}: before trigger")
                     self._skipped_templates.update(t_file)

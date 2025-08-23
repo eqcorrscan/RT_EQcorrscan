@@ -7,6 +7,7 @@ import importlib
 import os
 import sys
 
+from obspy import UTCDateTime
 from yaml import load, dump
 
 try:
@@ -228,6 +229,7 @@ class _PluginConfig(_ConfigAttribDict):
         "wavebank_dir": None,
         "out_dir": None,
         "sleep_interval": 60.,
+        "zero-time": UTCDateTime(1900, 1, 1),
     }
     readonly = []
 
