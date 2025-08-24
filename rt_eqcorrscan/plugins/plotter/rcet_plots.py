@@ -8,6 +8,11 @@ Code for making maps and other plots for aftershock detection.
 
 import pygmt
 import numpy as np
+import logging
+import statsmodels.api as sm
+
+import os
+import csv
 
 from typing import Union, Tuple
 
@@ -30,10 +35,7 @@ from rt_eqcorrscan.helpers.sparse_event import get_origin_attr, \
 
 GEODESIC = pyproj.Geod(ellps="WGS84")
 
-import statsmodels.api as sm
-
-import os
-import csv
+Logger = logging.getLogger(__name__)
 
 
 def _eq_map(
@@ -110,12 +112,18 @@ def _eq_map(
                 frame=["a", f"+t{len(lats)} earthquakes at "
                             f"{timestamp.strftime('%Y/%m/%d %H:%M:%S')}"])
 
-    grid = pygmt.datasets.load_earth_relief(resolution=topo_res, region=region)
-    if hillshade:
+    try:
+        grid = pygmt.datasets.load_earth_relief(resolution=topo_res, region=region)
+    except Exception as e:
+        # This seems to occasionally break - relies on a remote server that isn't perfectly stable?
+        Logger.exception(f"Could not load topography due to {e}")
+        grid = None
+
+    if hillshade and grid is not None:
         dgrid = pygmt.grdgradient(grid=grid, radiance=[0, 80], normalize=True)
         # pygmt.makecpt(cmap=topo_cmap, series=[-1.5, 0.3, 0.01])
         fig.grdimage(grid=grid, shading=dgrid, cmap=topo_cmap)
-    else:
+    elif grid is not None:
         fig.grdimage(grid=grid, cmap=topo_cmap)
     fig.coast(shorelines="1/0.5p", water="white")
 
@@ -667,12 +675,17 @@ def _eq_map_summary(
             region=map_region, projection=f"M?", frame=["af", "wsNE"], panel=[0, 0]
         )
 
-        grid = pygmt.datasets.load_earth_relief(resolution=topo_res, region=map_region)
-        if hillshade:
+        try:
+            grid = pygmt.datasets.load_earth_relief(resolution=topo_res, region=map_region)
+        except Exception as e:
+            # Dodgy connection?
+            Logger.exception(f"Could not load topography due to {e}")
+            grid = None
+        if hillshade and grid is not None:
             dgrid = pygmt.grdgradient(grid=grid, radiance=[0, 80], normalize=True)
             # pygmt.makecpt(cmap=topo_cmap, series=[-1.5, 0.3, 0.01])
             fig.grdimage(grid=grid, shading=dgrid, cmap=topo_cmap, panel=[0, 0])
-        else:
+        elif grid is not None:
             fig.grdimage(grid=grid, cmap=topo_cmap, panel=[0, 0])
         fig.coast(shorelines="1/0.5p")
 
