@@ -10,6 +10,8 @@ import pickle
 import numpy as np
 import pandas as pd
 
+import matplotlib.pyplot as plt
+
 from typing import Iterable, List, Union, Tuple
 
 from obspy import read_events, UTCDateTime, Inventory, read_inventory, Catalog
@@ -329,11 +331,14 @@ class Plotter(_Plugin):
         summary_fig.savefig(
             f"{self.config.out_dir}/Aftershock_extent_depth_map_latest.pdf",
             dpi=self.config.eps_dpi)
+        # PyGMT figure, so shouldn't need to be closed?
+        # plt.close(fig=summary_fig)
 
         Logger.info("Plotting geometry with time")
         self._plot_geometry_with_time(summary_file=summary_filename)
 
         self._add_to_history()
+
         return []
 
     def _add_to_history(self):
@@ -423,6 +428,7 @@ class Plotter(_Plugin):
         fig.savefig(
             f"{self.config.out_dir}/Geometry_with_time_latest.png",
             dpi=self.config.png_dpi)
+        plt.close(fig=fig)
         return
 
     def _magnitude_plots(
@@ -445,6 +451,7 @@ class Plotter(_Plugin):
         fig.savefig(
             f"{self.config.out_dir}/Scaled_Magnitude_Comparison_latest.png",
             dpi=self.config.png_dpi)
+        plt.close(fig=fig)
         with open(f"{self.config.out_dir}/Scaled_Magnitude_comparison_latest.csv", "w") as f:
             f.write(','.join(ref_list))
             f.write("\n")
@@ -465,6 +472,7 @@ class Plotter(_Plugin):
         fig.savefig(
             f"{self.config.out_dir}/focal_sphere_latest.pdf",
             dpi=self.config.eps_dpi)
+        plt.close(fig=fig)
         return
 
     def _ellipse_plots(self) -> dict:
@@ -489,6 +497,7 @@ class Plotter(_Plugin):
         ellipse_map.savefig(
             f'{self.config.out_dir}/confidence_ellipsoid_latest.pdf',
             dpi=self.config.eps_dpi)
+        plt.close(fig=ellipse_map)
 
         ellipse_xsection.savefig(
             f'{self.config.out_dir}/confidence_ellipsoid_'
@@ -498,6 +507,7 @@ class Plotter(_Plugin):
             f'{self.config.out_dir}/confidence_ellipsoid_'
             f'vertical_latest.pdf',
             dpi=self.config.eps_dpi)
+        plt.close(fig=ellipse_xsection)
 
         corners = ellipse_to_rectangle(
             latitude=(mainshock.preferred_origin() or
@@ -541,6 +551,8 @@ class Plotter(_Plugin):
         template_map.savefig(
             f"{self.config.out_dir}/catalog_templates_latest.pdf",
             dpi=self.config.eps_dpi)
+        # PyGMT figure so shouldn't need to be closed?
+        # plt.close(fig=template_map)
         
         detected_map = aftershock_map(
             catalog=self.events,
@@ -561,6 +573,8 @@ class Plotter(_Plugin):
         detected_map.savefig(
             f"{self.config.out_dir}/catalog_RT_latest.pdf",
             dpi=self.config.eps_dpi)
+        # PyGMT figure so shouldn't need to be closed?
+        # plt.close(fig=detected_map)
 
         return
 
