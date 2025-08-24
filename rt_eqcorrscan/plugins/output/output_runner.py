@@ -441,7 +441,7 @@ class Outputter(_Plugin):
         template_outputs = dict()
         if internal_config.output_templates:
             for t_file, t_event in self.template_dict.items():
-                if t_file in self._skipped_templates or get_origin_attr(t_event, "time") < self.config.zero_Time:
+                if t_file in self._skipped_templates or get_origin_attr(t_event, "time") < self.config.zero_time:
                     # Don't output template events before our trigger event
                     Logger.debug(f"Skipping template {t_event.resource_id.id}: before trigger")
                     self._skipped_templates.update(t_file)
