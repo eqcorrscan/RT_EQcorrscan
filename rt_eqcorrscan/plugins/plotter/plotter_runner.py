@@ -339,6 +339,8 @@ class Plotter(_Plugin):
 
         self._add_to_history()
 
+        # Just in case anything crept through (e.g. in a try/except)
+        plt.close("all")
         return []
 
     def _add_to_history(self):
