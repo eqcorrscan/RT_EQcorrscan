@@ -420,11 +420,14 @@ class Reactor(object):
         for tf in tribe_files:
             os.symlink(tf, os.path.join(tribe_dir, os.path.basename(tf)))
         # Add search radius for things that need it
-        for plug in ["plotter", "output"]:
-            if self.config.plugins[plug]:
-                # Roughly convert to km
-                self.config.plugins[plug].search_radius = degrees2kilometers(
-                    region["maxradius"])
+        if self.config.plugins["plotter"]:
+            # Roughly convert to km
+            self.config.plugins["plotter"].search_radius = degrees2kilometers(
+                region["maxradius"])
+        if self.config.plugins["output"]:
+            # Roughly convert to km
+            self.config.plugins["output"].cluster_threshold = degrees2kilometers(
+                region["maxradius"])
 
         self.config.write(
             os.path.join(working_dir, 'rt_eqcorrscan_config.yml'))
