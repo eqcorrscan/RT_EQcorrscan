@@ -37,7 +37,7 @@ MLNZ20_CONSTANTS = {
 
 # --------------- Magnitude functions -----------------------------------------
 
-def get_amplitude_time(amplitude: Amplitude) -> UTCDateTime:
+def get_amplitude_time(amplitude: Amplitude) -> UTCDateTime | None:
     """
     Get the time of the amplitude observation.
 
@@ -49,15 +49,16 @@ def get_amplitude_time(amplitude: Amplitude) -> UTCDateTime:
     -------
 
     """
-    related_pick = amplitude.pick_id.get_referred_object()
-    if related_pick:
-        if related_pick.phase_hint == amplitude.type:
-            # This is actually the pick - EQcorrscan standard
-            return related_pick.time
+    if amplitude.pick_id is not None:
+        related_pick = amplitude.pick_id.get_referred_object()
+        if related_pick:
+            if related_pick.phase_hint == amplitude.type:
+                # This is actually the pick - EQcorrscan standard
+                return related_pick.time
     # Seiscomp standard doesn't give a useful pick, or a time
     if amplitude.time_window:
         return amplitude.time_window.reference
-    raise NotImplementedError(f"No time found for amplitude:\n{amplitude}")
+    return None
 
 def _mliaspei(
     amplitude_mm: float,
@@ -180,23 +181,29 @@ def _ml(
         if amplitude.type not in ["ML", "MLv", "AML", "IAML"]:
             Logger.info(f"Skipping amplitude of type {amplitude.type}")
         # Find the related station
+        pick_time = get_amplitude_time(amplitude)
+        if pick_time is None:
+            Logger.debug(
+                f"No time resolved for "
+                f"{amplitude.waveform_id.get_seed_string()}")
+            continue
         station = inventory.select(
             network=amplitude.waveform_id.network_code or "*",
             station=amplitude.waveform_id.station_code or "*",
             location=amplitude.waveform_id.location_code or "*",
-            time=get_amplitude_time(amplitude))
+            time=pick_time)
         # Note skipping channel - we don't usually care about the
         # channel, and seiscomp doesn't always return full channel
         # codes cos... why would you do that!?
         if len(station) == 0:
-            Logger.warning(
+            Logger.debug(
                 f"No station found for "
                 f"{amplitude.waveform_id.get_seed_string()}")
             continue
         station_locations = {(s.latitude, s.longitude, s.elevation)
                              for n in station for s in n}
         if len(station_locations) > 1:
-            Logger.warning(
+            Logger.debug(
                 f"Found multiple locations for "
                 f"{amplitude.waveform_id.get_seed_string()}")
         lat, lon, elev_m = station_locations.pop()
