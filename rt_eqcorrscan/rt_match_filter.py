@@ -734,7 +734,7 @@ class RealTimeTribe(Tribe):
 
         return
 
-    def _configure_plugins(self, in_dir: str):
+    def _configure_plugins(self, in_dir: str, zero_time: UTCDateTime):
         # Nuance of attribdict means that even key lookup doesn't work as
         # expected, so need to do try/except
         try:
@@ -782,6 +782,7 @@ class RealTimeTribe(Tribe):
             config.wavebank_dir = os.path.abspath(self.wavebank.bank_path)
             config.template_dir = os.path.abspath(
                 self.running_template_dir)
+            config.zero_time = zero_time
             # Output of previous plugin as input to next
             # If plugin came after plot, then plugin in dir should be plot plugin in dir
             if plugin_name not in ["plotter"]:
@@ -945,7 +946,8 @@ class RealTimeTribe(Tribe):
         # Add config options for plugins as needed
         in_dir = detect_directory
         if self.plugin_config:
-            plugin_out_dir = self._configure_plugins(in_dir=in_dir)
+            plugin_out_dir = self._configure_plugins(
+                in_dir=in_dir, zero_time=backfill_to)
             # Start any plugins
             self._start_plugins()
 

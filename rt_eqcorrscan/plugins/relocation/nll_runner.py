@@ -25,6 +25,7 @@ from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import _Plugin, PLUGIN_CONFIG_MAPPER
 from rt_eqcorrscan.plugins.relocation.helpers.extract_vmodel import (
     RotatedTransformer, _round_up, _round_down)
+from rt_eqcorrscan.helpers.sparse_event import get_event_time
 
 MINDEPTH, MAXDEPTH = -3.0, 500.0
 PICK_UNCERTAINTY = 0.2
@@ -527,12 +528,24 @@ class NLL(_Plugin):
     def core(self, new_files: Iterable, cleanup: bool = False) -> List:
         internal_config = self.config.copy()
         out_dir = internal_config.pop("out_dir")
+        located_files = []
 
         cat_to_locate, event_file_mapper = Catalog(), dict()
         Logger.info("Reading events")
         for f in tqdm.tqdm(new_files):
             cat = read_events(f)
-            cat_to_locate += cat
+            _drops = 0
+            for event in cat:
+                if get_event_time(event) < self.config.zero_time:
+                    # Don't worry about events before our trigger event - this
+                    # should just be template events
+                    Logger.info(f"Skipping {event.resource_id.id}: before trigger")
+                    _drops += 1
+                else:
+                    cat_to_locate += event
+            if _drops == len(cat):
+                # Add this file to "located files" to avoid re-reading
+                located_files.append(f)
             # Cope with possibility of multiple events in one file.
             event_file_mapper.update({f: [ev.resource_id.id.split('/')[-1]
                                           for ev in cat]})
@@ -546,10 +559,13 @@ class NLL(_Plugin):
                     continue
                 with open(t_file, "rb") as f:
                     t = pickle.load(f)
+                self.located_templates.append(t_file)
+                if get_event_time(t.event) < self.config.zero_time:
+                    Logger.info(f"Skipping relocation of {t.name}, before {self.config.zero_time}")
+                    continue
                 cat_to_locate += t.event
                 event_file_mapper.update(
                     {t_file: [t.event.resource_id.id.split('/')[-1]]})
-                self.located_templates.append(t_file)
                 i += 1
             Logger.info(f"Will relocate {i} templates")
 
@@ -560,7 +576,6 @@ class NLL(_Plugin):
         cat_located_dict = {ev.resource_id.id.split('/')[-1]: ev
                             for ev in cat_located}
         Logger.info(f"Event ids located: {cat_located_dict.keys()}")
-        located_files = []
         for f, eids in event_file_mapper.items():
             Logger.info(f"Looking for {eids} in located events")
             subcat = Catalog()

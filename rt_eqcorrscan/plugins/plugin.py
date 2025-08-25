@@ -222,6 +222,7 @@ class _Plugin(ABC):
             tic = time.time()
 
             # Check for changed config
+            Logger.info("Checking config")
             new_config = self._read_config(config_file=self._config_file)
             new_in_dir = new_config.get("in_dir")
             new_out_dir = new_config.get("out_dir")
@@ -252,12 +253,14 @@ class _Plugin(ABC):
                 self.config = new_config
                 Logger.warning("Not re-running setup!")
 
+            Logger.info("Checking for murder weapon")
             self.kill_watcher.check_for_updates()
             if len(self.kill_watcher):
                 Logger.critical(f"{self.name} plugin killed")
                 Logger.critical(f"Found files: {self.kill_watcher}")
                 break
 
+            Logger.info("Looking for updates")
             new_file_dict = dict()
             for _in_dir, watcher in self.watchers.items():
                 watcher.check_for_updates()
@@ -278,6 +281,7 @@ class _Plugin(ABC):
             # TODO: If input files are removed, remove the associated output
             #  files as well - needs a database of input file linked to output file.
             new_files = list(itertools.chain.from_iterable(new_file_dict.values()))
+            Logger.info(f"Found {len(new_files)} files to work with")
             try:
                 processed_files = self.core(new_files=new_files, cleanup=cleanup)
             except Exception as e:
@@ -286,6 +290,7 @@ class _Plugin(ABC):
                         self.name, e),
                     exc_info=True)
                 processed_files = []
+            Logger.info(f"Core function finished - {len(processed_files)} files processed.")
 
             # Associate file with correct watcher
             processed_files = {

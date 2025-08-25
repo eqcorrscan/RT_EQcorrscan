@@ -548,7 +548,7 @@ def process_output_catalog(
 
     catalog_out, relocated, not_relocated = Catalog(), Catalog(), Catalog()
     for key, ev in catalog_dict.items():
-        gc_origin, _relocated = gc_origins.get(key)
+        gc_origin, _relocated = gc_origins.get(key, (None, None))
         if gc_origin is None or not _relocated:
             Logger.warning(f"Event {key} did not relocate")
             not_relocated += ev
@@ -660,7 +660,7 @@ def read_growclust(
 
     Returns
     -------
-    Dictionary of origins and whether they weere relocated keyed by event id.
+    Dictionary of origins and whether they were relocated keyed by event id.
     """
     with open(fname, "r") as f:
         lines = f.read().splitlines()
@@ -686,6 +686,8 @@ def _cleanup():
 
 class GrowClust(_Plugin):
     _cc_file = "dt.cc"
+    inventory_cache = (None, None, None)  # Tuple of (inventory, file, mtime)
+
     def __init__(self, config_file: str, name: str = "GrowClustRunner"):
         super().__init__(config_file=config_file, name=name)
         self.in_memory_wavebank = InMemoryWaveBank(self.config.wavebank_dir)
@@ -815,13 +817,36 @@ class GrowClust(_Plugin):
         workers: int = None,
         cleanup: bool = True
     ) -> List:
+
         workers = workers or 1
         internal_config = self.config.copy()
         # indir = internal_config.pop("in_dir")
         outdir = internal_config.pop("out_dir")
         station_file = internal_config.pop("station_file")
-        inv = read_inventory(station_file)
+
+        # Load the stations
+        Logger.info("Getting inventory")
+        read_inv = False
+        if self.inventory_cache[2] is not None:
+            # We have read the inventory file, check if we need to re-read
+            if self.inventory_cache[1] != station_file:
+                # Different file, we need to read
+                read_inv = True
+            elif os.path.getmtime(station_file) > self.inventory_cache[2]:
+                # Updated, we need to read
+                read_inv = True
+        else:
+            # No file has been read previously
+            read_inv = True
+        if read_inv:
+            self.inventory_cache = (
+                read_inventory(station_file),
+                station_file,
+                os.path.getmtime(station_file))
+
+        inv = self.inventory_cache[0]
         used_stations = {s.code for n in inv for s in n}
+
         growclust_script = internal_config.pop(
             "growclust_script", GROWCLUST_SCRIPT)
         vmodel_file = internal_config.pop(
