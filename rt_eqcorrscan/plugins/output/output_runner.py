@@ -38,7 +38,8 @@ Logger = logging.getLogger(__name__)
 
 def cluster_sparse_catalog(
     sparse_catalog: List[SparseEvent],
-    thresh: float
+    thresh: float,
+    cluster_method: str = "complete",
 ) -> Tuple[List[SparseEvent], np.ndarray]:
     """
     Cluster a catalog by distance only. Adapted from EQcorrscan
@@ -50,6 +51,9 @@ def cluster_sparse_catalog(
         Sparse Catalog of events to clustered
     thresh:
         Maximum separation in km between centre of clusters
+    cluster_method:
+        Heirachical clustering method to use. Can be one of:
+        ["single", "complete", "average", "weighted", "centroid", "median", "ward"]
 
     returns:
         Catalog with comments of event id, cluster IDs ordered as input catalog
@@ -57,7 +61,7 @@ def cluster_sparse_catalog(
     # Compute the distance matrix and linkage
     dist_mat = dist_mat_km(sparse_catalog)
     dist_vec = squareform(dist_mat)
-    Z = linkage(dist_vec, method='average')
+    Z = linkage(dist_vec, method=cluster_method)
 
     # Cluster the linkage using the given threshold as the cutoff
     indices = fcluster(Z, t=thresh, criterion='distance')
@@ -313,7 +317,8 @@ class OutputConfig(_PluginConfig):
         "mainshock_id": None,
         "trig_int": 2.0,
         "cluster": True,
-        "search_radius": 100.0,
+        "cluster_threshold": 100.0,
+        "cluster_method": "complete",
     })
     readonly = []
 
@@ -536,7 +541,9 @@ class Outputter(_Plugin):
         cluster_ids = np.zeros(len(output_events))
         if self.config.cluster and len(output_events) > 1:
             output_events, cluster_ids = cluster_sparse_catalog(
-                sparse_catalog=output_events, thresh=self.config.search_radius)
+                sparse_catalog=output_events,
+                thresh=self.config.cluster_threshold,
+                cluster_method=self.config.cluster_method)
 
         # Output pkl of full catalog - used by plotting for faster IO
         if len(output_events):
