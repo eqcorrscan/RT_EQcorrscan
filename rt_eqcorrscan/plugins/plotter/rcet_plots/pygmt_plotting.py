@@ -488,28 +488,28 @@ def _eq_map_summary(
 
         fig.image(
             imagefile=os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                 "logos/EQcorrscan_logo.png"),
             position="g10/0+w3c+jCM",
             box=False,
         )
         fig.image(
             imagefile=os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                 "logos/VUW Logo.png"),
             position="g10/1.5+w3c+jCM",
             box=False,
         )
         fig.image(
             imagefile=os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                 "logos/Earth_sci_NZ.jpeg"),
             position="g10/3.8+w2c+jCM",
             box=False,
         )
         fig.image(
             imagefile=os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                 "logos/RCET_logo_transparent.png"),
             position="g10/6+w3c+jCM",
             box=False,
