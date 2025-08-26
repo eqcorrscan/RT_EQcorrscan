@@ -66,7 +66,7 @@ def aftershock_map(
     fig = _eq_map(
         lats=cat_df.Latitude.to_numpy(),
         lons=cat_df.Longitude.to_numpy(),
-        depths=cat_df["Depth (km)"].to_numpy() / 1000.0,
+        depths=cat_df["Depth (km)"].to_numpy(),
         mags=mags,
         middle_lon=mainshock_origin.longitude,
         middle_lat=mainshock_origin.latitude,
@@ -138,12 +138,12 @@ def summary_map(
     fig = _eq_map_summary(
         lats=cat_df.Latitude.to_numpy(),
         lons=cat_df.Longitude.to_numpy(),
-        depths=cat_df['Depth (km)'].to_numpy() / 1000.0,
+        depths=cat_df['Depth (km)'].to_numpy(),
         mags=mags,
         ref_mags=ref_mags,
         lats_o=outlier_df.Latitude.to_numpy(),
         lons_o=outlier_df.Longitude.to_numpy(),
-        depths_o=outlier_df["Depth (km)"].to_numpy() / 1000.0,
+        depths_o=outlier_df["Depth (km)"].to_numpy(),
         mags_o=outlier_mags,
         station_lons=inv_df.Longitude.to_numpy(),
         station_lats=inv_df.Latitude.to_numpy(),
