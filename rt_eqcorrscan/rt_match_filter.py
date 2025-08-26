@@ -1037,7 +1037,7 @@ class RealTimeTribe(Tribe):
                     self._running = True  # Lock tribe
                     start_time = UTCDateTime.now()
                     st = self.rt_client.stream.split().merge(method=1)
-                    Logger.debug(f"RTTribe received this stream from client:\n{st.__str__(extended=True)}")
+                    Logger.info(f"RTTribe received this stream from client:\n{st.__str__(extended=True)}")
                     # Add in past data if needed - will be trimmed later
                     Logger.debug(f"Past stream is:\n{past_st.__str__(extended=True)}")
                     st = (st + past_st).merge(method=1)  # Keep overlapping data

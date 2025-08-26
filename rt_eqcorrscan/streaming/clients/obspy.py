@@ -548,6 +548,7 @@ class RealTimeClient(_StreamingClient):
             st.trim(starttime=now - (2 * self.buffer_capacity), endtime=now)
 
             for tr in st:
+                Logger.info(f"Putting {tr.id}, {tr.stats.starttime} -- {tr.stats.endtime} into buffer")
                 self.on_data(tr)
                 time.sleep(0.0001)
 
@@ -590,7 +591,8 @@ class RealTimeClient(_StreamingClient):
             elapsed += time.perf_counter() - tic
         self.streaming = False
         # shut down threadpool, we done.
-        executor.shutdown(wait=False, cancel_futures=True)
+        if executor:
+            executor.shutdown(wait=False, cancel_futures=True)
         if self.pre_empt_data:
             self.client.background_stop()
         return

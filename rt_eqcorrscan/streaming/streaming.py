@@ -194,14 +194,17 @@ class _StreamingClient(ABC):
     def stream(self) -> Stream:
         try:
             self.__stream = self._stream_queue.get(block=False)
+            Logger.info("Got stream from queue")
             # Need to put it back for future Processes!
             try:
                 self._stream_queue.put(self.__stream, block=False)
+                Logger.info("Put stream back into queue")
             except Full:
                 # Something else has added while we were not looking! Okay
+                Logger.info("Another process has queued a stream - not putting back in")
                 pass
         except Empty:
-            Logger.debug("No stream in queue")
+            Logger.info("No stream in queue")
             pass
         # If the queue is empty then return current state - this happens
         # if the queue has not been updated since we last checked.
@@ -211,7 +214,7 @@ class _StreamingClient(ABC):
     def stream(self, st: Stream):
         try:
             self._stream_queue.put(st, block=False)
-            Logger.debug("Put stream into queue")
+            Logger.info("Put stream into queue")
         except Full:
             # Empty it!
             try:
@@ -221,7 +224,7 @@ class _StreamingClient(ABC):
                 pass
             try:
                 self._stream_queue.put(st, timeout=self._timeout)
-                Logger.debug("Put stream into queue")
+                Logger.info("Put stream into queue after emptying queue")
             except Full:
                 Logger.warning(
                     "Could not update the state of stream - queue is full")
@@ -361,17 +364,17 @@ class _StreamingClient(ABC):
             New data.
         """
         self.last_data = UTCDateTime.now()
-        Logger.debug(f"Received trace: {trace}")
-        Logger.debug("Packet of {0} samples for {1}".format(
+        Logger.info(f"Received trace: {trace}")
+        Logger.info("Packet of {0} samples for {1}".format(
             trace.stats.npts, trace.id))
         # Put data into queue - get the run process to handle it!
         if self.streaming:
             self._incoming_queue.put(trace)
-            Logger.debug("Added trace to queue")
+            Logger.info("Added trace to queue")
         else:
             # If the streamer is not running somewhere else, then we have to
             # add data in this Process.
-            Logger.debug("Not streaming - will add directly now.")
+            Logger.info("Not streaming - will add directly now.")
             self._add_trace_to_buffer(trace)
 
     def _add_data_from_queue(self):
@@ -383,13 +386,13 @@ class _StreamingClient(ABC):
         while True:
             try:
                 trace = self._incoming_queue.get(block=False)
-                Logger.debug(f"Extracted trace from incoming queue: \n{trace}")
+                Logger.info(f"Extracted trace from incoming queue: \n{trace}")
                 traces.append(trace)
             except Empty:
-                Logger.debug("Incoming data queue is empty")
+                Logger.info("Incoming data queue is empty")
                 break
         if len(traces) == 0:
-            Logger.debug("No traces extracted from incoming queue")
+            Logger.info("No traces extracted from incoming queue")
             return
         for trace in traces:
             self._add_trace_to_buffer(trace)
@@ -405,7 +408,7 @@ class _StreamingClient(ABC):
         """
 
         with self.lock:
-            Logger.debug(f"Adding data: Lock status: {self.lock}")
+            Logger.info(f"Adding data: Lock status: {self.lock}")
             try:
                 self.buffer.add_stream(trace)
             except Exception as e:
@@ -418,9 +421,9 @@ class _StreamingClient(ABC):
             trace.data = trace.data.astype(np.int32)
         Logger.debug("Buffer contains {0}".format(self.buffer))
         Logger.debug(f"Finished adding data: Lock status: {self.lock}")
-        Logger.debug(f"Buffer stream: \n{self.buffer.stream}")
+        Logger.info(f"Buffer stream: \n{self.buffer.stream}")
         self.stream = self.buffer.stream
-        Logger.debug(f"Stream: \n{self.stream}")
+        Logger.info(f"Stream: \n{self.stream}")
 
     def on_terminate(self) -> Stream:  # pragma: no cover
         """
