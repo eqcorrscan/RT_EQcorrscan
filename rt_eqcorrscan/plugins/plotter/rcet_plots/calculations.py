@@ -108,14 +108,11 @@ def mainshock_mags(mainshock, RT_mainshock):
 
     try:
         RT_mainshock_depth_uncertainty = round(
-            (
-                RT_mainshock.preferred_origin() or RT_mainshock.origins[-1]
-            ).depth_errors.uncertainty
-            / 1000,
+            (RT_mainshock.preferred_origin() or RT_mainshock.origins[-1]).depth_errors.uncertainty / 1000,
             1,
         )
     except (IndexError, TypeError):
-        RT_mainshock_depth_uncertainty = geonet_mainshock_depth_uncertainty
+        RT_mainshock_depth_uncertainty = 0.0
 
     return (
         geonet_mainshock_mag,
