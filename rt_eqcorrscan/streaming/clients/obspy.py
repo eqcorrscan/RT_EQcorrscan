@@ -470,10 +470,10 @@ class RealTimeClient(_StreamingClient):
                 "starttime": last_query_start,
                 "endtime": now - jitter})
         self.bulk = bulk
-        Logger.info(f"Bulk request using: {bulk}")
+        Logger.debug(f"Bulk request using: {bulk}")
         if self.pre_empt_data:
             # Use inbuilt bulk method - more efficient
-            Logger.info("Pre-empted data: Using get_waveforms_bulk")
+            Logger.debug("Pre-empted data: Using get_waveforms_bulk")
             return self.client.get_waveforms_bulk(
                 [(b['network'], b['station'], b['location'], b['channel'],
                   b['starttime'], b['endtime'])
@@ -534,7 +534,7 @@ class RealTimeClient(_StreamingClient):
         while not self._stop_called:
             tic = time.perf_counter()
             now = query_starttime + (elapsed * self.speed_up)
-            Logger.info(f"After {elapsed * self.speed_up:.1f} s, the time is now {now}")
+            Logger.debug(f"After {elapsed * self.speed_up:.1f} s, the time is now {now}")
 
             Logger.info(f"Requesting data between {last_query_start} and {now}")
             st, query_passed = self._collect_bulk(
@@ -549,7 +549,7 @@ class RealTimeClient(_StreamingClient):
             st = st.trim(starttime=now - (2 * self.buffer_capacity), endtime=now)
 
             for tr in st:
-                Logger.info(f"Putting {tr.id}, {tr.stats.starttime} -- {tr.stats.endtime} into buffer")
+                Logger.debug(f"Putting {tr.id}, {tr.stats.starttime} -- {tr.stats.endtime} into buffer")
                 self.on_data(tr)
                 time.sleep(0.0001)
 
