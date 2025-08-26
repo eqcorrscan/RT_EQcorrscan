@@ -318,7 +318,7 @@ class OutputConfig(_PluginConfig):
         "trig_int": 2.0,
         "cluster": True,
         "cluster_threshold": 100.0,
-        "cluster_method": "complete",
+        "cluster_method": "average",
     })
     readonly = []
 
