@@ -136,15 +136,17 @@ def synthesise_real_time(
             for c in s:
                 n_chans += 1
 
+    n_chan = 0
     for network in inventory:
-        for n_sta, station in enumerate(network):
+        for station in network:
             for channel in station:
+                n_chan += 1
                 _starttime = trigger_origin.time - (config.template.process_len * 2)
                 _endtime = _starttime + detection_runtime
                 while _starttime <= _endtime:
                     Logger.info(
                         f"Downloading for {network.code}.{station.code}.{channel.location_code}.{channel.code} "
-                        f"({n_sta + 1} of {n_chans}) "
+                        f"({n_chan} of {n_chans}) "
                         f"between {_starttime} and {_starttime + download_chunk_size}")
                     # check if the waveform already exists in the wavebank
                     st = None
