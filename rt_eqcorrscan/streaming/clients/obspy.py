@@ -470,16 +470,17 @@ class RealTimeClient(_StreamingClient):
                 "starttime": last_query_start,
                 "endtime": now - jitter})
         self.bulk = bulk
+        Logger.info(f"Bulk request using: {bulk}")
         if self.pre_empt_data:
             # Use inbuilt bulk method - more efficient
-            Logger.debug("Using get_waveforms_bulk")
+            Logger.info("Pre-empted data: Using get_waveforms_bulk")
             return self.client.get_waveforms_bulk(
                 [(b['network'], b['station'], b['location'], b['channel'],
                   b['starttime'], b['endtime'])
                  for b in bulk]), True
         if executor is None:
             for _bulk in bulk:
-                Logger.debug(f"Getting data for {_bulk}")
+                Logger.info(f"Getting data for {_bulk}")
                 try:
                     _st = self.client.get_waveforms(**_bulk)
                 except Exception as e:
@@ -489,7 +490,7 @@ class RealTimeClient(_StreamingClient):
                     continue
                 else:
                     for tr in _st:
-                        Logger.debug(f"Got {tr}")
+                        Logger.info(f"Got {tr}")
                         st += tr
             st = st.merge(method=1)
         else:
