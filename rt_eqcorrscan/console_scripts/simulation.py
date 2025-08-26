@@ -181,6 +181,9 @@ def synthesise_real_time(
                     _starttime += download_chunk_size
                     wavebank.put_waveforms(st)
 
+    df = wavebank.get_availability_df()
+    Logger.info(f"Have a wavebank with the following data: \n{df}")
+
     if pre_empt_len:
         pre_empt_data = True
     else:

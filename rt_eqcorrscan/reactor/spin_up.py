@@ -160,7 +160,7 @@ def run(
         # Download the required data and write it to disk.
         endtime = UTCDateTime.now() - synthetic_time_offset  # Adjust for simulations
         Logger.info(
-            f"Backfilling between {backfill_to} and {endtime}")
+            f"Backfilling between {backfill_to} and {endtime} using client: {backfill_client}")
         st = Stream()
         for network in inventory:
             for station in network:
@@ -169,7 +169,7 @@ def run(
                         f"Downloading for {network.code}.{station.code}."
                         f"{channel.location_code}.{channel.code}")
                     try:
-                        st += backfill_client.get_waveforms(
+                        _st = backfill_client.get_waveforms(
                             network=network.code, station=station.code,
                             location=channel.location_code,
                             channel=channel.code,
@@ -178,6 +178,10 @@ def run(
                     except Exception as e:
                         Logger.error(e)
                         continue
+                    else:
+                        for tr in _st:
+                            Logger.info(f"Got {tr}")
+                            st += tr
         st = st.merge()
         Logger.info(f"Downloaded {len(st)} for backfill")
         if len(st) == 0:
