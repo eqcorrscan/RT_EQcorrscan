@@ -180,7 +180,8 @@ def synthesise_real_time(
                         continue
                     _starttime += download_chunk_size
                     wavebank.put_waveforms(st)
-
+    Logger.info("Updating index of wavebank")
+    wavebank.update_index()
     df = wavebank.get_availability_df()
     Logger.info(f"Have a wavebank with the following data: \n{df}")
 
