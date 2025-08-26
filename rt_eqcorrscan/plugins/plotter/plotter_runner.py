@@ -7,30 +7,32 @@ import logging
 import shutil
 import glob
 import pickle
+import json
+import subprocess
 import numpy as np
 import pandas as pd
 
 import matplotlib.pyplot as plt
 
-from typing import Iterable, List, Union, Tuple
+from typing import Iterable, List, Union
 
-from obspy import read_events, UTCDateTime, Inventory, read_inventory, Catalog
+from obspy import UTCDateTime, Inventory, read_inventory
 from obspy.core.event import Event
-from obspy.geodetics import kilometer2degrees
 
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
     PLUGIN_CONFIG_MAPPER, _Plugin)
 from rt_eqcorrscan.plugins.output.output_runner import _get_comment_val
-from rt_eqcorrscan.helpers.sparse_event import sparsify_catalog, SparseEvent, \
-    get_origin_attr, get_magnitude_attr
-from rt_eqcorrscan.plugins.plotter.rcet_plots import (
-    aftershock_map, summary_files, ellipse_plots,
-    ellipse_to_rectangle, focal_sphere_plots, plot_scaled_magnitudes,
-    make_scaled_mag_list, mainshock_mags, output_aftershock_map,
-    plot_geometry_with_time,
-)
-from rt_eqcorrscan.plugins.output.output_runner import template_possible_self_dets
+from rt_eqcorrscan.helpers.sparse_event import SparseEvent, get_origin_attr
+
+from rt_eqcorrscan.plugins.plotter.rcet_plots.rcet_plots import (
+    summary_files, ellipse_plots, focal_sphere_plots,
+    plot_scaled_magnitudes, make_scaled_mag_list, plot_geometry_with_time)
+from rt_eqcorrscan.plugins.plotter.rcet_plots.calculations import (
+    ellipse_to_rectangle, mainshock_mags)
+
+from rt_eqcorrscan.plugins.output.output_runner import (
+    template_possible_self_dets, catalog_to_csv)
 
 
 Logger = logging.getLogger(__name__)
@@ -219,12 +221,6 @@ class Plotter(_Plugin):
         Logger.info(f"Making plots for {len(self.events)} events")
 
         # TODO: Make maps after ellipse plots and scale to the non-outlier catalogue
-        Logger.info("Making earthquake maps")
-        try:
-            self._aftershock_maps()
-        except Exception as e:
-            Logger.exception(f"Could not make aftershock maps due to {e}",
-                             exc_info=True)
         Logger.info("Computing ellipse statistics and plotting")
         try:
             ellipse_stats, catalog_outliers, corners = self._ellipse_plots()
@@ -303,39 +299,13 @@ class Plotter(_Plugin):
             geonet_mainshock_depth_uncertainty=geonet_mainshock_depth_uncertainty,
             output_dir=out_dir)
 
-        Logger.info("Making summary figure")
-        summary_fig = output_aftershock_map(
-            catalog=self.events,
-            reference_catalog=self._aftershock_templates,
-            outlier_catalog=catalog_outliers,
-            mainshock=self._get_mainshock(),
-            RT_mainshock=self._get_relocated_mainshock(),
-            corners=corners,
-            cat_counts=[
-                len([ev for ev in self.events if len(ev.origins) == 0]),
-                len([ev for ev in self.events if len(ev.magnitudes) == 0]),
-                len([t for t in self.template_dict.values() if len(t.origins) == 0]),
-                len([t for t in self.template_dict.values() if len(t.magnitudes) == 0])
-            ],
-            width=20,
-            topo_res="03s",
-            topo_cmap="terra",
-            inventory=self.inventory,
-            hillshade=False,
-            colours='depth',
-            search_radius_deg=kilometer2degrees(self.config.search_radius))
-
-        summary_fig.savefig(
-            f"{self.config.out_dir}/Aftershock_extent_depth_map_latest.png",
-            dpi=self.config.png_dpi)
-        summary_fig.savefig(
-            f"{self.config.out_dir}/Aftershock_extent_depth_map_latest.pdf",
-            dpi=self.config.eps_dpi)
-        # PyGMT figure, so shouldn't need to be closed?
-        # plt.close(fig=summary_fig)
-
         Logger.info("Plotting geometry with time")
         self._plot_geometry_with_time(summary_file=summary_filename)
+
+        Logger.info("Running pygmt codes")
+        self._pygmt_plots(
+            catalog_outliers=catalog_outliers,
+            corners=corners)
 
         self._add_to_history()
 
@@ -398,6 +368,89 @@ class Plotter(_Plugin):
             return self_dets[0]
 
     #### Plotting methods
+    def _pygmt_plots(self, catalog_outliers, corners):
+        # Write out state of events
+        temp_dir = f"{self.config.out_dir}/.pygmt_files"
+        if os.path.isdir(temp_dir):
+            shutil.rmtree(temp_dir)
+        os.makedirs(temp_dir)
+
+        # Write catalogs
+        catalog_csv, catalog_outliers_csv, template_csv = (
+            f"{temp_dir}/catalog.csv",
+            f"{temp_dir}/outliers.csv",
+            f"{temp_dir}/templates.csv")
+
+        catalog_to_csv(catalog=self.events, csv_filename=catalog_csv)
+        catalog_to_csv(catalog=self._aftershock_templates, csv_filename=template_csv)
+        catalog_to_csv(catalog=catalog_outliers, csv_filename=catalog_outliers_csv)
+
+        # Write mainshocks
+        mainshock = self._get_mainshock()
+        if mainshock and isinstance(mainshock, SparseEvent):
+            mainshock = mainshock.to_obspy()
+        relocated_mainshock = self._get_relocated_mainshock()
+        if relocated_mainshock and isinstance(relocated_mainshock, SparseEvent):
+            relocated_mainshock = relocated_mainshock.to_obspy()
+
+        relocated_mainshock_qml, mainshock_qml = None, None
+        if relocated_mainshock:
+            relocated_mainshock_qml = f"{temp_dir}/relocated_mainshock.xml"
+            relocated_mainshock.write(relocated_mainshock_qml, format="QUAKEML")
+        if mainshock:
+            mainshock_qml = f"{temp_dir}/mainshock.xml"
+            mainshock.write(mainshock_qml, format="QUAKEML")
+
+        # Write stations
+        inv_csv = f"{temp_dir}/inventory.csv"
+        sta_names = [s.code for net in self.inventory for s in net]
+        sta_lats = [s.latitude for net in self.inventory for s in net]
+        sta_lons = [s.longitude for net in self.inventory for s in net]
+        sta_df = pd.DataFrame(data={"Code": sta_names, "Latitude": sta_lats, "Longitude": sta_lons})
+        sta_df.to_csv(inv_csv)
+
+        # Write corners
+        corners_file = f"{temp_dir}/corners.json"
+        with open(corners_file, "w") as f:
+            json.dump(corners, f)
+
+        # Call the plotting script
+        args = [
+            "--eps-dpi", self.config.eps_dpi,
+            "--png-dpi", self.config.png_dpi,
+            "--out-dir", self.config.out_dir,
+            "--template-csv", template_csv,
+            "--catalog-csv", catalog_csv,
+            "--outlier-csv", catalog_outliers_csv,
+            "--inventory-csv", inv_csv,
+            "--search-radius", self.config.search_radius,
+            "--timestamp", self.now,
+            "--corners-json", corners_file
+        ]
+        if relocated_mainshock_qml:
+            args.extend(["--relocated-mainshock-qml", relocated_mainshock_qml])
+        if mainshock_qml:
+            args.extend(["--mainshock-qml", mainshock_qml])
+
+        executable_path = shutil.which("rteqcorrscan-plugin-pygmt")
+        if executable_path is None:
+            Logger.error(f"Could not find rteqcorrscan-plugin-pygmt")
+        else:
+            Logger.info(f"Running pygmt plots from {executable_path}")
+            _call = ["rteqcorrscan-plugin-pygmt"]
+            _call.extend(args)
+            _call = [str(item) for item in _call]
+
+            Logger.info("Running `{call}`".format(call=" ".join(_call)))
+            try:
+                subprocess.run(_call, timeout=600.0)
+            except subprocess.TimeoutExpired:
+                Logger.error(f"Could not make pygmt plots. Timed out")
+
+        if os.path.isdir(temp_dir):
+            shutil.rmtree(temp_dir)
+        return
+
     def _plot_geometry_with_time(self, summary_file: str, min_events: int = 5):
         # Arguments come from summary file apparently, so lets see if we can
         # guess what Emily thinks should be in here.
@@ -528,57 +581,6 @@ class Plotter(_Plugin):
 
         # TODO: Output corners to json?
         return ellipse_stats, catalog_outliers, corners
-
-    def _aftershock_maps(self):
-        """ Make core aftershock maps. """
-        now = UTCDateTime.now()
-        mainshock = self._get_mainshock()
-
-        template_map = aftershock_map(
-            catalog=self.template_dict.values(),
-            mainshock=mainshock,
-            relocated_mainshock=None,
-            search_radius=self.config.search_radius,
-            inventory=self.inventory,
-            topo_res="03s",
-            topo_cmap="grayC",
-            hillshade=False,
-            pad=10.0,
-            timestamp=self.now,
-        )
-
-        template_map.savefig(
-            f"{self.config.out_dir}/catalog_templates_latest.png",
-            dpi=self.config.png_dpi)
-        template_map.savefig(
-            f"{self.config.out_dir}/catalog_templates_latest.pdf",
-            dpi=self.config.eps_dpi)
-        # PyGMT figure so shouldn't need to be closed?
-        # plt.close(fig=template_map)
-        
-        detected_map = aftershock_map(
-            catalog=self.events,
-            mainshock=mainshock,
-            relocated_mainshock=self._get_relocated_mainshock(),
-            search_radius=self.config.search_radius,
-            inventory=self.inventory,
-            topo_res="03s",
-            topo_cmap="grayC",
-            hillshade=False,
-            pad=10.0,
-            timestamp=self.now,
-        )
-
-        detected_map.savefig(
-            f"{self.config.out_dir}/catalog_RT_latest.png",
-            dpi=self.config.png_dpi)
-        detected_map.savefig(
-            f"{self.config.out_dir}/catalog_RT_latest.pdf",
-            dpi=self.config.eps_dpi)
-        # PyGMT figure so shouldn't need to be closed?
-        # plt.close(fig=detected_map)
-
-        return
 
 
 if __name__ == "__main__":

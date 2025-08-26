@@ -5,13 +5,13 @@ Helpers for working with catalogs
 import datetime as dt
 import logging
 
-from collections import namedtuple
 from dataclasses import dataclass
 from typing import Union, Iterable, List
 
 from obspy import UTCDateTime
 from obspy.core.event import (
-    Event, Origin, Magnitude, Catalog, WaveformStreamID, Pick)
+    Event, Origin, Magnitude, Catalog, WaveformStreamID, Pick,
+    ResourceIdentifier, QuantityError, Comment)
 
 
 Logger = logging.getLogger(__name__)
@@ -36,6 +36,9 @@ class SparseID:
     def __str__(self):
         return self.id
 
+    def to_obspy(self):
+        return ResourceIdentifier(**self.__dict__)
+
 @dataclass
 class SparseError:
     uncertainty: float = None
@@ -46,6 +49,9 @@ class SparseError:
     def get(self, key: str, default=None):
         # Return the default if the key actually returns None
         return self.__dict__.get(key, default) or default
+
+    def to_obspy(self):
+        return QuantityError(**self.__dict__)
 
 @dataclass
 class SparseOrigin:
@@ -63,6 +69,17 @@ class SparseOrigin:
         # Return the default if the key actually returns None
         return self.__dict__.get(key, default) or default
 
+    def to_obspy(self):
+        ori = Origin(
+            latitude=self.latitude,
+            longitude=self.longitude,
+            depth=self.depth,
+            time=UTCDateTime(self.time))
+        for attr in ["method_id", "depth_errors", "latitude_errors", "longitude_errors"]:
+            if self.__dict__[attr]:
+                ori.__dict__.update({attr: self.__dict__[attr].to_obspy()})
+        return ori
+
 @dataclass
 class SparseMagnitude:
     mag: float = None
@@ -73,6 +90,16 @@ class SparseMagnitude:
     def get(self, key: str, default=None):
         return self.__dict__.get(key, default) or default
 
+    def to_obspy(self):
+        magnitude = Magnitude(
+            mag=self.mag,
+            magnitude_type=self.magnitude_type)
+        if self.method_id:
+            magnitude.method_id = self.method_id.to_obspy()
+        if self.mag_errors:
+            magnitude.mag_errors = self.mag_errors.to_obspy()
+        return magnitude
+
 
 @dataclass
 class SparseComment:
@@ -80,6 +107,9 @@ class SparseComment:
 
     def get(self, key: str, default=None):
         return self.__dict__.get(key, default) or default
+
+    def to_obspy(self):
+        return Comment(text=self.text)
 
 
 @dataclass
@@ -98,6 +128,13 @@ class SparseWaveform_ID:
 
     id = property(get_seed_string)
 
+    def to_obspy(self):
+        return WaveformStreamID(
+            network_code=self.network_code,
+            station_code=self.station_code,
+            location_code=self.location_code,
+            channel_code=self.channel_code)
+
 
 @dataclass
 class SparsePick:
@@ -107,6 +144,12 @@ class SparsePick:
 
     def get(self, key: str, default=None):
         return self.__dict__.get(key, default) or default
+
+    def to_obspy(self):
+        pick = Pick(time=self.time, phase_hint=self.phase_hint)
+        if self.waveform_id:
+            pick.waveform_id = self.waveform_id.to_obspy()
+        return pick
 
 
 class SparseEvent:
@@ -186,6 +229,23 @@ class SparseEvent:
             except IndexError:
                 return None
         return None
+
+    def to_obspy(self):
+        ev = Event(resource_id=self.resource_id.id)
+        ev.origins = [ori.to_obspy() for ori in self.origins]
+        ev.magnitudes = [mag.to_obspy() for mag in self.magnitudes]
+        ev.picks = [pick.to_obspy() for pick in self.picks]
+        ev.comments = [comm.to_obspy() for comm in self.comments]
+        if self.preferred_origin_index:
+            ev.preferred_origin_id = ev.origins[
+                self.preferred_origin_index].resource_id
+        if self.preferred_magnitude_index:
+            ev.preferred_magnitude_id = ev.magnitudes[
+                self.preferred_magnitude_index].resource_id
+        return ev
+
+
+###################### Functions for sparsificiation ############################
 
 
 def _sparsify_origin(origin: Origin) -> SparseOrigin:
@@ -272,6 +332,14 @@ def sparsify_catalog(
 ) -> List[SparseEvent]:
     """ Make a sparse verion of the catalog """
     return [_sparsify_event(ev, include_picks=include_picks) for ev in catalog]
+
+
+def sparse_catalog_to_obspy(sparse_catalog: List[SparseEvent]):
+    cat = Catalog([ev.to_obspy() for ev in sparse_catalog])
+    return cat
+
+
+############################ Helper functions for events #############################
 
 
 def get_origin(event: Union[Event, SparseEvent]) -> Union[Origin, SparseOrigin, None]:
