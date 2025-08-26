@@ -538,14 +538,14 @@ class RealTimeClient(_StreamingClient):
             Logger.info(f"Requesting data between {last_query_start} and {now}")
             st, query_passed = self._collect_bulk(
                 last_query_start=last_query_start, now=now, executor=executor)
-            Logger.debug(f"Received stream from database: \n{st.__str__(extended=True)}")
+            Logger.info(f"Received stream from database: \n{st.__str__(extended=True)}")
 
             Logger.debug(f"Getting data took {(time.perf_counter() - tic) * self.speed_up}s")
 
             # Trim to what we need - this will also limit the query duration
             Logger.info(f"Trimming streaming data between "
                         f"{now - (2 * self.buffer_capacity)} and {now}")
-            st.trim(starttime=now - (2 * self.buffer_capacity), endtime=now)
+            st = st.trim(starttime=now - (2 * self.buffer_capacity), endtime=now)
 
             for tr in st:
                 Logger.info(f"Putting {tr.id}, {tr.stats.starttime} -- {tr.stats.endtime} into buffer")
