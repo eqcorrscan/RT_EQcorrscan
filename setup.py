@@ -117,6 +117,7 @@ def setup_package():
             'rt_eqcorrscan.plugins.picker',
             'rt_eqcorrscan.plugins.magnitudes',
             'rt_eqcorrscan.plugins.plotter',
+            'rt_eqcorrscan.plugins.plotter.rcet_plots',
             'rt_eqcorrscan.plugins.relocation',
             'rt_eqcorrscan.plugins.relocation.dt_correlations',
         ]

@@ -84,7 +84,7 @@ class RealTimeTribe(Tribe):
     _backfill_tribe = Tribe()  # Tribe of as-yet unused templates for backfilling
     _last_backfill_start = UTCDateTime.now()  # Time of last backfill run - update on run
     _number_of_backfillers = 0  # Book-keeping of backfiller processes.
-    _clean_backfillers = True  # If false will leave temporary backfiller dirs
+    _clean_backfillers = False  # If false will leave temporary backfiller dirs
 
     _plugins = dict()  # Plugin subprocesses
 
@@ -744,16 +744,20 @@ class RealTimeTribe(Tribe):
         except KeyError:
             self._plugin_order = ORDERED_PLUGINS
         outputter_in_dirs = []
+        if "output" in self._plugin_order:
+            # We don't want to output anything that comes after the output (e.g. the plotter)
+            output_plugin_input_skips = self._plugin_order[self._plugin_order.index("output"):]
+        else:
+            output_plugin_input_skips = []
+        output_plugin_input_skips.append("picker")  # We don't want to output anything that hasn't been located
         for i, plugin_name in enumerate(self._plugin_order):
             config = self.plugin_config.get(plugin_name, None)
             if config is None:
                 continue
             config.out_dir = f"{self.name}/{plugin_name}_out"
             # We only want to output events that have passed the hyp stage
-            if plugin_name not in ["output", "picker"]:
+            if plugin_name not in output_plugin_input_skips:
                 outputter_in_dirs.append(config.out_dir)
-                # Add outputs to outputter, don't add plotting output
-                # Don't add the outputters output!
             if plugin_name in ["output"]:
                 # The outputter wants all the intermediate outputs
                 config.in_dir = outputter_in_dirs
@@ -1033,7 +1037,7 @@ class RealTimeTribe(Tribe):
                     self._running = True  # Lock tribe
                     start_time = UTCDateTime.now()
                     st = self.rt_client.stream.split().merge(method=1)
-                    Logger.debug(f"RTTribe received this stream from client:\n{st.__str__(extended=True)}")
+                    Logger.info(f"RTTribe received this stream from client:\n{st.__str__(extended=True)}")
                     # Add in past data if needed - will be trimmed later
                     Logger.debug(f"Past stream is:\n{past_st.__str__(extended=True)}")
                     st = (st + past_st).merge(method=1)  # Keep overlapping data

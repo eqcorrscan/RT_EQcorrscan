@@ -194,11 +194,14 @@ class _StreamingClient(ABC):
     def stream(self) -> Stream:
         try:
             self.__stream = self._stream_queue.get(block=False)
+            Logger.debug("Got stream from queue")
             # Need to put it back for future Processes!
             try:
                 self._stream_queue.put(self.__stream, block=False)
+                Logger.debug("Put stream back into queue")
             except Full:
                 # Something else has added while we were not looking! Okay
+                Logger.debug("Another process has queued a stream - not putting back in")
                 pass
         except Empty:
             Logger.debug("No stream in queue")
@@ -221,7 +224,7 @@ class _StreamingClient(ABC):
                 pass
             try:
                 self._stream_queue.put(st, timeout=self._timeout)
-                Logger.debug("Put stream into queue")
+                Logger.debug("Put stream into queue after emptying queue")
             except Full:
                 Logger.warning(
                     "Could not update the state of stream - queue is full")

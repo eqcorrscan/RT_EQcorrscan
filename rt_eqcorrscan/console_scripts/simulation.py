@@ -129,14 +129,24 @@ def synthesise_real_time(
     Logger.info("Downloading data")
     wavebank = WaveBank("simulation_wavebank")
     download_chunk_size = min(3600, detection_runtime)
+    # Counter to keep track of download progress
+    n_chans = 0
+    for n in inventory:
+        for s in n:
+            for c in s:
+                n_chans += 1
+
+    n_chan = 0
     for network in inventory:
         for station in network:
             for channel in station:
-                _starttime = trigger_origin.time - 60
+                n_chan += 1
+                _starttime = trigger_origin.time - (config.template.process_len * 2)
                 _endtime = _starttime + detection_runtime
                 while _starttime <= _endtime:
                     Logger.info(
                         f"Downloading for {network.code}.{station.code}.{channel.location_code}.{channel.code} "
+                        f"({n_chan} of {n_chans}) "
                         f"between {_starttime} and {_starttime + download_chunk_size}")
                     # check if the waveform already exists in the wavebank
                     st = None
@@ -170,6 +180,10 @@ def synthesise_real_time(
                         continue
                     _starttime += download_chunk_size
                     wavebank.put_waveforms(st)
+    Logger.info("Updating index of wavebank")
+    wavebank.update_index()
+    df = wavebank.get_availability_df()
+    Logger.info(f"Have a wavebank with the following data: \n{df}")
 
     if pre_empt_len:
         pre_empt_data = True
