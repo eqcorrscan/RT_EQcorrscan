@@ -132,7 +132,7 @@ def synthesise_real_time(
     for network in inventory:
         for station in network:
             for channel in station:
-                _starttime = trigger_origin.time - 60
+                _starttime = trigger_origin.time - (config.template.process_len * 2)
                 _endtime = _starttime + detection_runtime
                 while _starttime <= _endtime:
                     Logger.info(
