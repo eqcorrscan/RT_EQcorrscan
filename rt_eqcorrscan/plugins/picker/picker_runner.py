@@ -347,7 +347,8 @@ class Picker(_Plugin):
                         f"which requires {family.template.process_length}s, "
                         f"waiting.")
                     continue
-                if abs(detection.no_chans - detection.detect_val) < 0.05 * detection.no_chans:
+                skip_self_dets = False
+                if skip_self_dets and abs(detection.no_chans - detection.detect_val) < 0.05 * detection.no_chans:
                     # Pretty perfect self-detction, we won't do better
                     Logger.info(f"Detection at {detection.detect_val} from "
                                 f"{detection.no_chans} channels - not running "
