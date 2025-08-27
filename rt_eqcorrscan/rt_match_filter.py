@@ -263,7 +263,12 @@ class RealTimeTribe(Tribe):
         """ ids of channels to be used for detection. """
         if self.inventory is None or len(self.inventory) == 0:
             return self.template_seed_ids
-        return self.template_seed_ids.intersection(self.used_seed_ids)
+        # return self.template_seed_ids.intersection(self.used_seed_ids)
+        # Nice idea to look for overlap between templates and requested, but if
+        # we only have a few templates to start with then we end up starting
+        # the streamer without the full set and miss channels that we might
+        # later want.
+        return self.used_seed_ids
 
     @property
     def used_stations(self) -> set:
