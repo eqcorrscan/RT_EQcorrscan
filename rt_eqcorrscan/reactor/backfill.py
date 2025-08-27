@@ -17,6 +17,8 @@ import psutil
 from obspy import read, UTCDateTime, Stream
 
 from eqcorrscan import Tribe, Party, Template
+from eqcorrscan.core.match_filter.helpers import _moveout
+
 from rt_eqcorrscan import Config
 from rt_eqcorrscan.database.client_emulation import LocalClient
 from rt_eqcorrscan.rt_match_filter import (
@@ -90,13 +92,34 @@ def backfill(
                        f"Need {minimum_data_for_detection}s of data")
         return
     # Try to send off twice the minimum data to allow for overlaps.
-    _starttime, _endtime = (
-        starttime, min(endtime, starttime + 2 * minimum_data_for_detection))
+    # EQcorrscan overlaps data by the maximum moveout in the templates
+    overlap = max(_moveout(template.st) for template in new_tribe)
+
+    # We need to make sure our data are a multiple of the
+    # minimum_data_for_detection, otherwise data at the end are dropped. This
+    # often leads to missing self-detections.
+    total_seconds = endtime - starttime
+    chunk_len = (2 * minimum_data_for_detection) - overlap
+
+    # Work out start and end times for chunks that maximize our data at the end
+    _starttime, _endtime = endtime - chunk_len, endtime
+    chunk_times = []
+    while _starttime >= starttime:
+        chunk_times.append((_starttime, _endtime))
+        _starttime -= minimum_data_for_detection
+        _endtime -= minimum_data_for_detection
+
+    # Add in an additional chukn that overlaps with the first chunk if we are
+    # missing inital data - we cope by declusetring later
+    if chunk_times[-1][0] > starttime:
+        chunk_times.append((starttime, starttime + chunk_len))
+
+    # Go forward in time because it makes more sense...?
+    chunk_times = chunk_times[::-1]
+
     new_party = Party()
-    if _endtime >= (endtime + minimum_data_for_detection):
-        Logger.warning("Insufficient data for backfill, not running")
-        Logger.warning(f"{_endtime} >= {endtime + minimum_data_for_detection}")
-    while _endtime < (endtime + minimum_data_for_detection):
+    for _starttime, _endtime in chunk_times:
+        Logger.info(f"Running between {_starttime} and {_endtime}")
         st_chunk = st_client.get_waveforms(
             network="*", station="*", location="*", channel="*",
             starttime=_starttime, endtime=_endtime)
@@ -110,7 +133,7 @@ def backfill(
         # st_chunk = read(st_filename, starttime=_starttime, endtime=_endtime).merge()
         Logger.info(f"Read in {st_chunk}")
         try:
-            new_party += new_tribe.detect(
+            _party = new_tribe.detect(
                 stream=st_chunk, plot=False, threshold=threshold,
                 threshold_type=threshold_type, trig_int=trig_int,
                 xcorr_func="numpy",
@@ -120,20 +143,19 @@ def backfill(
                 parallel_process=parallel_processing,
                 process_cores=process_cores, copy_data=False,
                 ignore_bad_data=True,
+                overlap=overlap,
                 **kwargs)
-            Logger.info(f"Backfiller made {len(new_party)} detections between {_starttime} and {_endtime}")
+            Logger.info(f"Backfiller made {len(_party)} detections between {_starttime} and {_endtime}")
+            if len(_party):
+                new_party += _party
         except Exception as e:
             Logger.critical(f"Uncaught error: {e}")
             Logger.error(traceback.format_exc())
-            _starttime += minimum_data_for_detection
-            _endtime += minimum_data_for_detection
             continue
 
         Logger.info(
             f"Backfill detection between {_starttime} and {_endtime} "
             f"completed - handling detections")
-        _starttime += minimum_data_for_detection
-        _endtime += minimum_data_for_detection
 
         # Clear up un-needed objects
         del st_chunk
@@ -148,7 +170,7 @@ def backfill(
     new_party = new_party.decluster(trig_int=trig_int)
     new_party.families = [f for f in new_party if len(f)]
 
-    Logger.info("Handling detections")
+    Logger.info(f"Handling {len(new_party)} detections")
     os.makedirs("detections")
     fig = plt.Figure()
     for family in new_party:
@@ -238,7 +260,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    backfill(working_dir=args.working_dir, expected_seed_ids=args.expected_seed_ids,
+    working_dir = os.path.abspath(args.working_dir)
+
+    backfill(working_dir=working_dir, expected_seed_ids=args.expected_seed_ids,
              minimum_data_for_detection=args.minimum_data_for_detection,
              threshold=args.threshold, threshold_type=args.threshold_type,
              trig_int=args.trig_int, peak_cores=args.peak_cores,
