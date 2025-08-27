@@ -347,18 +347,25 @@ class Picker(_Plugin):
                         f"which requires {family.template.process_length}s, "
                         f"waiting.")
                     continue
-                # Run lag-calc
-                Logger.info(f"Running lag-calc for {detection.id}")
-                Logger.debug(f"Using config:\n{internal_config}")
-                event_back = None
-                try:
-                    event_back = d_party.lag_calc(
-                        stream=stream, pre_processed=False, ignore_length=True,
-                        **internal_config.__dict__)
-                except Exception as e:
-                    Logger.error(
-                        f"Could not run lag-calc for {detection.id} due to {e}",
-                        exc_info=True)
+                if abs(detection.no_chans - detection.detect_val) < 0.05 * detection.no_chans:
+                    # Pretty perfect self-detction, we won't do better
+                    Logger.info(f"Detection at {detection.detect_val} from "
+                                f"{detection.no_chans} channels - not running "
+                                f"lag-calc, good enough")
+                    event_back = Catalog([detection.event])
+                else:
+                    # Run lag-calc
+                    Logger.info(f"Running lag-calc for {detection.id}")
+                    Logger.debug(f"Using config:\n{internal_config}")
+                    event_back = None
+                    try:
+                        event_back = d_party.lag_calc(
+                            stream=stream, pre_processed=False, ignore_length=True,
+                            **internal_config.__dict__)
+                    except Exception as e:
+                        Logger.error(
+                            f"Could not run lag-calc for {detection.id} due to {e}",
+                            exc_info=True)
                 if event_back and len(event_back):
                     # Merge the event info
                     event = detection.event
