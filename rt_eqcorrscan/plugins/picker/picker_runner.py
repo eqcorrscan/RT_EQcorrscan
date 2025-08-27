@@ -201,8 +201,20 @@ def get_stream(
     for f in party:
         for d in f:
             ev = d.event or d._calculate_event(template=f.template)
-            stream += in_memory_wavebank.get_event_waveforms(
-                event=ev, pre_pick=pre_pick, length=length)
+            # lag-calc processes to equal start and end-times, so we can't
+            # use the event waveform getter
+            # stream += in_memory_wavebank.get_event_waveforms(
+            #     event=ev, pre_pick=pre_pick, length=length)
+            starttime = min(p.time for p in ev.picks) - pre_pick
+            endtime = starttime + length
+            bulk = [
+                (p.waveform_id.network_code or "*",
+                 p.waveform_id.station_code or "*",
+                 p.waveform_id.location_code or "*",
+                 p.waveform_id.channel_code or "*",
+                 starttime, endtime)
+                for p in ev.picks]
+            stream += in_memory_wavebank.get_waveforms_bulk(bulk)
     stream.merge()
     return stream
 
