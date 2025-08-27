@@ -349,6 +349,7 @@ class Picker(_Plugin):
                     continue
                 # Run lag-calc
                 Logger.info(f"Running lag-calc for {detection.id}")
+                Logger.debug(f"Using config:\n{internal_config}")
                 event_back = None
                 try:
                     event_back = d_party.lag_calc(
