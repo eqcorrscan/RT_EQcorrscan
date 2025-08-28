@@ -20,7 +20,7 @@ import numpy as np
 
 from typing import Union, List, Iterable
 
-from obspy import Stream, UTCDateTime, Inventory, Trace
+from obspy import Stream, UTCDateTime, Inventory, Trace, read_events
 from obspy.core.event import ResourceIdentifier
 from obsplus import WaveBank
 from matplotlib.figure import Figure
@@ -33,7 +33,7 @@ from rt_eqcorrscan.event_trigger.triggers import average_rate
 from rt_eqcorrscan.config.mailer import Notifier
 from rt_eqcorrscan.plugins import (
     REGISTERED_PLUGINS, run_plugin, ORDERED_PLUGINS)
-from sqlalchemy.sql import True_
+from rt_eqcorrscan.helpers.sparse_event import get_comment_val
 
 Logger = logging.getLogger(__name__)
 
@@ -480,7 +480,7 @@ class RealTimeTribe(Tribe):
         save_waveforms: bool,
         plot_detections: bool,
         st: Stream = None,
-        skip_existing: bool = True,
+        skip_existing: bool = False,
         backfill_dir: str = None,
         **kwargs
     ) -> None:
@@ -568,9 +568,22 @@ class RealTimeTribe(Tribe):
                 detect_file_base = _detection_filename(
                     detection=detection, detect_directory=detect_directory)
                 _filename = f"{detect_file_base}.xml"
-                if os.path.isfile(f"{detect_file_base}.xml") and skip_existing:
-                    Logger.info(f"{_filename} exists, skipping")
-                    continue
+                if os.path.isfile(_filename):
+                    if skip_existing:
+                        Logger.info(f"{_filename} exists, skipping")
+                        continue
+                    else:
+                        # Check which is "better"
+                        old_ev = read_events(_filename)[0]
+                        old_detect_val = get_comment_val("detect_val", event=old_ev)
+                        if detection.detect_val > old_detect_val:
+                            Logger.info(f"{_filename} exists, but detect val for new detection "
+                                        f"({detection.detect_val}) is greater than old "
+                                        f"value ({old_detect_val}). Overwriting")
+                        else:
+                            Logger.info(f"{_filename} exists and new detection is not "
+                                        f"better, skipping")
+                            continue
                 Logger.debug(f"Writing detection at {detection.detect_time}")
                 # TODO: Do not do this, let some other process work on making the waveforms.
                 if read_st:
