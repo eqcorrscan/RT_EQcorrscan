@@ -1584,6 +1584,10 @@ def reshape_templates(
     template_streams = [t.st for t in templates]
     template_names = [t.name for t in templates]
 
+    # Remove any traces not in used seed ids
+    for tst in template_streams:
+        tst.traces = [tr for tr in tst if tr.id in used_seed_ids]
+
     samp_rate = template_streams[0][0].stats.sampling_rate
     process_len = max(t.process_length for t in templates)
     # Make a dummy stream with all the used seed ids
