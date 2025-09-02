@@ -10,7 +10,7 @@ This script has 3 main steps:
 import logging
 import os
 
-from obspy import UTCDateTime
+from obspy import UTCDateTime, Catalog
 from obspy.core.event import Event
 from obspy.clients.fdsn import Client
 
@@ -117,8 +117,16 @@ def synthesise_real_time(
             catalog=catalog, client=client, **config.template)
     else:
         template_bank.update_index()
+    # Tribe must include the triggering event for getting inventory -
+    # becomes an issue if no pre-trigger templates are used as different
+    # stations are likely to be used between here (downloading closest) vs
+    # when picks from one event are also included.
+    template_bank.make_templates(
+        catalog=Catalog([triggering_event]), client=client, **config.template)
+
     tribe = template_bank.get_templates(
         starttime=database_starttime, endtime=database_endtime, **region)
+
     inventory = get_inventory(
         client, tribe, triggering_event=triggering_event,
         max_distance=config.rt_match_filter.max_distance,

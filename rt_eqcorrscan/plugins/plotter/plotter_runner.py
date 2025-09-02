@@ -22,8 +22,8 @@ from obspy.core.event import Event
 from rt_eqcorrscan.config.config import _PluginConfig
 from rt_eqcorrscan.plugins.plugin import (
     PLUGIN_CONFIG_MAPPER, _Plugin)
-from rt_eqcorrscan.plugins.output.output_runner import _get_comment_val
-from rt_eqcorrscan.helpers.sparse_event import SparseEvent, get_origin_attr
+from rt_eqcorrscan.helpers.sparse_event import (
+    SparseEvent, get_origin_attr, get_comment_val)
 
 from rt_eqcorrscan.plugins.plotter.rcet_plots.rcet_plots import (
     summary_files, ellipse_plots, focal_sphere_plots,
@@ -206,12 +206,12 @@ class Plotter(_Plugin):
             clustered_mainshock = self._get_relocated_mainshock()
 
             if clustered_mainshock:
-                cluster_id = _get_comment_val("ClusterID", clustered_mainshock)
+                cluster_id = get_comment_val("ClusterID", clustered_mainshock)
                 if cluster_id is None:
                     Logger.warning("Cluster IDs not found in catalog, not clustering")
                 else:
                     cluster = [ev for ev in cat if
-                               _get_comment_val("ClusterID", ev) == cluster_id]
+                               get_comment_val("ClusterID", ev) == cluster_id]
                     # Overload event_cache and use just this cluster for plotting
                     # Have a seperate mainshock cluster that is used for stats calcs
                     self._mainshock_cluster_ids = {ev.resource_id.id for ev in cluster}

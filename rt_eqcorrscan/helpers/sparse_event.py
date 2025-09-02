@@ -384,6 +384,36 @@ def get_magnitude_attr(event: Union[Event, SparseEvent], attr: str):
     return None
 
 
+def get_comment_val(value_name: str, event: Event) -> Union[float, None]:
+    value = None
+    for comment in event.comments:
+        if value_name in comment.text:
+            if "=" in comment.text:
+                # Should be a number
+                try:
+                    value = float(comment.text.split('=')[-1])
+                except ValueError:
+                    # Leave as a string
+                    break
+                except Exception as e:
+                    Logger.exception(
+                        f"Could not get {value_name} {comment.text} due to {e}")
+                else:
+                    break
+            elif ":" in comment.text:
+                # Should be a string
+                try:
+                    value = comment.text.split(": ")[-1]
+                except Exception as e:
+                    Logger.exception(
+                        f"Could not get {value_name} from {comment.text} due to {e}")
+                else:
+                    break
+    return value
+
+
+
+
 if __name__ == "__main__":
     import doctest
 

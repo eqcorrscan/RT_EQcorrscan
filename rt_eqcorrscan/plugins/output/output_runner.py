@@ -31,7 +31,7 @@ from rt_eqcorrscan.plugins.plugin import (
     PLUGIN_CONFIG_MAPPER, _Plugin)
 from rt_eqcorrscan.helpers.sparse_event import (
     sparsify_catalog, get_origin_attr, get_magnitude_attr, SparseEvent,
-    SparseComment)
+    SparseComment, get_comment_val)
 
 Logger = logging.getLogger(__name__)
 
@@ -148,40 +148,12 @@ def template_possible_self_dets(
     return self_dets
 
 
-def _get_comment_val(value_name: str, event: Event) -> Union[float, None]:
-    value = None
-    for comment in event.comments:
-        if value_name in comment.text:
-            if "=" in comment.text:
-                # Should be a number
-                try:
-                    value = float(comment.text.split('=')[-1])
-                except ValueError:
-                    # Leave as a string
-                    break
-                except Exception as e:
-                    Logger.exception(
-                        f"Could not get {value_name} {comment.text} due to {e}")
-                else:
-                    break
-            elif ":" in comment.text:
-                # Should be a string
-                try:
-                    value = comment.text.split(": ")[-1]
-                except Exception as e:
-                    Logger.exception(
-                        f"Could not get {value_name} from {comment.text} due to {e}")
-                else:
-                    break
-    return value
-
-
 def get_threshold(event: Event) -> Union[float, None]:
-    return _get_comment_val(value_name="threshold", event=event)
+    return get_comment_val(value_name="threshold", event=event)
 
 
 def get_det_val(event: Event) -> Union[float, None]:
-    return _get_comment_val(value_name="detect_val", event=event)
+    return get_comment_val(value_name="detect_val", event=event)
 
 
 def get_det_time(event: Event) -> UTCDateTime:
@@ -190,7 +162,7 @@ def get_det_time(event: Event) -> UTCDateTime:
     except IndexError:
         Logger.error("RID poorly formed.")
         return get_origin_attr(event, "time")
-    template = _get_comment_val("Template", event)
+    template = get_comment_val("Template", event)
     if template not in rid:
         # Not an EQcorrscan detection RID, return origin time
         Logger.warning(f"{rid} is not an EQcorrscan detection, returning origin time")

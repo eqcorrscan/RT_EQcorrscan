@@ -298,7 +298,6 @@ class Picker(_Plugin):
 
         # Loop over detections - party.lag-calc works okay for longer
         # process-lengths, but not so well for these short ones
-        lag_calced = Catalog()
         for family in party:
             Logger.info(f"Setting up picker for Family: {family.template.name}")
             for detection in family:
@@ -347,7 +346,8 @@ class Picker(_Plugin):
                         f"which requires {family.template.process_length}s, "
                         f"waiting.")
                     continue
-                if abs(detection.no_chans - detection.detect_val) < 0.05 * detection.no_chans:
+                skip_self_dets = False
+                if skip_self_dets and abs(detection.no_chans - detection.detect_val) < 0.05 * detection.no_chans:
                     # Pretty perfect self-detction, we won't do better
                     Logger.info(f"Detection at {detection.detect_val} from "
                                 f"{detection.no_chans} channels - not running "
@@ -389,7 +389,15 @@ class Picker(_Plugin):
                                      f"{detection.id} due to {e}",
                                      exc_info=True)
                     event.resource_id = detection.id
-                    lag_calced += event
+                    fname = event_files[event.resource_id.id.split('/')[-1]].split(
+                        detection_dir)[-1]
+                    fname = fname.lstrip(os.path.sep)  # Strip pathsep if it is there
+                    outpath = os.path.join(outdir, fname)
+                    Logger.info(f"Writing out to {outpath}")
+                    if not os.path.isdir(os.path.dirname(outpath)):
+                        os.makedirs(os.path.dirname(outpath))
+                    event.write(f"{outpath}", format="QUAKEML")
+                    # lag_calced += event
                     processed_files.append(event_files[detection.id])
                 else:  # Keep all the events even if we don't re-pick them
                     Logger.info(
@@ -398,16 +406,6 @@ class Picker(_Plugin):
                     # event = detection.event
                     # event.picks = []
                     # lag_calced += event
-        # Write out
-        for ev in lag_calced:
-            fname = event_files[ev.resource_id.id.split('/')[-1]].split(
-                detection_dir)[-1]
-            fname = fname.lstrip(os.path.sep)  # Strip pathsep if it is there
-            outpath = os.path.join(outdir, fname)
-            Logger.info(f"Writing out to {outpath}")
-            if not os.path.isdir(os.path.dirname(outpath)):
-                os.makedirs(os.path.dirname(outpath))
-            ev.write(f"{outpath}", format="QUAKEML")
 
         return processed_files
 

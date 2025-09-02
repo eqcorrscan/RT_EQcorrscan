@@ -43,6 +43,7 @@ def backfill(
     starttime: UTCDateTime = None,
     endtime: UTCDateTime = None,
     plot_detections: bool = False,
+    save_waveforms: bool = False,
     **kwargs
 ) -> None:
     """ Background backfill method designed to work in a subprocess. """
@@ -117,7 +118,7 @@ def backfill(
     # Go forward in time because it makes more sense...?
     chunk_times = chunk_times[::-1]
 
-    new_party = Party()
+    new_parties = []
     for _starttime, _endtime in chunk_times:
         Logger.info(f"Running between {_starttime} and {_endtime}")
         st_chunk = st_client.get_waveforms(
@@ -145,9 +146,12 @@ def backfill(
                 ignore_bad_data=True,
                 overlap=overlap,
                 **kwargs)
+            # Remove nan channels from templates - there are sometimes issues with
+            for family in _party:
+                family.template = _rm_nan(family.template)
             Logger.info(f"Backfiller made {len(_party)} detections between {_starttime} and {_endtime}")
             if len(_party):
-                new_party += _party
+                new_parties.append(_party)
         except Exception as e:
             Logger.critical(f"Uncaught error: {e}")
             Logger.error(traceback.format_exc())
@@ -166,6 +170,10 @@ def backfill(
         #     Logger.info(line)
         total_memory_mb = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
         Logger.info(f"Total memory used by {os.getpid()}: {total_memory_mb:.2f} MB")
+    # Make a single party from all these parties
+    new_party = Party()
+    for _party in new_parties:
+        new_party += _party
     # Because of overlap we need to decluster
     new_party = new_party.decluster(trig_int=trig_int)
     new_party.families = [f for f in new_party if len(f)]
@@ -186,7 +194,7 @@ def backfill(
                 detection=detection,
                 detect_file_base=_detection_filename(
                     detection=detection, detect_directory="detections"),
-                save_waveform=True, plot_detection=plot_detections,
+                save_waveform=save_waveforms, plot_detection=plot_detections,
                 stream=st, fig=fig)
 
     if len(new_party):
@@ -250,6 +258,9 @@ if __name__ == "__main__":
         help="Starttime as UTCDateTime parsable string"
     )
     parser.add_argument(
+        "--save-waveforms", action="store_true",
+        help="Falg to save waveforms from detected events")
+    parser.add_argument(
         "--endtime", type=UTCDateTime, required=False,
         help="Endtime as UTCDateTime parsable string"
     )
@@ -269,4 +280,5 @@ if __name__ == "__main__":
              cores=args.cores, parallel_processing=args.parallel_processing,
              process_cores=args.process_cores,
              log_to_screen=args.log_to_screen, starttime=args.starttime,
-             endtime=args.endtime, plot_detections=args.plot)
+             endtime=args.endtime, plot_detections=args.plot,
+             save_waveforms=args.save_waveforms)

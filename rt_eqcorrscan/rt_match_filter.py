@@ -20,7 +20,7 @@ import numpy as np
 
 from typing import Union, List, Iterable
 
-from obspy import Stream, UTCDateTime, Inventory, Trace
+from obspy import Stream, UTCDateTime, Inventory, Trace, read_events
 from obspy.core.event import ResourceIdentifier
 from obsplus import WaveBank
 from matplotlib.figure import Figure
@@ -33,7 +33,7 @@ from rt_eqcorrscan.event_trigger.triggers import average_rate
 from rt_eqcorrscan.config.mailer import Notifier
 from rt_eqcorrscan.plugins import (
     REGISTERED_PLUGINS, run_plugin, ORDERED_PLUGINS)
-from sqlalchemy.sql import True_
+from rt_eqcorrscan.helpers.sparse_event import get_comment_val
 
 Logger = logging.getLogger(__name__)
 
@@ -263,7 +263,12 @@ class RealTimeTribe(Tribe):
         """ ids of channels to be used for detection. """
         if self.inventory is None or len(self.inventory) == 0:
             return self.template_seed_ids
-        return self.template_seed_ids.intersection(self.used_seed_ids)
+        # return self.template_seed_ids.intersection(self.used_seed_ids)
+        # Nice idea to look for overlap between templates and requested, but if
+        # we only have a few templates to start with then we end up starting
+        # the streamer without the full set and miss channels that we might
+        # later want.
+        return self.used_seed_ids
 
     @property
     def used_stations(self) -> set:
@@ -475,7 +480,7 @@ class RealTimeTribe(Tribe):
         save_waveforms: bool,
         plot_detections: bool,
         st: Stream = None,
-        skip_existing: bool = True,
+        skip_existing: bool = False,
         backfill_dir: str = None,
         **kwargs
     ) -> None:
@@ -563,9 +568,22 @@ class RealTimeTribe(Tribe):
                 detect_file_base = _detection_filename(
                     detection=detection, detect_directory=detect_directory)
                 _filename = f"{detect_file_base}.xml"
-                if os.path.isfile(f"{detect_file_base}.xml") and skip_existing:
-                    Logger.info(f"{_filename} exists, skipping")
-                    continue
+                if os.path.isfile(_filename):
+                    if skip_existing:
+                        Logger.info(f"{_filename} exists, skipping")
+                        continue
+                    else:
+                        # Check which is "better"
+                        old_ev = read_events(_filename)[0]
+                        old_detect_val = get_comment_val("detect_val", event=old_ev)
+                        if detection.detect_val > old_detect_val:
+                            Logger.info(f"{_filename} exists, but detect val for new detection "
+                                        f"({detection.detect_val}) is greater than old "
+                                        f"value ({old_detect_val}). Overwriting")
+                        else:
+                            Logger.info(f"{_filename} exists and new detection is not "
+                                        f"better, skipping")
+                            continue
                 Logger.debug(f"Writing detection at {detection.detect_time}")
                 # TODO: Do not do this, let some other process work on making the waveforms.
                 if read_st:
@@ -917,6 +935,11 @@ class RealTimeTribe(Tribe):
             Logger.critical("No templates remain, not running")
             return Party()
         # Fix unsupported args
+        if "overlap" in kwargs.keys():
+            detect_overlap = kwargs.pop("overlap")
+        else:
+            detect_overlap = "calculate"  # Start off with an overlap,
+            # then we set to 0 and handle overlap here
         try:
             if kwargs.pop("plot"):
                 Logger.info("EQcorrscan plotting disabled")
@@ -1121,11 +1144,15 @@ class RealTimeTribe(Tribe):
                         starttime=self._stream_end - (buffer_capacity + 20.0),
                         endtime=self._stream_end)
                     if detection_iteration > 0:
+                        Logger.info(f"Re-trimming to starttime "
+                                    f"{min_stream_end - self.minimum_data_for_detection} to "
+                                    f"give only {self.minimum_data_for_detection} s of data")
                         # For the first run we want to detect in everything we have.
                         # Otherwise trim so that all channels have at-least minimum data for detection
                         st.trim(
                             starttime=min_stream_end - self.minimum_data_for_detection,
                             endtime=self._stream_end)
+                        detect_overlap = 0.0
                     Logger.info("Trimmed data")
                     if len(st) == 0:
                         Logger.warning("No data")
@@ -1155,6 +1182,7 @@ class RealTimeTribe(Tribe):
                             parallel_process=self._parallel_processing,
                             ignore_bad_data=True, copy_data=False,
                             concurrent_processing=False,
+                            overlap=detect_overlap,
                             **kwargs)
                         Logger.info("Completed detection")
                     except Exception as e:  # pragma: no cover
