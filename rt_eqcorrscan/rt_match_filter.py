@@ -935,6 +935,11 @@ class RealTimeTribe(Tribe):
             Logger.critical("No templates remain, not running")
             return Party()
         # Fix unsupported args
+        if "overlap" in kwargs.keys():
+            detect_overlap = kwargs.pop("overlap")
+        else:
+            detect_overlap = "calculate"  # Start off with an overlap,
+            # then we set to 0 and handle overlap here
         try:
             if kwargs.pop("plot"):
                 Logger.info("EQcorrscan plotting disabled")
@@ -1139,11 +1144,15 @@ class RealTimeTribe(Tribe):
                         starttime=self._stream_end - (buffer_capacity + 20.0),
                         endtime=self._stream_end)
                     if detection_iteration > 0:
+                        Logger.info(f"Re-trimming to starttime "
+                                    f"{min_stream_end - self.minimum_data_for_detection} to "
+                                    f"give only {self.minimum_data_for_detection} s of data")
                         # For the first run we want to detect in everything we have.
                         # Otherwise trim so that all channels have at-least minimum data for detection
                         st.trim(
                             starttime=min_stream_end - self.minimum_data_for_detection,
                             endtime=self._stream_end)
+                        detect_overlap = 0.0
                     Logger.info("Trimmed data")
                     if len(st) == 0:
                         Logger.warning("No data")
@@ -1173,6 +1182,7 @@ class RealTimeTribe(Tribe):
                             parallel_process=self._parallel_processing,
                             ignore_bad_data=True, copy_data=False,
                             concurrent_processing=False,
+                            overlap=detect_overlap,
                             **kwargs)
                         Logger.info("Completed detection")
                     except Exception as e:  # pragma: no cover
