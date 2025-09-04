@@ -655,6 +655,7 @@ class RealTimeTribe(Tribe):
     def _wait(self, wait: float = None, detection_kwargs: dict = None) -> bool:
         """ Wait for `wait` seconds, or until all channels are available. """
         if self._check_for_killfile():
+            Logger.critical("Kill file found during _wait - stopping")
             self.stop()
             return False
         if wait is not None and wait <= 0:
@@ -1258,6 +1259,7 @@ class RealTimeTribe(Tribe):
                     _runtime_continue = self._runtime_check(
                         run_start=run_start, max_run_length=max_run_length)
                     if not _continue or not _runtime_continue:
+                        Logger.info(f"Stopping\t wait check: {_continue}, runtime check: {_runtime_continue}")
                         self.stop()
                         break
                     if minimum_rate and UTCDateTime.now() > run_start + self._min_run_length:
