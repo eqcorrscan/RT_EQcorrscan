@@ -377,7 +377,7 @@ class Picker(_Plugin):
                     try:
                         event = amp_pick_event(
                             event=event, st=stream, inventory=inv,
-                            chans=["1", "2", "N", "E"], iaspei_standard=False,
+                            chans=["Z"], iaspei_standard=False,
                             var_wintype=True, winlen=internal_config.winlen,
                             ps_multiplier=internal_config.ps_multiplier,
                             win_from_p=True, lowcut=2.0, water_level=None,
