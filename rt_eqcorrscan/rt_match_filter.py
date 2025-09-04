@@ -25,6 +25,8 @@ from obspy.core.event import ResourceIdentifier
 from obsplus import WaveBank
 from matplotlib.figure import Figure
 from multiprocessing import Lock
+
+from eqcorrscan.core.match_filter.helpers import _moveout
 from eqcorrscan import Tribe, Template, Party, Detection
 from eqcorrscan.utils.pre_processing import _prep_data_for_correlation
 
@@ -940,6 +942,18 @@ class RealTimeTribe(Tribe):
         else:
             detect_overlap = "calculate"  # Start off with an overlap,
             # then we set to 0 and handle overlap here
+        if detect_overlap == "calculate":
+            # Work this out here and keep track
+            detect_overlap = max(_moveout(t.st) for t in self.templates)
+        maximum_data_step = self.minimum_data_for_detection - detect_overlap * 2
+        if self.detect_interval > maximum_data_step:
+            Logger.warning(
+                f"Requested detect interval ({self.detect_interval}s) would "
+                f"result in skipping data due to required overlap of "
+                f"{detect_overlap}s. Setting detect_interval to "
+                f"{maximum_data_step}s.")
+            self.detect_interval = maximum_data_step
+
         try:
             if kwargs.pop("plot"):
                 Logger.info("EQcorrscan plotting disabled")
@@ -1054,6 +1068,7 @@ class RealTimeTribe(Tribe):
             min_stations=min_stations, earliest_detection_time=None)
 
         long_runs, long_run_time = 0, 0  # Keep track of over-running loops
+        overlap = detect_overlap
         try:
             while self.busy:
                 try:
@@ -1152,7 +1167,7 @@ class RealTimeTribe(Tribe):
                         st.trim(
                             starttime=min_stream_end - self.minimum_data_for_detection,
                             endtime=self._stream_end)
-                        detect_overlap = 0.0
+                        overlap = 0.0
                     Logger.info("Trimmed data")
                     if len(st) == 0:
                         Logger.warning("No data")
@@ -1182,7 +1197,7 @@ class RealTimeTribe(Tribe):
                             parallel_process=self._parallel_processing,
                             ignore_bad_data=True, copy_data=False,
                             concurrent_processing=False,
-                            overlap=detect_overlap,
+                            overlap=overlap,
                             **kwargs)
                         Logger.info("Completed detection")
                     except Exception as e:  # pragma: no cover
@@ -1583,6 +1598,10 @@ def reshape_templates(
     """
     template_streams = [t.st for t in templates]
     template_names = [t.name for t in templates]
+
+    # Remove any traces not in used seed ids
+    for tst in template_streams:
+        tst.traces = [tr for tr in tst if tr.id in used_seed_ids]
 
     samp_rate = template_streams[0][0].stats.sampling_rate
     process_len = max(t.process_length for t in templates)
