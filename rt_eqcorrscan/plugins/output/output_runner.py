@@ -242,6 +242,7 @@ def catalog_to_csv(
         "N Picks": "len(event.picks)",
         "Detection threshold": "get_threshold(event)",
         "Detection value": "get_det_val(event)",
+        "Detection threshold multiple": "get_det_val(event) / get_threshold(event)",
         "Self Detection ID": "event._self_det_id",
         "Cluster ID": "cluster_id",
     })

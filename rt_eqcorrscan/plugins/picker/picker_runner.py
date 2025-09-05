@@ -179,6 +179,7 @@ def get_stream(
     in_memory_wavebank: InMemoryWaveBank,
     length: float,
     pre_pick: float,
+    all_chans: bool = False,
 ) -> Stream:
     """
 
@@ -192,6 +193,8 @@ def get_stream(
         Length in seconds to get data for each event
     pre_pick
         Time in seconds to get data for before the expected pick-time
+    all_chans
+        Whether to get all channels, or to just get those picked
 
     Returns
     -------
@@ -207,13 +210,17 @@ def get_stream(
             #     event=ev, pre_pick=pre_pick, length=length)
             starttime = min(p.time for p in ev.picks) - pre_pick
             endtime = starttime + length
-            bulk = [
+            bulk = {
                 (p.waveform_id.network_code or "*",
                  p.waveform_id.station_code or "*",
                  p.waveform_id.location_code or "*",
-                 p.waveform_id.channel_code or "*",
-                 starttime, endtime)
-                for p in ev.picks]
+                 p.waveform_id.channel_code or "*")
+                for p in ev.picks}
+            if all_chans:
+                bulk = {(b[0], b[1], b[2], "*") for b in bulk}
+            # UTCDateTime objects don't hash, so we have to add them later
+            bulk = [(b[0], b[1], b[2], b[3], starttime, endtime)
+                    for b in bulk]
             stream += in_memory_wavebank.get_waveforms_bulk(bulk)
     stream.merge()
     return stream
@@ -311,7 +318,8 @@ class Picker(_Plugin):
                     d_party, in_memory_wavebank=self.in_memory_wavebank,
                     length=desired_stream_length,
                     pre_pick=max(internal_config.shift_len * 2,
-                                 family.template.process_length))
+                                 family.template.process_length),
+                    all_chans=True)  # Get all channels as we might need them for amplitude picking
                 stream = stream.merge(method=1)
                 # Get an excess of data to cope with missing "future" data
                 Logger.info(f"Have stream: \n{stream}")
@@ -377,7 +385,7 @@ class Picker(_Plugin):
                     try:
                         event = amp_pick_event(
                             event=event, st=stream, inventory=inv,
-                            chans=["1", "2", "N", "E"], iaspei_standard=False,
+                            chans=["Z"], iaspei_standard=False,
                             var_wintype=True, winlen=internal_config.winlen,
                             ps_multiplier=internal_config.ps_multiplier,
                             win_from_p=True, lowcut=2.0, water_level=None,

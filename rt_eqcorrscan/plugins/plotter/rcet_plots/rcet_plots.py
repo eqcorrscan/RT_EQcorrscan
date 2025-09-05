@@ -294,6 +294,10 @@ def ellipse_plots(
         x=y_z, y=z_z, sd=ellipse_std
     )
     dip = 90 - azimuth_z
+    # Normalize dip - should be between 0 and 90
+    if dip > 90:
+        dip = 180 - dip
+
     ellipse_xsection = plot_confidence_ellipsoid_vertical(
         catalog=catalog_good_depths,
         x=y_z,
