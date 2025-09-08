@@ -87,7 +87,7 @@ def synthesise_real_time(
     region = estimate_region(
         triggering_event,
         multiplier=config.reactor.scaling_multiplier or 1.0,
-        min_length=config.reactor.minimum_lookup_radius or 50.0)
+        min_radius=config.reactor.minimum_lookup_radius or 50.0)
     database_starttime = trigger_origin.time - (database_duration * 86400)
     database_endtime = trigger_origin.time
 
