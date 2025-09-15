@@ -143,13 +143,13 @@ class RegionTests(unittest.TestCase):
         cls.event.preferred_origin_id = cls.event.origins[0].resource_id
 
     def test_good_estimate_region(self):
-        region = estimate_region(self.event, min_length=50.)
+        region = estimate_region(self.event, min_radius=50.)
         self.assertEqual(
             self.event.origins[0].latitude, region["latitude"])
         self.assertEqual(
             self.event.origins[0].longitude, region["longitude"])
         self.assertGreater(
-            region["maxradius"], kilometer2degrees(50) / 2)
+            region["maxradius"], kilometer2degrees(50))
 
     def test_estimate_region_no_origin(self):
         event = copy.deepcopy(self.event)
@@ -166,7 +166,7 @@ class RegionTests(unittest.TestCase):
         self.assertEqual(
             self.event.origins[0].longitude, region["longitude"])
         self.assertEqual(
-            region["maxradius"], kilometer2degrees(50) / 2)
+            region["maxradius"], kilometer2degrees(50))
 
 
 class BackfillTest(unittest.TestCase):

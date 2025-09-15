@@ -390,7 +390,7 @@ class Reactor(object):
         region = estimate_region(
             triggering_event,
             multiplier=self.config.reactor.scaling_multiplier or 1.0,
-            min_length=self.config.reactor.minimum_lookup_radius or 50.0,
+            min_radius=self.config.reactor.minimum_lookup_radius or 50.0,
             scaling_relation=scaling_relation)
         if region is None:
             return
@@ -496,7 +496,7 @@ class Reactor(object):
 
 def estimate_region(
     event: Event,
-    min_length: float = 50.,
+    min_radius: float = 50.,
     scaling_relation: Union[str, Callable] = 'default',
     multiplier: float = 1.25,
 ) -> dict:
@@ -507,7 +507,7 @@ def estimate_region(
     ----------
     event
         The event that triggered this function
-    min_length
+    min_radius
         Minimum length in km for diameter of event circle around the
         triggering event
     scaling_relation
@@ -550,15 +550,18 @@ def estimate_region(
         length = scaling_relation(magnitude.mag)
         length *= multiplier
     else:
-        length = min_length
+        length = min_radius * 2
 
-    if length <= min_length:
-        length = min_length
-    length = kilometer2degrees(length)
-    length /= 2.
+    # Convert from length to radius
+    radius = length / 2.
+
+    if radius <= min_radius:
+        radius = min_radius
+    radius = kilometer2degrees(radius)
+
     return {
         "latitude": origin.latitude, "longitude": origin.longitude,
-        "maxradius": length}
+        "maxradius": radius}
 
 
 if __name__ == "__main__":

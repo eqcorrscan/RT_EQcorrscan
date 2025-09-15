@@ -15,6 +15,7 @@ from obsplus import WaveBank
 from eqcorrscan import Party
 
 from rt_eqcorrscan.config import read_config
+from rt_eqcorrscan.helpers.sparse_event import get_origin_attr
 from rt_eqcorrscan.reactor import estimate_region, get_inventory
 from rt_eqcorrscan.database import TemplateBank, check_tribe_quality
 from rt_eqcorrscan.database.client_emulation import ClientBank
@@ -46,7 +47,15 @@ def run_real_time_matched_filter(**kwargs):
     if triggering_eventid:
         triggering_event = client.get_events(
             eventid=triggering_eventid)[0]
-        region = estimate_region(triggering_event)
+        if get_origin_attr(triggering_event, "depth") > config.reactor.scaling_depth_switch:
+            scaling_relation = config.reactor.scaling_relation_deep
+        else:
+            scaling_relation = config.reactor.scaling_relation_shallow
+        region = estimate_region(
+            event=triggering_event,
+            scaling_relation=scaling_relation,
+            min_radius=config.reactor.minimum_lookup_radius or 50.0,
+            multiplier=config.reactor.scaling_multiplier or 1.0)
         tribe_name = triggering_eventid
     else:
         triggering_event = None
