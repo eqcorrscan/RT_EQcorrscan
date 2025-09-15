@@ -395,7 +395,8 @@ class Reactor(object):
         if region is None:
             return
         region.update(
-            {"starttime": self.config.database_manager.lookup_starttime})
+            {"starttime": self.config.database_manager.lookup_starttime or
+                          UTCDateTime.now()})
         Logger.info("Getting templates within {0}".format(region))
         df = self.template_database.get_event_summary(**region)
         event_ids = {e for e in df["event_id"]}
