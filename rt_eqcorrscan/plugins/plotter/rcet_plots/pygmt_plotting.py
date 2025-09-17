@@ -672,7 +672,7 @@ def _eq_map_summary(
                 label=f"Seismograph+S0.3c",
             )
         # plot legend
-        fig.legend(region=map_region, position="JTL+jTL+o1c")
+        fig.legend(region=map_region, position="JTL+jTL+o1c", box=True)
 
         # plot corners of ellipse
         fig.plot(
