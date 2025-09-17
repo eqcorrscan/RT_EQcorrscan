@@ -1,7 +1,7 @@
-numpy>=1.12
+numpy>=1.22.2
 notifiers
 matplotlib>=1.3.0
-scipy>=0.18
+scipy>=1.10.0rc1
 bokeh
 obspy>=1.0.3
 notifiers
@@ -12,8 +12,8 @@ pyproj>2.1
 codecov
 psutil
 geographiclib
-EQcorrscan>=0.4.2
-urllib3>=1.24.3
+EQcorrscan>=0.5.0
+urllib3>=2.2.2
 obsplus>=0.1.1
 statsmodels
 pytest>=2.0.0
@@ -22,4 +22,12 @@ pytest-pep8
 pytest-xdist
 pytest-rerunfailures
 pytest-mpl
-pillow>=6.2.3 # not directly required, pinned by Snyk to avoid a vulnerability
+pympler  # Required for memory tracking
+psutil  # Required for memory tracking
+certifi>=2023.7.22 # not directly required, pinned by Snyk to avoid a vulnerability
+requests>=2.32.2 # not directly required, pinned by Snyk to avoid a vulnerability
+pillow>=10.0.1 # not directly required, pinned by Snyk to avoid a vulnerability
+setuptools>=70.0.0 # not directly required, pinned by Snyk to avoid a vulnerability
+tornado>=6.3.3 # not directly required, pinned by Snyk to avoid a vulnerability
+fonttools>=4.43.0 # not directly required, pinned by Snyk to avoid a vulnerability
+zipp>=3.19.1 # not directly required, pinned by Snyk to avoid a vulnerability

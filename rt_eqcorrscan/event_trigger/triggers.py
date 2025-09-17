@@ -1,6 +1,7 @@
 """
 Standardised trigger functions for use with a Reactor.
 """
+import datetime
 import logging
 import numpy as np
 from typing import Union, List, Optional
@@ -121,7 +122,7 @@ def inter_event_distance(
 
 
 def average_rate(
-    catalog: Union[List[Detection], Catalog],
+    catalog: Union[List[Detection], List[UTCDateTime], List[datetime.datetime], Catalog],
     starttime: Optional[UTCDateTime] = None,
     endtime: Optional[UTCDateTime] = None
 ) -> float:
@@ -149,8 +150,15 @@ def average_rate(
     if isinstance(catalog, Catalog):
         event_times = sorted([event_time(e) for e in catalog])
     elif isinstance(catalog, list):
-        assert all([isinstance(d, Detection) for d in catalog])
-        event_times = sorted([d.detect_time for d in catalog])
+        if isinstance(catalog[0], Detection):
+            assert all([isinstance(d, Detection) for d in catalog])
+            event_times = sorted([d.detect_time for d in catalog])
+        elif isinstance(catalog[0], UTCDateTime):
+            assert all([isinstance(d, UTCDateTime) for d in catalog])
+            event_times = sorted(catalog)
+        else:
+            assert all([isinstance(d, datetime.datetime) for d in catalog])
+            event_times = sorted([UTCDateTime(d) for d in catalog])
     starttime = starttime or event_times[0]
     endtime = endtime or event_times[-1]
     duration = (endtime - starttime) / 86400.

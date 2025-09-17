@@ -9,10 +9,12 @@ import pickle
 import logging
 import copy
 import numpy
+import pickle
 import gc
 import glob
 import subprocess
 import numpy as np
+import platform
 
 # Memory tracking for debugging
 # import psutil
@@ -314,10 +316,10 @@ class RealTimeTribe(Tribe):
 
     def _remove_old_detections(self, endtime: UTCDateTime) -> None:
         """ Remove detections older than keep duration. Works in-place. """
-        # Use a copy to avoid changing list while iterating
+        # Use a copy to avoid changing while iterating
         for d in copy.copy(self.detections):
-            if d.detect_time <= endtime:
-                self.detections.remove(d)
+            if d <= endtime:
+                self.detections.discard(d)
 
     def _remove_unused_backfillers(
         self,
@@ -538,31 +540,6 @@ class RealTimeTribe(Tribe):
                 Logger.debug(f"New detection at {d.detect_time}")
             # Cope with no picks and hence no origins - these events have to be removed
             family.detections = [d for d in family if len(d.event.origins)]
-            if family.template.name not in _detected_templates:
-                self.party.families.append(family)
-            else:
-                self.party.select(family.template.name).detections.extend(
-                    family.detections)
-
-        Logger.info("Removing duplicate detections")
-        Logger.info(f"Party contained {len(self.party)} before decluster")
-        if len(self.party) > 0:
-            # TODO: Need to remove detections from disk that are removed in decluster
-            self.party.decluster(
-                trig_int=trig_int, timing="origin", metric="cor_sum",
-                hypocentral_separation=hypocentral_separation)
-        Logger.info("Completed decluster")
-        Logger.info(f"Party contains {len(self.party)} after decluster")
-        Logger.info("Writing detections to disk")
-
-        # Cope with not being given a stream
-        read_st = False
-        if st is None and backfill_dir is None:
-            read_st = True
-
-        # TODO: Need a better way to keep track of written detections - unique keys for detections?
-        # TODO: This is slow, and for Kaikoura, this is what stops it from running in real time
-        for family in self.party:
             for detection in family:
                 # TODO: this check doesn't necessarily work well - detections may be the same physical detection, but different Detection objects
                 if detection in self.detections:
@@ -623,6 +600,80 @@ class RealTimeTribe(Tribe):
                 self.detections.append(detection)
         return
 
+        # TODO: Move all of this old handling of detections to a seperate post-process process.
+
+        #
+        #     if family.template.name not in _detected_templates:
+        #         self.party.families.append(family)
+        #     else:
+        #         self.party.select(family.template.name).detections.extend(
+        #             family.detections)
+        #
+        # Logger.info("Removing duplicate detections")
+        # Logger.info(f"Party contained {len(self.party)} before decluster")
+        # if len(self.party) > 0:
+        #     # TODO: Need to remove detections from disk that are removed in decluster
+        #     self.party.decluster(
+        #         trig_int=trig_int, timing="origin", metric="cor_sum",
+        #         hypocentral_separation=hypocentral_separation)
+        # Logger.info("Completed decluster")
+        # Logger.info(f"Party contains {len(self.party)} after decluster")
+        # Logger.info("Writing detections to disk")
+
+        # # Cope with not being given a stream
+        # read_st = False
+        # if st is None and backfill_dir is None:
+        #     read_st = True
+        #
+        # # TODO: Need a better way to keep track of written detections - unique keys for detections?
+        # # TODO: This is slow, and for Kaikoura, this is what stops it from running in real time
+        # for family in self.party:
+        #     for detection in family:
+        #         # TODO: this check doesn't necassarily work well - detections may be the same physical detection, but different Detection objects
+        #         if detection in self.detections:
+        #             continue
+        #         detect_file_base = _detection_filename(
+        #             detection=detection, detect_directory=detect_directory)
+        #         _filename = f"{detect_file_base}.xml"
+        #         if os.path.isfile(f"{detect_file_base}.xml") and skip_existing:
+        #             Logger.info(f"{_filename} exists, skipping")
+        #             continue
+        #         Logger.debug(f"Writing detection: {detection.detect_time}")
+        #         # TODO: Do not do this, let some other process work on making the waveforms.
+        #         if read_st:
+        #             max_shift = (
+        #                 max(tr.stats.endtime for tr in family.template.st) -
+        #                 min(tr.stats.starttime for tr in family.template.st))
+        #             bulk = [
+        #                 (tr.stats.network,
+        #                  tr.stats.station,
+        #                  tr.stats.location,
+        #                  tr.stats.channel,
+        #                  (detection.detect_time - 5),
+        #                  (detection.detect_time + max_shift + 5))
+        #                 for tr in family.template.st]
+        #             st = self.wavebank.get_waveforms_bulk(bulk)
+        #             st_read = True
+        #         self._fig = _write_detection(
+        #             detection=detection,
+        #             detect_file_base=detect_file_base,
+        #             save_waveform=save_waveforms,
+        #             plot_detection=plot_detections, stream=st,
+        #             fig=self._fig, backfill_dir=backfill_dir,
+        #             detect_dir=detect_directory)
+        # Logger.info("Expiring old detections")
+        # # Empty self.detections
+        # self.detections.clear()
+        # for family in self.party:
+        #     Logger.debug(f"Checking for {family.template.name}")
+        #     family.detections = [
+        #         d for d in family.detections if d.detect_time >= earliest_detection_time]
+        #     Logger.debug(f"Appending {len(family)} detections")
+        #     for detection in family:
+        #         # Need to append rather than create a new object
+        #         self.detections.append(detection)
+        # return
+
     def _plot(self) -> None:  # pragma: no cover
         """ Plot the data as it comes in. """
         from rt_eqcorrscan.plotting.plot_buffer import EQcorrscanPlot
@@ -636,7 +687,7 @@ class RealTimeTribe(Tribe):
         self.plotter = EQcorrscanPlot(
             rt_client=self.rt_client, plot_length=self.plot_length,
             tribe=self, inventory=self.inventory,
-            detections=self.detections,
+            detections=[],
             exclude_channels=self.plotting_exclude_channels,
             update_interval=update_interval, plot_height=plot_height,
             plot_width=plot_width, offline=offline,
@@ -913,6 +964,12 @@ class RealTimeTribe(Tribe):
         The party created - will not contain detections expired by
         `keep_detections` threshold.
         """
+        # First: start collecting data NOW
+        # Get this locally before streaming starts
+        buffer_capacity = self.rt_client.buffer_capacity
+        # Start the streamer
+        self._start_streaming()
+
         # Update backfill start time
         self._last_backfill_start = UTCDateTime.now()
         restart_interval = 600.0
@@ -1264,7 +1321,7 @@ class RealTimeTribe(Tribe):
                         break
                     if minimum_rate and UTCDateTime.now() > run_start + self._min_run_length:
                         _rate = average_rate(
-                            self.detections,
+                            list(self.detections),
                             starttime=max(
                                 self._stream_end - keep_detections, first_data),
                             endtime=self._stream_end)
@@ -1293,7 +1350,7 @@ class RealTimeTribe(Tribe):
                     Logger.critical(f"Uncaught error: {e}", exc_info=True)
 
                     message = f"""\
-                    Uncaught error: {e}
+                    Uncaught error on {platform.node()}: {e}
                     
                     Traceback:
                     {traceback.format_exc()}
@@ -1512,7 +1569,8 @@ class RealTimeTribe(Tribe):
             tribe = templates
         else:
             tribe = Tribe(templates)
-        tribe.write(f"{backfiller_name}/tribe.tgz")
+        with open(f"{backfiller_name}/tribe.pkl", "wb") as f:
+            pickle.dump(tribe, f)
 
         del st_files
         # Force garbage collection before creating new process
@@ -1546,7 +1604,7 @@ class RealTimeTribe(Tribe):
         Logger.info("Backfill process started, returning")
         return
 
-    def stop(self, write_stopfile: bool = False) -> None:
+    def stop(self, write_stopfile: bool = True) -> None:
         """
         Stop the real-time system.
        
@@ -1556,6 +1614,7 @@ class RealTimeTribe(Tribe):
             Used to write a one-line file telling listening systems that
             this has stopped. Used by the Reactor.
         """
+        self.notifier.notify("Stopping run")
         if self.plotter is not None:  # pragma: no cover
             self.plotter.background_stop()
         self.rt_client.background_stop()
@@ -1571,6 +1630,7 @@ class RealTimeTribe(Tribe):
                 if os.path.isdir(backfiller_name):
                     shutil.rmtree(backfiller_name)
         if write_stopfile:
+            Logger.info("Writing stopfile")
             with open(".stopfile", "a") as f:
                 f.write(f"{self.name}\n")
         # Stop plugins
@@ -1650,10 +1710,17 @@ def squash_duplicates(template: Template):
     unique_template_st = Stream()
     unique_event_picks = []
     for seed_id, repeats in seed_ids.most_common():
-        # TODO: this restricts to only picks on that seed id - but we could just have matched picks on station
+        # TODO: this restricts to only picks on that seed id - but we could
+        #  just have matched picks on station
+        pick_type = "PS"
         seed_id_picks = [p for p in template.event.picks 
                          if p.waveform_id.get_seed_string() == seed_id 
-                         and p.phase_hint[0] in "PS"]
+                         and p.phase_hint[0] in pick_type]
+        if len(seed_id_picks) == 0:
+            # Cope with potential for picks with matching seed id but without
+            # matching phase hint
+            Logger.info(f"No matched picks of {pick_type} for {seed_id}")
+            continue
         if repeats == 1:
             unique_template_st += template.st.select(id=seed_id)
             unique_event_picks.append(seed_id_picks[0])
