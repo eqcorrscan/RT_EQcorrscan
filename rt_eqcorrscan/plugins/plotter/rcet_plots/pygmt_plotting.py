@@ -721,6 +721,7 @@ def _eq_map_summary(
             )
             if len(station_lons) and len(station_lats):
                 fig.plot(
+                    projection=inset_proj,
                     x=station_lons,
                     y=station_lats,
                     style="i0.1c",
