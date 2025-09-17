@@ -134,7 +134,7 @@ def _chunksize(
     divisor: int = 100,  # Used to give more up-to-date progress reports
 ) -> int:
     max_workers = max_workers or cpu_count()
-    chunksize = n_tasks // (max_workers - 1)
+    chunksize = n_tasks // max(1, max_workers - 1)
     chunksize //= divisor
     return max(chunksize, 1)
 
