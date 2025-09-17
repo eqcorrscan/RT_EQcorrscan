@@ -31,7 +31,9 @@ def aftershock_map(
     topo_cmap: str = "grayC",
     hillshade: bool = False,
     pad: float = 10.0,
-    timestamp: UTCDateTime = UTCDateTime.now()
+    timestamp: UTCDateTime = UTCDateTime.now(),
+    min_depth: float | None = None,
+    max_depth: float | None = None,
 ) -> pygmt.Figure:
     """
 
@@ -80,6 +82,8 @@ def aftershock_map(
         topo_cmap=topo_cmap,
         hillshade=hillshade,
         timestamp=timestamp,
+        min_depth=min_depth,
+        max_depth=max_depth
     )
 
     # Plot mainshock
