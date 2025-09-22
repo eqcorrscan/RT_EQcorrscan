@@ -40,10 +40,11 @@ jobs:
           conda list
 
       - run: curl "https://www.geo.uib.no/public/seismo/SOFTWARE/SEISAN/OLDER_VERSIONS/seisan_v13.5_linux_64.tar.gz" -o "seisan.tar.gz"
-      - run: mkdir seisan && mv seisan.tar.gz seisan/. && cd seisan
-      - run: tar -xzvf seisan.tar.gz && rm seisan.tar.gz
+      - run: mkdir seisan && mv seisan.tar.gz seisan/.
+      - run: cd seisan && tar -xzvf seisan.tar.gz && rm seisan.tar.gz
       - run: cd seisan/PRO && make clean && export SEISARCH=linux64 && make all
-      - run: cp -v /seisan/PRO/* /usr/local/bin/. && cp -v /seisan/COM/* /usr/local/bin/.
+      - run: export GITHUB_PATH="${GITHUB_PATH}:/seisan/PRO:/seisan/COM"
+      # - run: cp -v /seisan/PRO/* /usr/local/bin/. && cp -v /seisan/COM/* /usr/local/bin/.
 
 
 #      - name: install seisan
@@ -60,7 +61,7 @@ jobs:
         run: |
           curl -L --insecure https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.10.4-linux-x86_64.tar.gz -o julia.tar.gz
           tar -xzvf julia.tar.gz && rm julia.tar.gz
-          export PATH="${PATH}:/julia-1.10.4/bin"
+          export GITHUB_PATH="${GITHUB_PATH}:/julia-1.10.4/bin"
           julia -e 'import Pkg; Pkg.update()'
           julia -e 'import Pkg; Pkg.add("DataFrames")'
           julia -e 'import Pkg; Pkg.add("Proj")'
