@@ -7,6 +7,7 @@ import logging
 import time
 import os
 import shutil
+import pytest
 
 from typing import List
 from multiprocessing import Process
@@ -85,6 +86,7 @@ def setup_testcase(
     return cat
 
 
+@pytest.mark.hyp
 class TestHypPlugin(unittest.TestCase):
     clean_up = []
     @classmethod

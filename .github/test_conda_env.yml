@@ -12,6 +12,7 @@ dependencies:
   - pyyaml
   - pyproj>2.1
   - tqdm
+  - pygmt
   - EQcorrscan>=0.5.2
   - urllib3>=1.24.3
   - obsplus>=0.1.1

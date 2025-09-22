@@ -1,4 +1,4 @@
-name: test
+name: test_plugins.yml
 on:
   push:
     branches:
@@ -11,7 +11,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest]
         python-version: [3.11, 3.12]
       fail-fast: false
 
@@ -39,11 +39,33 @@ jobs:
           conda info -a
           conda list
 
+      - name: install hyp
+        shell: bash -l {0}
+        run: |
+          curl "https://www.geo.uib.no/public/seismo/SOFTWARE/SEISAN/OLDER_VERSIONS/seisan_v13.5_linux_64.tar.gz" -o "seisan.tar.gz"
+          mkdir seisan && mv seisan.tar.gz seisan/. && cd seisan
+          tar -xzf seisan.tar.gz && rm seisan.tar.gz
+          cd seisan/PRO && make clean && export SEISARCH=linux64 && make all
+          cp -v /seisan/PRO/* /usr/local/bin/. && cp -v /seisan/COM/* /usr/local/bin/.
+
+      - name: install growclust
+        shell: bash -l {0}
+        run: |
+          curl -L --insecure https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.10.4-linux-x86_64.tar.gz -o julia.tar.gz
+          tar -xzf julia.tar.gz && rm julia.tar.gz
+          export PATH="${PATH}:/julia-1.10.4/bin"
+          julia -e 'import Pkg; Pkg.update()'
+          julia -e 'import Pkg; Pkg.add("DataFrames")'
+          julia -e 'import Pkg; Pkg.add("Proj")'
+          julia -e 'import Pkg; Pkg.add("ArgParse")'
+          julia -e 'import Pkg; Pkg.add("JLD")'
+          julia -e 'import Pkg; Pkg.add(url="https://github.com/dttrugman/GrowClust3D.jl"); using GrowClust3D'
+
       - name: run test suite
         shell: bash -l {0}
         run: |
           export CI="true"
-          pytest -n 2 --dist=loadscope --cov-report=xml -m "not hyp and not growclust"
+          pytest -v --cov-report=xml -m "hyp or growclust" --log-cli-level INFO
 
 #      - name: run streamer tests
 #        shell: bash -l {0}
@@ -60,13 +82,3 @@ jobs:
           name: codecov-umbrella
           yml: ./codecov.yml
           fail_ci_if_error: true
-# This is a very useful step for debugging, it allows you to ssh into the CI
-# machine (https://github.com/marketplace/actions/debugging-with-tmate).
-# Make sure to open the log before the job starts else you cant see the tmate
-# url. See https://github.com/mxschmitt/action-tmate/issues/1.
-# Also, the CI machine will close on a non-zero exit code (annoying). This can
-# be overcome by coalescing the null command like so:
-# $ some-command-that-can-fail || :
-#
-#- name: Setup tmate session
-#  uses: mxschmitt/action-tmate@v1
