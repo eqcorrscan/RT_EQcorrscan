@@ -11,18 +11,20 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-22.04]
+        os: [ubuntu-latest]
         python-version: [3.11, 3.12]
       fail-fast: false
 
     steps:
       - uses: actions/checkout@v4
 
-      - run: sudo apt-get update && sudo apt-get install -yq --no-install-recommends curl tar gfortran libx11-6 libx11-dev g++ make git gcc libfftw3-dev cmake && sudo apt-get clean
+      - run: sudo apt-get update && sudo apt-get install -yq --no-install-recommends curl tar gfortran-9 libx11-6 libx11-dev g++ make git gcc libfftw3-dev cmake && sudo apt-get clean
       - run: gfortran --version
       - run: curl "https://www.geo.uib.no/public/seismo/SOFTWARE/SEISAN/OLDER_VERSIONS/seisan_v13.5_linux_64.tar.gz" -o "seisan.tar.gz"
       - run: mkdir seisan && mv seisan.tar.gz seisan/.
       - run: cd seisan && tar -xzvf seisan.tar.gz && rm seisan.tar.gz
+      - run: sed -i 's/gfortran/gfortran-9/g' seisan/PRO/Makefile
+      - run: sed -i 's/gfortran/gfortran-9/g' seisan/LIB/Makefile
       - run: cd seisan/PRO && make clean && SEISARCH=linux64 make all
       - run: export GITHUB_PATH="${GITHUB_PATH}:/seisan/PRO:/seisan/COM"
       # - run: cp -v /seisan/PRO/* /usr/local/bin/. && cp -v /seisan/COM/* /usr/local/bin/.
