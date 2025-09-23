@@ -540,7 +540,7 @@ def estimate_region(
         magnitude = event.preferred_magnitude() or event.magnitudes[0]
     except IndexError:
         Logger.warning("Triggering event has no magnitude, using minimum "
-                       "length or {0}".format(min_length))
+                       "length or {0}".format(min_radius))
         magnitude = None
 
     if magnitude:
