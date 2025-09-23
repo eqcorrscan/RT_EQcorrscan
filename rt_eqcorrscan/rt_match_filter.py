@@ -318,7 +318,7 @@ class RealTimeTribe(Tribe):
         """ Remove detections older than keep duration. Works in-place. """
         # Use a copy to avoid changing while iterating
         for d in copy.copy(self.detections):
-            if d <= endtime:
+            if d.detect_time <= endtime:
                 self.detections.discard(d)
 
     def _remove_unused_backfillers(
