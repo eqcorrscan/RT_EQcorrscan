@@ -4,22 +4,20 @@ Tests for the output plugin
 
 import unittest
 import logging
-import time
 import os
 import shutil
-import pandas as pd
 import glob
 import pickle
 
 from itertools import cycle
 from typing import Tuple, List
-from multiprocessing import Process
 
-from obspy import Catalog, UTCDateTime, read_events, Inventory
+from obspy import Catalog, UTCDateTime, Inventory
 
 from eqcorrscan import Template
 
 from rt_eqcorrscan.plugins.plotter.plotter_runner import Plotter, PlotConfig
+from rt_eqcorrscan.helpers.sparse_event import sparsify_catalog
 
 Logger = logging.getLogger(__name__)
 
@@ -46,6 +44,10 @@ def _write_sim_info(
             pickle.dump(template, f)
     Logger.debug("Simulation templates written")
 
+    # Convert catalogs to sparse
+    locations = sparsify_catalog(locations)
+    relocations = sparsify_catalog(relocations)
+
     # Write chunks of detections
     loc_slices = [slice(0, 1), slice(1, 5), slice(5, 50), slice(50, 125),
                   slice(125, None)]
@@ -56,13 +58,13 @@ def _write_sim_info(
         loc_events = locations[_loc_slice]
         reloc_events = relocations[_reloc_slice]
         for event in loc_events:
-            Logger.debug(f"Writing located event {event.resource_id.id.split('/')[-1]}")
-            event.write(f"{location_dir}/{event.resource_id.id.split('/')[-1]}.xml",
-                        format="QUAKEML")
+            Logger.info(f"Writing located event {event.resource_id.id.split('/')[-1]}")
+            with open(f"{location_dir}/{event.resource_id.id.split('/')[-1]}.pkl", "wb") as f:
+                pickle.dump(event, f)
         for event in reloc_events:
-            Logger.debug(f"Writing relocated event {event.resource_id.id.split('/')[-1]}")
-            event.write(f"{relocation_dir}/{event.resource_id.id.split('/')[-1]}.xml",
-                        format="QUAKEML")
+            Logger.info(f"Writing relocated event {event.resource_id.id.split('/')[-1]}")
+            with open(f"{relocation_dir}/{event.resource_id.id.split('/')[-1]}.pkl", "wb") as f:
+                pickle.dump(event, f)
     return
 
 

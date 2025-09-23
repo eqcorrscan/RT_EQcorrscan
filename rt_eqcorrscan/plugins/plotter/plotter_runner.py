@@ -145,6 +145,7 @@ class Plotter(_Plugin):
             except Exception as e:
                 Logger.exception(f"Could not copy {new_file} due to {e}")
             else:
+                Logger.info(f"Copied {new_file} to {copied_file}")
                 copied_files.append(copied_file)
 
         """
