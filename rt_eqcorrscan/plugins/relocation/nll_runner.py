@@ -417,8 +417,9 @@ def run_nll(catalog: Catalog, control_file: str, verbose: bool = True) -> Catalo
 
 class NLL(_Plugin):
     _setup = True
-    located_templates = []  # List of template files already located
+
     def __init__(self, config_file: str, name: str = "NLLRunner"):
+        self.located_templates = []  # List of template files already located
         super().__init__(config_file=config_file, name=name)
 
     def _read_config(self, config_file: str):

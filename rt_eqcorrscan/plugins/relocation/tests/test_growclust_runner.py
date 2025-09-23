@@ -7,6 +7,7 @@ import logging
 import time
 import os
 import shutil
+import pytest
 
 from typing import List
 from multiprocessing import Process
@@ -127,6 +128,7 @@ class TestGrowclustPlugin(unittest.TestCase):
         )
         cls.clean_up.extend([cls.eventdir, cls.wavedir, cls.outdir])
 
+    @pytest.mark.growclust
     def test_main(self):
         out_dir, config_file = "gc_test_output", "gc_config.yml"
         config = GrowClustConfig(
@@ -157,6 +159,7 @@ class TestGrowclustPlugin(unittest.TestCase):
                                format="QUAKEML")
             self.assertTrue(method_id == "GrowClust")
 
+    @pytest.mark.growclust
     def test_updating(self):
         in_dir, out_dir, config_file = (
             "gc_looping_test_events", "gc_looping_test_output",

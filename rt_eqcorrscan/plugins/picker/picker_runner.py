@@ -221,6 +221,9 @@ def get_stream(
             # UTCDateTime objects don't hash, so we have to add them later
             bulk = [(b[0], b[1], b[2], b[3], starttime, endtime)
                     for b in bulk]
+            Logger.info(f"Getting stream for bulk: {bulk}")
+            Logger.info(f"pre-pick: {pre_pick}")
+            Logger.info(f"earliest pick: {min(p.time for p in ev.picks)}")
             stream += in_memory_wavebank.get_waveforms_bulk(bulk)
     stream.merge()
     return stream

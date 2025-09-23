@@ -9,6 +9,7 @@ import shutil
 
 import tqdm
 import glob
+import pickle
 
 from collections import Counter
 from typing import List, Union
@@ -149,6 +150,10 @@ def run(
     Logger.info("Created real-time tribe with inventory:\n{0}".format(
         inventory))
 
+    # Start streaming NOW!
+    real_time_tribe._start_streaming()
+    Logger.info("Started streaming real-time data")
+
     # TODO: How will this work? Currently notifiers are not implemented
     # real_time_tribe.notifier = None
 
@@ -189,6 +194,11 @@ def run(
         else:
             st = st.split()  # Cannot write masked data
             real_time_tribe.wavebank.put_waveforms(st)
+            # Add backfill traces to real-time buffer
+            for tr in st:
+                real_time_tribe.rt_client.on_data(tr)
+            Logger.info("Added traces to real-time buffer")
+
         backfill_stations = {tr.stats.station for tr in st}
         backfill_templates = [
             t for t in real_time_tribe.templates

@@ -23,7 +23,7 @@ from scipy.cluster.hierarchy import linkage, fcluster, dendrogram
 from obspy import read_events, Catalog, UTCDateTime
 from obspy.core.event import Event
 
-from eqcorrscan.utils.findpeaks import decluster
+from eqcorrscan.utils.findpeaks import decluster, decluster_pick_times
 from eqcorrscan.utils.clustering import dist_mat_km
 
 from rt_eqcorrscan.config.config import _PluginConfig
@@ -302,11 +302,17 @@ PLUGIN_CONFIG_MAPPER.update({"output": OutputConfig})
 
 
 class Outputter(_Plugin):
-    name = "Outputter"
-    template_dict = {}  # Dict of template SparseEvents keyed by filename
-    output_events = {}  # Dict of output (filename, SparseEvent) tuples keyed by event-id
-    _read_files = []  # List of files that we have already read. Used to avoid re-reading events
-    _skipped_templates = set()  # Set of template files to not output
+    def __init__(self, config_file: str, name: str = None):
+        self.name = "Outputter" # Will be overwritten by arg name if given.
+        self.template_dict = {}
+        # Dict of template SparseEvents keyed by filename
+        self.output_events = {}
+        # Dict of output (filename, SparseEvent) tuples keyed by event-id
+        self._read_files = []
+        # List of files that we have already read. Used to avoid re-reading events
+        self._skipped_templates = set()
+        # Set of template files to not output
+        super().__init__(config_file=config_file, name=name)
 
     def _read_config(self, config_file: str):
         return OutputConfig.read(config_file=config_file)
@@ -319,13 +325,17 @@ class Outputter(_Plugin):
         """ Get the output events. """
         return [v[1] for v in self.output_events.values()]
 
-    def decluster(self):
+    def decluster(self, pick_time: bool = True):
         original_cat_len = len(self.output_events)
         if original_cat_len <= 1:
             Logger.info(f"Only {original_cat_len} events, not declustering")
             return
-        declustered_cat = decluster_catalog(
-            self.output_catalog(), trig_int=self.config.trig_int)
+        if pick_time:
+            declustered_cat = decluster_pick_times(
+                self.output_catalog(), trig_int=self.config.trig_int)
+        else:
+            declustered_cat = decluster_catalog(
+                self.output_catalog(), trig_int=self.config.trig_int)
         declustered_dict = {
             evid: (f, ev) for evid, (f, ev) in self.output_events.items()
             if ev in declustered_cat}
@@ -473,7 +483,7 @@ class Outputter(_Plugin):
                     f"self-detections")
         # Decluster
         if self.config.trig_int:
-            self.decluster()
+            self.decluster(pick_time=True)
 
         for value in self.output_events.values():
             ev_file, ev = value

@@ -77,12 +77,16 @@ PLUGIN_CONFIG_MAPPER.update({"plotter": PlotConfig})
 
 
 class Plotter(_Plugin):
-    name = "Plotter"
-    watch_pattern = "catalog.pkl"  # Only watch for the pkl
-    event_cache = {}  # Dict of SparseEvents keyed by event id
-    _mainshock_cluster_ids = None
-    inventory_cache = (None, None, None)  # Tuple of (inventory, file, mtime)
-    simulation_time_offset = 0.0  # Seconds to subtract from now to get the simulated time.
+    def __init__(self, config_file: str, name: str = None):
+        self.name = "Plotter"
+        self.watch_pattern = "catalog.pkl"  # Only watch for the pkl
+        self.event_cache = {}  # Dict of SparseEvents keyed by event id
+        self._mainshock_cluster_ids = None
+        self.inventory_cache = (None, None, None)
+        # Tuple of (inventory, file, mtime)
+        self.simulation_time_offset = 0.0
+        # Seconds to subtract from now to get the simulated time.
+        super().__init__(config_file=config_file, name=name)
 
     @property
     def _aftershock_templates(self):
@@ -141,6 +145,7 @@ class Plotter(_Plugin):
             except Exception as e:
                 Logger.exception(f"Could not copy {new_file} due to {e}")
             else:
+                Logger.info(f"Copied {new_file} to {copied_file}")
                 copied_files.append(copied_file)
 
         """

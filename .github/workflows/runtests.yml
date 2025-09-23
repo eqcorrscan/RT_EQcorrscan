@@ -12,29 +12,26 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: [3.7, 3.8]
-        exclude:
-          # Currently (0.4.2) EQcorrscan does not support Python 3.8 on Windows
-          - os: windows-latest
-            python-version: 3.8
+        python-version: [3.11, 3.12]
       fail-fast: false
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Setup conda
-        uses: conda-incubator/setup-miniconda@v2
+        uses: conda-incubator/setup-miniconda@v3
         with:
-          miniconda-version: 'latest'
           python-version: ${{ matrix.python-version }}
           activate-environment: rteqcorrscan-test
+          miniforge-version: latest
           environment-file: .github/test_conda_env.yml
           condarc-file: .github/test_condarc.yml
+          auto-activate-base: false
 
       - name: install rt-eqcorrscan
         shell: bash -l {0}
         run: |
-          pip install -e .
+          pip install --no-deps --no-build-isolation -v -e .
 
       - name: print package info
         shell: bash -l {0}
@@ -46,7 +43,9 @@ jobs:
         shell: bash -l {0}
         run: |
           export CI="true"
-          py.test -n 2 --dist=loadscope --cov-report=xml
+          pytest -v --cov-report=xml -m "not hyp and not growclust"
+
+#          pytest -n 2 --dist=loadscope --cov-report=xml -m "not hyp and not growclust"
 
 #      - name: run streamer tests
 #        shell: bash -l {0}
@@ -55,13 +54,13 @@ jobs:
 #          py.test tests/streaming_tests -v --cov-report=xml
 
       - name: upload coverage
-        uses: codecov/codecov-action@v1
+        uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: ./coverage.xml
           flags: unittests
           name: codecov-umbrella
-          yml: ./codecov.yml
+          codecov_yml_path: ./codecov.yml
           fail_ci_if_error: true
 # This is a very useful step for debugging, it allows you to ssh into the CI
 # machine (https://github.com/marketplace/actions/debugging-with-tmate).

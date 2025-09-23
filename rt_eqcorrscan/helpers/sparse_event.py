@@ -5,7 +5,7 @@ Helpers for working with catalogs
 import datetime as dt
 import logging
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Union, Iterable, List
 
 from obspy import UTCDateTime
@@ -39,6 +39,7 @@ class SparseID:
     def to_obspy(self):
         return ResourceIdentifier(**self.__dict__)
 
+
 @dataclass
 class SparseError:
     uncertainty: float = None
@@ -52,6 +53,7 @@ class SparseError:
 
     def to_obspy(self):
         return QuantityError(**self.__dict__)
+
 
 @dataclass
 class SparseOrigin:
@@ -79,6 +81,7 @@ class SparseOrigin:
             if self.__dict__[attr]:
                 ori.__dict__.update({attr: self.__dict__[attr].to_obspy()})
         return ori
+
 
 @dataclass
 class SparseMagnitude:
@@ -141,12 +144,14 @@ class SparsePick:
     time: UTCDateTime = None
     phase_hint: str = None
     waveform_id: SparseWaveform_ID = None
+    comments: List[SparseComment] = field(default_factory=list)
 
     def get(self, key: str, default=None):
         return self.__dict__.get(key, default) or default
 
     def to_obspy(self):
-        pick = Pick(time=self.time, phase_hint=self.phase_hint)
+        pick = Pick(time=self.time, phase_hint=self.phase_hint,
+                    comments=[Comment(c.text) for c in self.comments])
         if self.waveform_id:
             pick.waveform_id = self.waveform_id.to_obspy()
         return pick
@@ -289,7 +294,9 @@ def _sparsify_waveform_id(waveform_id: WaveformStreamID) -> SparseWaveform_ID:
 
 def _sparsify_pick(pick: Pick) -> SparsePick:
     return SparsePick(time=pick.time, phase_hint=pick.phase_hint,
-                      waveform_id=_sparsify_waveform_id(pick.waveform_id))
+                      waveform_id=_sparsify_waveform_id(pick.waveform_id),
+                      comments=[SparseComment(text=comment.text)
+                                for comment in pick.comments])
 
 
 def _sparsify_event(event: Event, include_picks: bool = False) -> SparseEvent:

@@ -686,7 +686,6 @@ def _cleanup():
 
 class GrowClust(_Plugin):
     _cc_file = "dt.cc"
-    inventory_cache = (None, None, None)  # Tuple of (inventory, file, mtime)
 
     def __init__(self, config_file: str, name: str = "GrowClustRunner"):
         super().__init__(config_file=config_file, name=name)
@@ -709,6 +708,8 @@ class GrowClust(_Plugin):
             )
         self._all_event_files = dict()
         # Keep record of all event files keyed by event id
+        self.    inventory_cache = (None, None, None)
+        # Tuple of (inventory, file, mtime)
 
     def _read_config(self, config_file: str):
         return GrowClustConfig.read(config_file)

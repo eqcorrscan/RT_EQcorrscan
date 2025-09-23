@@ -41,8 +41,6 @@ class StreamClient:
     min_buffer_fraction
         Minimum buffer fraction to trigger a re-fresh of the buffer.
     """
-    __st = Stream()
-
     # Locks on shared objects
     _stream_lock = Lock()
 
@@ -56,6 +54,7 @@ class StreamClient:
         min_buffer_fraction: float = 0.25,
         speed_up: float = 1.0,
     ):
+        self.__st = Stream()
         self.client = client
         self.buffer_length = buffer_length
         self._min_buffer_length = buffer_length * min_buffer_fraction
@@ -94,6 +93,15 @@ class StreamClient:
     @stream.setter
     def stream(self, st: Stream):
         Logger.debug("Stream setter called")
+        # Empty stream queue
+        Logger.debug("Emptying queue")
+        with self._stream_lock:
+            while True:
+                try:
+                    self._stream_queue.get(block=True, timeout=0.5)
+                except Empty:
+                    Logger.debug("Queue is empty")
+                    break
         # Put stream in queue
         Logger.debug("Putting stream in queue")
         with self._stream_lock:
@@ -181,6 +189,7 @@ class StreamClient:
                 if len(trimmed) == 0:
                     continue
                 trimmed_st += trimmed.trim(starttime=endtime)
+            Logger.debug(f"Putting trimmed stream back in:\n{trimmed_st}")
             # Put back into queue
             self.stream = trimmed_st
         Logger.debug(f"Returning stream from StreamClient for bulk: {bulk}:\n{st}")

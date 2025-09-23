@@ -26,7 +26,7 @@ class TestStreamBuffer(unittest.TestCase):
             UTCDateTime(2020, 1, 1))
         time.sleep(1)
         initial_stream = buffer.stream
-        print(f"Initialised buffer as: \n{initial_stream}")
+        Logger.info(f"Initialised buffer as: \n{initial_stream}")
         buffer.maintain_buffer()
         st = buffer.get_waveforms_bulk(
             [("NZ", "WVZ", "10", "HHZ",
@@ -35,27 +35,30 @@ class TestStreamBuffer(unittest.TestCase):
              ("NZ", "RPZ", "10", "HHZ",
               UTCDateTime(2020, 1, 1),
               UTCDateTime(2020, 1, 1, 0, 0, 6))])
-        self.assertEqual(len(st), 2)
-        trimmed_stream = buffer.stream
-        print(f"Cut out first 6 seconds to give buffer: \n{trimmed_stream}")
-        self.assertLess(
-            trimmed_stream[0].stats.npts, initial_stream[0].stats.npts)
-        # remove more than 75% of buffer
-        st2 = buffer.get_waveforms_bulk(
-            [("NZ", "WVZ", "10", "HHZ",
-              UTCDateTime(2020, 1, 1),
-              UTCDateTime(2020, 1, 1, 0, 0, 50)),
-             ("NZ", "RPZ", "10", "HHZ",
-              UTCDateTime(2020, 1, 1),
-              UTCDateTime(2020, 1, 1, 0, 0, 50))])
-        self.assertEqual(len(st), 2)
-        print("Sleeping to allow buffer to refill")
-        time.sleep(20)  # Sleep for more than half the min buffer fraction
-        out_buffer = buffer.stream
-        for tr in out_buffer:
-            self.assertGreaterEqual(
-                tr.stats.endtime - tr.stats.starttime, 60)
-        buffer.background_stop()
+        try:
+            self.assertEqual(len(st), 2)
+            trimmed_stream = buffer.stream
+            Logger.info(f"Cut out first 6 seconds to give buffer: \n{trimmed_stream}")
+            self.assertLess(
+                trimmed_stream[0].stats.npts, initial_stream[0].stats.npts)
+            # remove more than 75% of buffer
+            st2 = buffer.get_waveforms_bulk(
+                [("NZ", "WVZ", "10", "HHZ",
+                  UTCDateTime(2020, 1, 1),
+                  UTCDateTime(2020, 1, 1, 0, 0, 50)),
+                 ("NZ", "RPZ", "10", "HHZ",
+                  UTCDateTime(2020, 1, 1),
+                  UTCDateTime(2020, 1, 1, 0, 0, 50))])
+            self.assertEqual(len(st), 2)
+            Logger.info("Sleeping to allow buffer to refill")
+            time.sleep(20)  # Sleep for more than half the min buffer fraction
+            out_buffer = buffer.stream
+
+            for tr in out_buffer:
+                self.assertGreaterEqual(
+                    tr.stats.endtime - tr.stats.starttime, 60)
+        finally:
+            buffer.background_stop()
 
 
 class FDSNTest(unittest.TestCase):

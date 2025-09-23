@@ -128,9 +128,9 @@ class _Plugin(ABC):
     watch_pattern = "*.xml"
     name = "Plugin"
     _write_sim_catalogues = False  # Flag to write time-stamped simulation cats
-    template_dict = {}  # dict of sparse events keyed by filename
 
     def __init__(self, config_file: str, name: str = None):
+        self.template_dict = dict() # dict of sparse events keyed by filename
         self.config = self._read_config(config_file=config_file)
         self._config_file = config_file
         self.watchers = {}  # Dict keyed by in_dir

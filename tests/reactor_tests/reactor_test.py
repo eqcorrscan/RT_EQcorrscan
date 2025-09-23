@@ -168,10 +168,10 @@ class RegionTests(unittest.TestCase):
         self.assertEqual(
             region["maxradius"], kilometer2degrees(50))
 
-
-class BackfillTest(unittest.TestCase):
-    def test_basic(self):
-        raise NotImplementedError
+#
+# class BackfillTest(unittest.TestCase):
+#     def test_basic(self):
+#         raise NotImplementedError
 
 
 if __name__ == "__main__":

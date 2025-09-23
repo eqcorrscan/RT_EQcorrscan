@@ -6,6 +6,8 @@ import time
 import os
 import signal
 import subprocess
+import platform
+import pickle
 
 from copy import deepcopy
 from typing import Callable, Union, List, Tuple
@@ -102,9 +104,9 @@ class Reactor(object):
     ...     rate_threshold=20, rate_bin=0.5)
     """
     _triggered_events = []
-    _running_templates = dict()
+    _running_templates = None # dict()
     # Template events ids keyed by triggering-event-id
-    _running_regions = dict()  # Regions keyed by triggering-event-id
+    _running_regions = None # dict()  # Regions keyed by triggering-event-id
     max_station_distance = 1000
     n_stations = 10
     sleep_step = 15
@@ -118,7 +120,7 @@ class Reactor(object):
     _max_detect_cores = 12
 
     # The processes that are detecting away!
-    detecting_processes = dict()
+    detecting_processes = None # Don't use mutable objects
 
     def __init__(
         self,
@@ -151,6 +153,8 @@ class Reactor(object):
         self.up_time = 0
         signal.signal(signal.SIGINT, self._handle_interupt)
         signal.signal(signal.SIGTERM, self._handle_interupt)
+        (self.detecting_processes, self._running_templates,
+         self._running_regions) = dict(), dict(), dict()
 
     @property
     def available_cores(self) -> int:
@@ -275,6 +279,7 @@ class Reactor(object):
             working_dir = _get_triggered_working_dir(
                 trigger_event_id, exist_ok=True)
             if os.path.isfile(f"{working_dir}/.stopfile"):
+                Logger.info(f"Found stopfile for {trigger_event_id}")
                 self.stop_tribe(trigger_event_id)
 
     def get_manual_triggers(self, clean=True) -> Catalog:
@@ -365,7 +370,8 @@ class Reactor(object):
                 "Listener triggered by event {0}".format(trigger_event))
             # Send this as an email
             self.notifier.notify(
-                content=f"Listener triggered by event {trigger_event}")
+                content=f"Listener triggered on {platform.node()} "
+                        f"by event {trigger_event}")
             if len(self._running_regions) >= self.available_cores:
                 Logger.error("No more available processors")
                 continue
@@ -468,7 +474,8 @@ class Reactor(object):
     def _handle_interupt(self, signum, frame) -> None:
         Logger.critical(f"Received signal: {signum}")
         self.notifier.notify(
-            content=f"CRITICAL: Stopping reactor after interupt: {signum}")
+            content=f"CRITICAL: Stopping reactor on {platform.node()} "
+                    f"after interrupt: {signum}")
         self.stop()
 
     def stop(self, raise_exit: bool=True) -> None:
@@ -535,7 +542,7 @@ def estimate_region(
         magnitude = event.preferred_magnitude() or event.magnitudes[0]
     except IndexError:
         Logger.warning("Triggering event has no magnitude, using minimum "
-                       "length or {0}".format(min_length))
+                       "length or {0}".format(min_radius))
         magnitude = None
 
     if magnitude:

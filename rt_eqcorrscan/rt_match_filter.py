@@ -9,10 +9,12 @@ import pickle
 import logging
 import copy
 import numpy
+import pickle
 import gc
 import glob
 import subprocess
 import numpy as np
+import platform
 
 # Memory tracking for debugging
 # import psutil
@@ -82,13 +84,13 @@ class RealTimeTribe(Tribe):
     lock = Lock()  # Lock for access to internals
     _running = False
     _detecting_thread = None
-    _backfillers = dict()  # Backfill subprocesses
+    _backfillers = None # dict()  # Backfill subprocesses
     _backfill_tribe = Tribe()  # Tribe of as-yet unused templates for backfilling
     _last_backfill_start = UTCDateTime.now()  # Time of last backfill run - update on run
     _number_of_backfillers = 0  # Book-keeping of backfiller processes.
     _clean_backfillers = False  # If false will leave temporary backfiller dirs
 
-    _plugins = dict()  # Plugin subprocesses
+    _plugins = None # dict()  # Plugin subprocesses
 
     busy = False
 
@@ -150,6 +152,7 @@ class RealTimeTribe(Tribe):
                 if key != "plot_length"})
         self.detections = []
         self._killfile = f"kill_{self.name}_{id(self)}"
+        self._plugins, self._backfillers = dict(), dict()
 
         # Wavebank status to avoid accessing the underlying, lockable, wavebank
         if isinstance(wavebank, str):
@@ -314,7 +317,7 @@ class RealTimeTribe(Tribe):
 
     def _remove_old_detections(self, endtime: UTCDateTime) -> None:
         """ Remove detections older than keep duration. Works in-place. """
-        # Use a copy to avoid changing list while iterating
+        # Use a copy to avoid changing while iterating
         for d in copy.copy(self.detections):
             if d.detect_time <= endtime:
                 self.detections.remove(d)
@@ -601,7 +604,6 @@ class RealTimeTribe(Tribe):
                          (detection.detect_time + max_shift + 5))
                         for tr in family.template.st]
                     st = self.wavebank.get_waveforms_bulk(bulk)
-                    st_read = True
                 self._fig = _write_detection(
                     detection=detection,
                     detect_file_base=detect_file_base,
@@ -748,10 +750,11 @@ class RealTimeTribe(Tribe):
             Logger.info(f"Stopping subprocess for plugin {key}")
             config = self.plugin_config[key]
             outdir = config.out_dir
-            with open(f"{outdir}/poison", "w") as f:
-                f.write(f"Poisoned at {time.time()}")
-            # proc.terminate()
-            Logger.info(f"{key} poisoned")
+            if os.path.isdir(outdir):
+                with open(f"{outdir}/poison", "w") as f:
+                    f.write(f"Poisoned at {time.time()}")
+                # proc.terminate()
+                Logger.info(f"{key} poisoned")
 
         return
 
@@ -913,6 +916,13 @@ class RealTimeTribe(Tribe):
         The party created - will not contain detections expired by
         `keep_detections` threshold.
         """
+        stopped = False
+        # First: start collecting data NOW
+        # Get this locally before streaming starts
+        buffer_capacity = self.rt_client.buffer_capacity
+        # Start the streamer
+        self._start_streaming()
+
         # Update backfill start time
         self._last_backfill_start = UTCDateTime.now()
         restart_interval = 600.0
@@ -1207,6 +1217,7 @@ class RealTimeTribe(Tribe):
                             Logger.error(
                                 "Out of memory, stopping this detector")
                             self.stop()
+                            stopped = True
                             break
                         if not self._runtime_check(
                                 run_start=run_start,
@@ -1261,10 +1272,11 @@ class RealTimeTribe(Tribe):
                     if not _continue or not _runtime_continue:
                         Logger.info(f"Stopping\t wait check: {_continue}, runtime check: {_runtime_continue}")
                         self.stop()
+                        stopped = True
                         break
                     if minimum_rate and UTCDateTime.now() > run_start + self._min_run_length:
                         _rate = average_rate(
-                            self.detections,
+                            list(self.detections),
                             starttime=max(
                                 self._stream_end - keep_detections, first_data),
                             endtime=self._stream_end)
@@ -1275,6 +1287,7 @@ class RealTimeTribe(Tribe):
                                 "Rate ({0:.2f}) has dropped below minimum rate, "
                                 "stopping.".format(_rate))
                             self.stop()
+                            stopped = True
                             break
                     # Re-use this stream
                     past_st = st
@@ -1293,7 +1306,7 @@ class RealTimeTribe(Tribe):
                     Logger.critical(f"Uncaught error: {e}", exc_info=True)
 
                     message = f"""\
-                    Uncaught error: {e}
+                    Uncaught error on {platform.node()}: {e}
                     
                     Traceback:
                     {traceback.format_exc()}
@@ -1305,7 +1318,8 @@ class RealTimeTribe(Tribe):
                         break
         finally:
             Logger.critical("Stopping")
-            self.stop()
+            if not stopped:
+                self.stop()
         return self.party
 
     def _read_templates_from_disk(self):
@@ -1512,7 +1526,8 @@ class RealTimeTribe(Tribe):
             tribe = templates
         else:
             tribe = Tribe(templates)
-        tribe.write(f"{backfiller_name}/tribe.tgz")
+        with open(f"{backfiller_name}/tribe.pkl", "wb") as f:
+            pickle.dump(tribe, f)
 
         del st_files
         # Force garbage collection before creating new process
@@ -1546,7 +1561,7 @@ class RealTimeTribe(Tribe):
         Logger.info("Backfill process started, returning")
         return
 
-    def stop(self, write_stopfile: bool = False) -> None:
+    def stop(self, write_stopfile: bool = True) -> None:
         """
         Stop the real-time system.
        
@@ -1556,6 +1571,7 @@ class RealTimeTribe(Tribe):
             Used to write a one-line file telling listening systems that
             this has stopped. Used by the Reactor.
         """
+        self.notifier.notify("Stopping run")
         if self.plotter is not None:  # pragma: no cover
             self.plotter.background_stop()
         self.rt_client.background_stop()
@@ -1571,6 +1587,7 @@ class RealTimeTribe(Tribe):
                 if os.path.isdir(backfiller_name):
                     shutil.rmtree(backfiller_name)
         if write_stopfile:
+            Logger.info("Writing stopfile")
             with open(".stopfile", "a") as f:
                 f.write(f"{self.name}\n")
         # Stop plugins
@@ -1650,10 +1667,17 @@ def squash_duplicates(template: Template):
     unique_template_st = Stream()
     unique_event_picks = []
     for seed_id, repeats in seed_ids.most_common():
-        # TODO: this restricts to only picks on that seed id - but we could just have matched picks on station
+        # TODO: this restricts to only picks on that seed id - but we could
+        #  just have matched picks on station
+        pick_type = "PS"
         seed_id_picks = [p for p in template.event.picks 
                          if p.waveform_id.get_seed_string() == seed_id 
-                         and p.phase_hint[0] in "PS"]
+                         and p.phase_hint[0] in pick_type]
+        if len(seed_id_picks) == 0:
+            # Cope with potential for picks with matching seed id but without
+            # matching phase hint
+            Logger.info(f"No matched picks of {pick_type} for {seed_id}")
+            continue
         if repeats == 1:
             unique_template_st += template.st.select(id=seed_id)
             unique_event_picks.append(seed_id_picks[0])

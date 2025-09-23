@@ -1,0 +1,92 @@
+name: test_plugins.yml
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  # Runs the tests on combinations of the supported python/os matrix.
+  test_code:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        python-version: [3.11, 3.12]
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: sudo apt-get update && sudo apt-get install -yq --no-install-recommends curl tar gfortran-9 libx11-6 libx11-dev g++ make git gcc libfftw3-dev cmake && sudo apt-get clean
+      - run: gfortran --version
+      - run: curl "https://www.geo.uib.no/public/seismo/SOFTWARE/SEISAN/OLDER_VERSIONS/seisan_v13.5_linux_64.tar.gz" -o "seisan.tar.gz"
+      - run: mkdir seisan && mv seisan.tar.gz seisan/.
+      - run: cd seisan && tar -xzvf seisan.tar.gz && rm seisan.tar.gz
+      - run: sed -i 's/ gfortran/ gfortran-9/g' seisan/PRO/Makefile
+      - run: sed -i 's/ gfortran/ gfortran-9/g' seisan/LIB/Makefile
+      - run: cd seisan/PRO && make clean && SEISARCH=linux64 make all
+      - run: sudo mv seisan /seisan
+      - run: sudo cp -v /seisan/PRO/* /usr/local/bin/. && sudo cp -v /seisan/COM/* /usr/local/bin/.
+
+      - name: install julia
+        shell: bash -e {0}
+        run: |
+          curl -L --insecure https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.10.4-linux-x86_64.tar.gz -o julia.tar.gz
+          tar -xzvf julia.tar.gz && rm julia.tar.gz
+          sudo mv julia-1.10.4 /usr/local/bin/julia-1.10.4
+
+      - name: install growclust
+        shell: bash -e {0}
+        run: |
+          julia -e 'import Pkg; Pkg.update()'
+          julia -e 'import Pkg; Pkg.add("DataFrames")'
+          julia -e 'import Pkg; Pkg.add("Proj")'
+          julia -e 'import Pkg; Pkg.add("ArgParse")'
+          julia -e 'import Pkg; Pkg.add("JLD")'
+          julia -e 'import Pkg; Pkg.add(url="https://github.com/dttrugman/GrowClust3D.jl"); using GrowClust3D'
+
+      - run: echo $PATH
+
+      - name: Setup conda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: ${{ matrix.python-version }}
+          activate-environment: rteqcorrscan-test
+          miniforge-version: latest
+          environment-file: .github/test_conda_env.yml
+          condarc-file: .github/test_condarc.yml
+          auto-activate-base: false
+
+      - name: install rt-eqcorrscan
+        shell: bash -l {0}
+        run: |
+          pip install --no-deps --no-build-isolation -v -e .
+
+      - name: print package info
+        shell: bash -l {0}
+        run: |
+          conda info -a
+          conda list
+
+      - name: run test suite
+        shell: bash -l {0}
+        run: |
+          export CI="true"
+          pytest -v --cov-report=xml -m "hyp or growclust" --log-cli-level WARNING
+
+#      - name: run streamer tests
+#        shell: bash -l {0}
+#        run: |
+#          export CI="true"
+#          py.test tests/streaming_tests -v --cov-report=xml
+
+      - name: upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          codecov_yml_path: ./codecov.yml
+          fail_ci_if_error: true

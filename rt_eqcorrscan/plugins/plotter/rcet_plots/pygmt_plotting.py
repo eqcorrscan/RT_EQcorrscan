@@ -43,7 +43,9 @@ def _eq_map(
     topo_res: Union[bool, str],
     topo_cmap: str,
     hillshade: bool,
-    timestamp: Union[UTCDateTime, datetime.datetime]
+    timestamp: Union[UTCDateTime, datetime.datetime],
+    min_depth: float | None = None,
+    max_depth: float | None = None
 ) -> pygmt.Figure:
     """ """
     if station_lons.max() - station_lons.min() > 180:
@@ -113,7 +115,11 @@ def _eq_map(
         fig.grdimage(grid=grid, cmap=topo_cmap)
     fig.coast(shorelines="1/0.5p", water="white")
 
-    depth_range = [depths.min(), depths.max()]
+    if min_depth is None:
+        min_depth = depths.min()
+    if max_depth is None:
+        max_depth = depths.max()
+    depth_range = [min_depth, max_depth]
     if depth_range[0] == depth_range[1]:
         depth_range[0] -= 5
         depth_range[1] += 5
@@ -666,7 +672,7 @@ def _eq_map_summary(
                 label=f"Seismograph+S0.3c",
             )
         # plot legend
-        fig.legend(region=map_region, position="JTL+jTL+o1c")
+        fig.legend(region=map_region, position="JTL+jTL+o1c", box=True)
 
         # plot corners of ellipse
         fig.plot(
@@ -715,6 +721,7 @@ def _eq_map_summary(
             )
             if len(station_lons) and len(station_lats):
                 fig.plot(
+                    projection=inset_proj,
                     x=station_lons,
                     y=station_lats,
                     style="i0.1c",
