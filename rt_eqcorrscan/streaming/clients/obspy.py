@@ -93,6 +93,15 @@ class StreamClient:
     @stream.setter
     def stream(self, st: Stream):
         Logger.debug("Stream setter called")
+        # Empty stream queue
+        Logger.debug("Emptying queue")
+        with self._stream_lock:
+            while True:
+                try:
+                    self._stream_queue.get(block=True, timeout=0.5)
+                except Empty:
+                    Logger.debug("Queue is empty")
+                    break
         # Put stream in queue
         Logger.debug("Putting stream in queue")
         with self._stream_lock:
@@ -180,6 +189,7 @@ class StreamClient:
                 if len(trimmed) == 0:
                     continue
                 trimmed_st += trimmed.trim(starttime=endtime)
+            Logger.debug(f"Putting trimmed stream back in:\n{trimmed_st}")
             # Put back into queue
             self.stream = trimmed_st
         Logger.debug(f"Returning stream from StreamClient for bulk: {bulk}:\n{st}")
