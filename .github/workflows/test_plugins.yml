@@ -73,7 +73,7 @@ jobs:
         shell: bash -l {0}
         run: |
           export CI="true"
-          pytest -v --cov-report=xml -m "hyp or growclust" --log-cli-level INFO
+          pytest -v --cov-report=xml -m "hyp or growclust" --log-cli-level WARNING
 
 #      - name: run streamer tests
 #        shell: bash -l {0}
