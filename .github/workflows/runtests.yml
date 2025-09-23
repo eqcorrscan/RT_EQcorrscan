@@ -43,9 +43,7 @@ jobs:
         shell: bash -l {0}
         run: |
           export CI="true"
-          pytest -v --cov-report=xml -m "not hyp and not growclust"
-
-#          pytest -n 2 --dist=loadscope --cov-report=xml -m "not hyp and not growclust"
+          pytest -n 2 --dist=loadscope -v --cov-report=xml -m "not hyp and not growclust"
 
 #      - name: run streamer tests
 #        shell: bash -l {0}

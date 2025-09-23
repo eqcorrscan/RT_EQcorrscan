@@ -164,7 +164,13 @@ class SeedLinkThreadedTests(unittest.TestCase):
         # Try to add the trace.
         rt_client.on_data(tr)
         st2 = rt_client.stream.split().merge()
+        st2.sort(key=lambda _tr: _tr.stats.starttime)
+        # Check that the starttimes are essentially the same
+        if st2[0].stats.starttime - tr.stats.starttime >= 0.01:
+            st2.write("borked_seedlinker.ms", format="MSEED")
         self.assertLess(st2[0].stats.starttime - tr.stats.starttime, 0.01)
+        # Check that the endtime of the buffer is after the trace that was
+        # shifted by 100 s
         self.assertGreater(st2[0].stats.endtime, tr.stats.endtime)
 
 
