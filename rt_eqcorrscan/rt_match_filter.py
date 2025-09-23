@@ -319,7 +319,7 @@ class RealTimeTribe(Tribe):
         # Use a copy to avoid changing while iterating
         for d in copy.copy(self.detections):
             if d.detect_time <= endtime:
-                self.detections.discard(d)
+                self.detections.remove(d)
 
     def _remove_unused_backfillers(
         self,
@@ -637,7 +637,7 @@ class RealTimeTribe(Tribe):
         self.plotter = EQcorrscanPlot(
             rt_client=self.rt_client, plot_length=self.plot_length,
             tribe=self, inventory=self.inventory,
-            detections=[],
+            detections=self.detections,
             exclude_channels=self.plotting_exclude_channels,
             update_interval=update_interval, plot_height=plot_height,
             plot_width=plot_width, offline=offline,
@@ -749,10 +749,11 @@ class RealTimeTribe(Tribe):
             Logger.info(f"Stopping subprocess for plugin {key}")
             config = self.plugin_config[key]
             outdir = config.out_dir
-            with open(f"{outdir}/poison", "w") as f:
-                f.write(f"Poisoned at {time.time()}")
-            # proc.terminate()
-            Logger.info(f"{key} poisoned")
+            if os.path.isdir(outdir):
+                with open(f"{outdir}/poison", "w") as f:
+                    f.write(f"Poisoned at {time.time()}")
+                # proc.terminate()
+                Logger.info(f"{key} poisoned")
 
         return
 
@@ -914,6 +915,7 @@ class RealTimeTribe(Tribe):
         The party created - will not contain detections expired by
         `keep_detections` threshold.
         """
+        stopped = False
         # First: start collecting data NOW
         # Get this locally before streaming starts
         buffer_capacity = self.rt_client.buffer_capacity
@@ -1214,6 +1216,7 @@ class RealTimeTribe(Tribe):
                             Logger.error(
                                 "Out of memory, stopping this detector")
                             self.stop()
+                            stopped = True
                             break
                         if not self._runtime_check(
                                 run_start=run_start,
@@ -1268,6 +1271,7 @@ class RealTimeTribe(Tribe):
                     if not _continue or not _runtime_continue:
                         Logger.info(f"Stopping\t wait check: {_continue}, runtime check: {_runtime_continue}")
                         self.stop()
+                        stopped = True
                         break
                     if minimum_rate and UTCDateTime.now() > run_start + self._min_run_length:
                         _rate = average_rate(
@@ -1282,6 +1286,7 @@ class RealTimeTribe(Tribe):
                                 "Rate ({0:.2f}) has dropped below minimum rate, "
                                 "stopping.".format(_rate))
                             self.stop()
+                            stopped = True
                             break
                     # Re-use this stream
                     past_st = st
@@ -1312,7 +1317,8 @@ class RealTimeTribe(Tribe):
                         break
         finally:
             Logger.critical("Stopping")
-            self.stop()
+            if not stopped:
+                self.stop()
         return self.party
 
     def _read_templates_from_disk(self):
