@@ -353,6 +353,8 @@ class _StreamingClient(ABC):
             Logger.info("Process joined")
         self.processes = []
         self.streaming = False
+        Logger.info("Streaming background stop completed")
+        return
 
     def on_data(self, trace: Trace):
         """
