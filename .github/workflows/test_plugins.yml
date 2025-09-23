@@ -30,19 +30,25 @@ jobs:
       - run: export GITHUB_PATH="${GITHUB_PATH}:/seisan/PRO:/seisan/COM"
       # - run: cp -v /seisan/PRO/* /usr/local/bin/. && cp -v /seisan/COM/* /usr/local/bin/.
 
-      - name: install growclust
-        shell: bash -l {0}
+      - name: install julia
+        shell: bash -e {0}
         run: |
           curl -L --insecure https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.10.4-linux-x86_64.tar.gz -o julia.tar.gz
           tar -xzvf julia.tar.gz && rm julia.tar.gz
           sudo mv julia-1.10.4 /julia-1.10.4
           export GITHUB_PATH="${GITHUB_PATH}:/julia-1.10.4/bin"
+
+      - name: install growclust
+        shell: bash -e {0}
+        run: |
           julia -e 'import Pkg; Pkg.update()'
           julia -e 'import Pkg; Pkg.add("DataFrames")'
           julia -e 'import Pkg; Pkg.add("Proj")'
           julia -e 'import Pkg; Pkg.add("ArgParse")'
           julia -e 'import Pkg; Pkg.add("JLD")'
           julia -e 'import Pkg; Pkg.add(url="https://github.com/dttrugman/GrowClust3D.jl"); using GrowClust3D'
+
+      - run: echo $PATH
 
       - name: Setup conda
         uses: conda-incubator/setup-miniconda@v3
@@ -55,18 +61,18 @@ jobs:
           auto-activate-base: false
 
       - name: install rt-eqcorrscan
-        shell: bash -l {0}
+        shell: bash -e {0}
         run: |
           pip install --no-deps --no-build-isolation -v -e .
 
       - name: print package info
-        shell: bash -l {0}
+        shell: bash -e {0}
         run: |
           conda info -a
           conda list
 
       - name: run test suite
-        shell: bash -l {0}
+        shell: bash -e {0}
         run: |
           export CI="true"
           pytest -v --cov-report=xml -m "hyp or growclust" --log-cli-level INFO
