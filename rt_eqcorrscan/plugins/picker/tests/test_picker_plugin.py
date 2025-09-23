@@ -33,7 +33,7 @@ def _write_detections_for_sim(
     poisondir: str,
     sleep_step: float = 20.0,
 ):
-    slices = [slice(0, 1), slice(1, 5), slice(5, None)]
+    slices = [slice(0, 5), slice(5, 12), slice(12, None)]
     for _slice in slices:
         events = catalog[_slice]
         Logger.info(events)
@@ -120,7 +120,7 @@ class TestLagCalcPlugin(unittest.TestCase):
         # Get a useful stream
         bulk = set()
         starttime = min(p.time for f in party for d in f
-                        for p in d.event.picks) - 120
+                        for p in d.event.picks) - 350
         endtime = max(p.time for f in party for d in f
                       for p in d.event.picks) + 480
         for family in party:
