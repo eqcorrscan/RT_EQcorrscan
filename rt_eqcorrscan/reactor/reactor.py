@@ -104,9 +104,9 @@ class Reactor(object):
     ...     rate_threshold=20, rate_bin=0.5)
     """
     _triggered_events = []
-    _running_templates = dict()
+    _running_templates = None # dict()
     # Template events ids keyed by triggering-event-id
-    _running_regions = dict()  # Regions keyed by triggering-event-id
+    _running_regions = None # dict()  # Regions keyed by triggering-event-id
     max_station_distance = 1000
     n_stations = 10
     sleep_step = 15
@@ -120,7 +120,7 @@ class Reactor(object):
     _max_detect_cores = 12
 
     # The processes that are detecting away!
-    detecting_processes = dict()
+    detecting_processes = None # Don't use mutable objects
 
     def __init__(
         self,
@@ -153,6 +153,8 @@ class Reactor(object):
         self.up_time = 0
         signal.signal(signal.SIGINT, self._handle_interupt)
         signal.signal(signal.SIGTERM, self._handle_interupt)
+        (self.detecting_processes, self._running_templates,
+         self._running_regions) = dict(), dict(), dict()
 
     @property
     def available_cores(self) -> int:

@@ -41,8 +41,6 @@ class StreamClient:
     min_buffer_fraction
         Minimum buffer fraction to trigger a re-fresh of the buffer.
     """
-    __st = Stream()
-
     # Locks on shared objects
     _stream_lock = Lock()
 
@@ -56,6 +54,7 @@ class StreamClient:
         min_buffer_fraction: float = 0.25,
         speed_up: float = 1.0,
     ):
+        self.__st = Stream()
         self.client = client
         self.buffer_length = buffer_length
         self._min_buffer_length = buffer_length * min_buffer_fraction

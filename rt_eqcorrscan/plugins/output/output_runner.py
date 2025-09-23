@@ -302,11 +302,17 @@ PLUGIN_CONFIG_MAPPER.update({"output": OutputConfig})
 
 
 class Outputter(_Plugin):
-    name = "Outputter"
-    template_dict = {}  # Dict of template SparseEvents keyed by filename
-    output_events = {}  # Dict of output (filename, SparseEvent) tuples keyed by event-id
-    _read_files = []  # List of files that we have already read. Used to avoid re-reading events
-    _skipped_templates = set()  # Set of template files to not output
+    def __init__(self, config_file: str, name: str = None):
+        self.name = "Outputter" # Will be overwritten by arg name if given.
+        self.template_dict = {}
+        # Dict of template SparseEvents keyed by filename
+        self.output_events = {}
+        # Dict of output (filename, SparseEvent) tuples keyed by event-id
+        self._read_files = []
+        # List of files that we have already read. Used to avoid re-reading events
+        self._skipped_templates = set()
+        # Set of template files to not output
+        super().__init__(config_file=config_file, name=name)
 
     def _read_config(self, config_file: str):
         return OutputConfig.read(config_file=config_file)

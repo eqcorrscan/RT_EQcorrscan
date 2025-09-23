@@ -84,13 +84,13 @@ class RealTimeTribe(Tribe):
     lock = Lock()  # Lock for access to internals
     _running = False
     _detecting_thread = None
-    _backfillers = dict()  # Backfill subprocesses
+    _backfillers = None # dict()  # Backfill subprocesses
     _backfill_tribe = Tribe()  # Tribe of as-yet unused templates for backfilling
     _last_backfill_start = UTCDateTime.now()  # Time of last backfill run - update on run
     _number_of_backfillers = 0  # Book-keeping of backfiller processes.
     _clean_backfillers = False  # If false will leave temporary backfiller dirs
 
-    _plugins = dict()  # Plugin subprocesses
+    _plugins = None # dict()  # Plugin subprocesses
 
     busy = False
 
@@ -152,6 +152,7 @@ class RealTimeTribe(Tribe):
                 if key != "plot_length"})
         self.detections = []
         self._killfile = f"kill_{self.name}_{id(self)}"
+        self._plugins, self._backfillers = dict(), dict()
 
         # Wavebank status to avoid accessing the underlying, lockable, wavebank
         if isinstance(wavebank, str):
