@@ -27,16 +27,14 @@ jobs:
       - run: sed -i 's/ gfortran/ gfortran-9/g' seisan/LIB/Makefile
       - run: cd seisan/PRO && make clean && SEISARCH=linux64 make all
       - run: sudo mv seisan /seisan
-      - run: export GITHUB_PATH="${GITHUB_PATH}:/seisan/PRO:/seisan/COM"
-      # - run: cp -v /seisan/PRO/* /usr/local/bin/. && cp -v /seisan/COM/* /usr/local/bin/.
+      - run: sudo cp -v /seisan/PRO/* /usr/local/bin/. && sudo cp -v /seisan/COM/* /usr/local/bin/.
 
       - name: install julia
         shell: bash -e {0}
         run: |
           curl -L --insecure https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.10.4-linux-x86_64.tar.gz -o julia.tar.gz
           tar -xzvf julia.tar.gz && rm julia.tar.gz
-          sudo mv julia-1.10.4 /julia-1.10.4
-          export GITHUB_PATH="${GITHUB_PATH}:/julia-1.10.4/bin"
+          sudo mv julia-1.10.4 /usr/local/bin/julia-1.10.4
 
       - name: install growclust
         shell: bash -e {0}
@@ -61,18 +59,18 @@ jobs:
           auto-activate-base: false
 
       - name: install rt-eqcorrscan
-        shell: bash -e {0}
+        shell: bash -l {0}
         run: |
           pip install --no-deps --no-build-isolation -v -e .
 
       - name: print package info
-        shell: bash -e {0}
+        shell: bash -l {0}
         run: |
           conda info -a
           conda list
 
       - name: run test suite
-        shell: bash -e {0}
+        shell: bash -l {0}
         run: |
           export CI="true"
           pytest -v --cov-report=xml -m "hyp or growclust" --log-cli-level INFO
