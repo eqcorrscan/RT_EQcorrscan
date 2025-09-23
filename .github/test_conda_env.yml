@@ -3,7 +3,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - numpy>=1.22.2
+  - numpy>=1.22.2,<2.0  # Obsplus uses np.NaN which was removed in numpy 2.0
   - matplotlib>=1.3.0
   - scipy>=1.10.0rc1
   - bokeh
