@@ -174,7 +174,7 @@ class TestOutputPlugin(unittest.TestCase):
             new_files=glob.glob(f"{self.location_dir}/*.xml") +
                       glob.glob(f"{self.relocation_dir}/*.xml")
         )
-
+        # TODO: This test doesn't really do anything?
 
     @classmethod
     def tearDownClass(cls, clean=True):
