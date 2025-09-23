@@ -77,6 +77,9 @@ class TestLagCalcPlugin(unittest.TestCase):
         # lost in translation
         for fam in party:
             fam_back = party_back.select(fam.template.name)
+            if len(fam) == 0:
+                self.assertIsNone(fam_back)  # We don't read in empty families
+                continue
             self.assertEqual(len(fam), len(fam_back))
             self.assertEqual(fam.template, fam_back.template)
             dets = sorted(fam.detections, key=lambda d: d.detect_time)
