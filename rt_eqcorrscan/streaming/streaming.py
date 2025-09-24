@@ -281,6 +281,9 @@ class _StreamingClient(ABC):
             kill = False
         Logger.debug(f"Kill status: {kill}")
         if kill:
+            # Need to put back into the killer queue to make sure other
+            # processes get killed
+            self._killer_queue.put(True)
             Logger.warning(
                 "Termination called, stopping collect loop")
             self.on_terminate()

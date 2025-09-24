@@ -242,6 +242,7 @@ class StreamClient:
         maintaining_process.start()
         self.processes.append(maintaining_process)
         Logger.info("Started streaming")
+        Logger.warning(self.processes)
 
     def _bg_run(self):
         """ Run the run methods in the background and close nicely when done. """
@@ -279,8 +280,9 @@ class StreamClient:
                 except Empty:
                     break
         # join the processes
+        Logger.info(f"Stopping maintaining processes: {self.processes}")
         for process in self.processes:
-            Logger.info("Joining process")
+            Logger.info(f"Joining process: {process.name}")
             process.join(5)
             if hasattr(process, 'exitcode') and process.exitcode:
                 Logger.info("Process failed to join, terminating")
@@ -331,6 +333,9 @@ class StreamClient:
                     kill = False
                 Logger.debug(f"Kill status: {kill}")
                 if kill:
+                    # Need to put back into the killer queue to make sure other
+                    # processes get killed
+                    self._killer_queue.put(True)
                     Logger.warning("Termination called, stopping collect loop")
                     self.on_terminate()
                     break
