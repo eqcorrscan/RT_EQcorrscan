@@ -31,7 +31,7 @@ def _write_detections_for_sim(
     catalog: Catalog,
     outdir: str,
     poisondir: str,
-    sleep_step: float = 20.0,
+    sleep_step: float = 40.0,
 ):
     slices = [slice(0, 5), slice(5, 12), slice(12, None)]
     for _slice in slices:
