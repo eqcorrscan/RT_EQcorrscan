@@ -151,7 +151,7 @@ class TestLagCalcPlugin(unittest.TestCase):
         assert len(catalog)
         detection_writer = Process(
             target=_write_detections_for_sim,
-            args=(catalog, detect_dir, outdir, 20.),
+            args=(catalog, detect_dir, outdir, 40.),
             name="DetectionWriter")
 
         # Run the process in the background
