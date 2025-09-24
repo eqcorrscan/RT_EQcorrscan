@@ -289,9 +289,9 @@ class _StreamingClient(ABC):
             self.on_terminate()
         return kill
 
-    def _bg_run(self):
+    def _bg_run(self, *args, **kwargs):
         while self.streaming:
-            self.run()
+            self.run(*args, **kwargs)
         Logger.info("Running stopped, busy set to False")
         try:
             self._dead_queue.get(block=False)
@@ -346,14 +346,14 @@ class _StreamingClient(ABC):
                     break
         # join the processes
         for process in self.processes:
-            Logger.info("Joining process")
+            Logger.info(f"Joining process {process.name}")
             process.join(5)
             if hasattr(process, 'exitcode') and process.exitcode:
                 Logger.info("Process failed to join, terminating")
                 process.terminate()
                 Logger.info("Terminated")
                 process.join()
-            Logger.info("Process joined")
+            Logger.info(f"Process {process.name} joined")
         self.processes = []
         self.streaming = False
         Logger.info("Streaming background stop completed")

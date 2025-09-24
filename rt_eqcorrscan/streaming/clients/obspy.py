@@ -253,7 +253,10 @@ class StreamClient:
             self._dead_queue.get(block=False)
         except Empty:
             pass
+        # Report death
+        Logger.info("Reporting death")
         self._dead_queue.put(True)
+        Logger.info("Death reported")
         return
 
     def background_stop(self):
@@ -263,7 +266,7 @@ class StreamClient:
         self._killer_queue.put(True)
         self.stop()
         # Wait until streaming has stopped
-        Logger.debug(
+        Logger.info(
             f"Waiting for maintaining to stop: status = {self._maintain}")
         while self._maintain:
             try:
@@ -525,9 +528,83 @@ class RealTimeClient(_StreamingClient):
                 st = (st + _st).merge(method=1)
         return st, query_passed
 
-    def run(self) -> None:
-        assert len(self.bulk) > 0, "Select a stream first"
+    def background_run(self):
+        """Run the client in the background."""
+        self.streaming, self.started, self.can_add_streams = True, True, False
+        self._clear_killer()   # Clear the kill queue
+
+        # Start and manage the maintainer here
         if self.pre_empt_data:
+            assert len(self.bulk) > 0, "Select a stream first"
+            Logger.debug("Collecting pre-emptive data")
+            _sids = [
+                f"{b['network']}.{b['station']}.{b['location']}.{b['channel']}"
+                for b in self.bulk]
+            self.client.initiate_buffer(
+                seed_ids=_sids, starttime=self.starttime)
+            self.client.maintain_buffer()
+            self.processes.extend(self.client.processes)
+        streaming_process = Process(
+            target=self._bg_run, name="StreamProcess",
+            kwargs={"do_not_start_maintainer": True})
+        # streaming_process.daemon = True
+        streaming_process.start()
+        self.processes.append(streaming_process)
+        Logger.info("Started streaming")
+        Logger.info(f"Processes: {', '.join([p.name for p in self.processes])}")
+
+    def background_stop(self):
+        """Stop the background process."""
+        Logger.info("Adding Poison to Kill Queue")
+        # Run communications before termination
+        st = self.stream
+        self.__buffer_full = self.buffer_full
+        self.__last_data = self.last_data
+
+        if self.pre_empt_data:
+            Logger.info("Running background stop on maintain client")
+            self.client.background_stop()
+
+        Logger.debug(f"Stream on termination: {st}")
+        self._killer_queue.put(True)
+        self.stop()
+        # Local buffer
+        for tr in st:
+            Logger.info("Adding trace to local buffer")
+            self.buffer.add_stream(tr)
+        # Wait until streaming has stopped
+        Logger.info(
+            f"Waiting for streaming to stop: status = {self.streaming}")
+        while self.streaming:
+            try:
+                self.streaming = not self._dead_queue.get(block=False)
+            except Empty:
+                time.sleep(1)
+                pass
+        Logger.debug("Streaming stopped")
+        # Empty queues
+        for queue in [self._incoming_queue, self._stream_queue,
+                      self._killer_queue, self._last_data_queue]:
+            while True:
+                try:
+                    queue.get(block=False)
+                except Empty:
+                    break
+        # join the processes
+        for process in self.processes:
+            Logger.info(f"Joining process {process.name}")
+            # Ugly, but we seem to need to terminate processes - probably doing
+            # something wrong.
+            process.terminate()
+            Logger.info(f"Process {process.name} joined")
+        self.processes = []
+        self.streaming = False
+        Logger.info("Streaming background stop completed")
+        return
+
+    def run(self, do_not_start_maintainer: bool = False) -> None:
+        assert len(self.bulk) > 0, "Select a stream first"
+        if self.pre_empt_data and not do_not_start_maintainer:
             Logger.debug("Collecting pre-emptive data")
             _sids = [
                 f"{b['network']}.{b['station']}.{b['location']}.{b['channel']}"
@@ -608,14 +685,17 @@ class RealTimeClient(_StreamingClient):
         # shut down threadpool, we done.
         if executor:
             executor.shutdown(wait=False, cancel_futures=True)
-        if self.pre_empt_data:
+        if self.pre_empt_data and not do_not_start_maintainer:
             self.client.background_stop()
+            # self.client._killer_queue.put(True)
         return
 
     def stop(self) -> None:
-        Logger.debug("STOP! obspy streamer")
+        Logger.warning("STOP! obspy streamer")
         if self.pre_empt_data:
             self.client.background_stop()
+            #if self.client._killer_queue.empty():
+            #    self.client._killer_queue.put(True)
         self._stop_called, self.started = True, False
         self.streaming = False
 
