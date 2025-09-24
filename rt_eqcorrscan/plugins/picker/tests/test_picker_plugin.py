@@ -31,7 +31,7 @@ def _write_detections_for_sim(
     catalog: Catalog,
     outdir: str,
     poisondir: str,
-    sleep_step: float = 20.0,
+    sleep_step: float = 40.0,
 ):
     slices = [slice(0, 5), slice(5, 12), slice(12, None)]
     for _slice in slices:
@@ -77,6 +77,9 @@ class TestLagCalcPlugin(unittest.TestCase):
         # lost in translation
         for fam in party:
             fam_back = party_back.select(fam.template.name)
+            if len(fam) == 0:
+                self.assertIsNone(fam_back)  # We don't read in empty families
+                continue
             self.assertEqual(len(fam), len(fam_back))
             self.assertEqual(fam.template, fam_back.template)
             dets = sorted(fam.detections, key=lambda d: d.detect_time)
@@ -148,7 +151,7 @@ class TestLagCalcPlugin(unittest.TestCase):
         assert len(catalog)
         detection_writer = Process(
             target=_write_detections_for_sim,
-            args=(catalog, detect_dir, outdir, 20.),
+            args=(catalog, detect_dir, outdir, 40.),
             name="DetectionWriter")
 
         # Run the process in the background

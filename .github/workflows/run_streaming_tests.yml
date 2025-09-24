@@ -1,4 +1,4 @@
-name: test
+name: test streaming
 on:
   push:
     branches:
@@ -39,11 +39,11 @@ jobs:
           conda info -a
           conda list
 
-      - name: run test suite
+      - name: run streamer tests
         shell: bash -l {0}
         run: |
           export CI="true"
-          pytest -n 4 --dist=loadscope -v --cov-report=xml -m "not hyp and not growclust and not streaming"
+          pytest -n 2 --dist=loadscope -v --cov-report=xml -m "streaming"
 
       - name: upload coverage
         uses: codecov/codecov-action@v4

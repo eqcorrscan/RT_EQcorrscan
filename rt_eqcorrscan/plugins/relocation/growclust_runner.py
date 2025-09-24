@@ -687,7 +687,8 @@ def _cleanup():
 class GrowClust(_Plugin):
     _cc_file = "dt.cc"
 
-    def __init__(self, config_file: str, name: str = "GrowClustRunner"):
+    def __init__(self, config_file: str, name: str = "GrowClustRunner",
+                 working_dir: str = ".growclust_working"):
         super().__init__(config_file=config_file, name=name)
         self.in_memory_wavebank = InMemoryWaveBank(self.config.wavebank_dir)
         self.in_memory_wavebank.get_data_availability()
@@ -708,8 +709,9 @@ class GrowClust(_Plugin):
             )
         self._all_event_files = dict()
         # Keep record of all event files keyed by event id
-        self.    inventory_cache = (None, None, None)
+        self.inventory_cache = (None, None, None)
         # Tuple of (inventory, file, mtime)
+        self.working_dir = working_dir
 
     def _read_config(self, config_file: str):
         return GrowClustConfig.read(config_file)
@@ -742,7 +744,7 @@ class GrowClust(_Plugin):
         Logger.info(f"Prepping growclust files for {len(catalog)} events")
         # Do the mahi in a tempdir
         cwd = os.path.abspath(os.path.curdir)
-        working_dir = os.path.join(cwd, ".growclust_working")
+        working_dir = os.path.join(cwd, self.working_dir)
         if os.path.isdir(working_dir):
             Logger.warning(f"Planned working directory ({working_dir}) exists, "
                            f"files will be overwritten")
@@ -795,10 +797,10 @@ class GrowClust(_Plugin):
         os.chdir(cwd)
 
         # Out of tempdir
-        # if cleanup:
-        #     self._cleanup()
-        #     Logger.info(f"Removing {working_dir} and all files therein")
-        #     shutil.rmtree(working_dir)
+        if cleanup:
+            self._cleanup()
+            Logger.info(f"Removing {working_dir} and all files therein")
+            shutil.rmtree(working_dir)
         if not os.path.isdir(outdir):
             os.makedirs(outdir)
         for ev in catalog_out:
@@ -811,12 +813,11 @@ class GrowClust(_Plugin):
             ev.write(f"{outpath}", format="QUAKEML")
         return
 
-
     def core(
         self,
         new_files: Iterable,
         workers: int = None,
-        cleanup: bool = True
+        cleanup: bool = True,
     ) -> List:
 
         workers = workers or 1
