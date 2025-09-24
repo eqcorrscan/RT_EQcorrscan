@@ -147,7 +147,9 @@ class TestGrowclustPlugin(unittest.TestCase):
 
         config.write(config_file)
 
-        gc_runner = GrowClust(config_file=config_file)
+        gc_runner = GrowClust(config_file=config_file,
+                              working_dir=".growclust_test_main")
+        self.clean_up.extend(gc_runner.working_dir)
         gc_runner.run(loop=False)
 
 
@@ -198,7 +200,9 @@ class TestGrowclustPlugin(unittest.TestCase):
         Logger.info("Starting GrowClust runner")
         failed = False
         try:
-            gc_runner = GrowClust(config_file=config_file)
+            gc_runner = GrowClust(config_file=config_file,
+                                  working_dir=".growclust_test_updating")
+            self.clean_up.extend(gc_runner.working_dir)
             gc_runner.run()
         except Exception as e:
             Logger.exception(f"Failed due to {e}")
@@ -222,7 +226,7 @@ class TestGrowclustPlugin(unittest.TestCase):
             self.assertTrue(method_id == "GrowClust")
 
     @classmethod
-    def tearDownClass(cls, clean=True):
+    def tearDownClass(cls, clean=False):
         if clean:
             for thing in cls.clean_up:
                 if os.path.isdir(thing):
