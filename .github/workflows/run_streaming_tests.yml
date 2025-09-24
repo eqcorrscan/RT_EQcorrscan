@@ -43,7 +43,8 @@ jobs:
         shell: bash -l {0}
         run: |
           export CI="true"
-          pytest -n 2 --dist=loadscope -v --cov-report=xml -m "streaming"
+          pytest -v --cov-report=xml -m "streaming" --log-cli-level=INFO
+#          pytest -n 2 --dist=loadscope -v --cov-report=xml -m "streaming"
 
       - name: upload coverage
         uses: codecov/codecov-action@v4
