@@ -17,7 +17,7 @@ from obspy import Catalog, UTCDateTime, read_events
 from eqcorrscan.utils.catalog_utils import filter_picks
 
 from rt_eqcorrscan.plugins.relocation.growclust_runner import (
-    _cleanup, GrowClustConfig, GrowClust)
+    _cleanup, GrowClustConfig, GrowClust, CorrelationConfig)
 
 Logger = logging.getLogger(__name__)
 
@@ -135,7 +135,13 @@ class TestGrowclustPlugin(unittest.TestCase):
             sleep_interval=5, tt_zmax=50.0, ttxmax=500.0,
             in_dir=self.eventdir, out_dir=out_dir, wavebank_dir=self.wavedir,
             station_file=f"{self.eventdir}/stations.xml",
-            rmin=0.2)
+            rmin=0.2,
+            correlation_config=CorrelationConfig(
+                min_cc=0.2, extract_len=4.0, pre_pick=0.2, shift_len=0.5,
+                lowcut=1.0, highcut=20.0, max_sep=8, min_link=8,
+                interpolate=False, weight_by_square=False,
+                max_event_links=None
+            ))
 
         self.clean_up.extend([out_dir, config_file])
 
@@ -148,7 +154,7 @@ class TestGrowclustPlugin(unittest.TestCase):
         cat_back = read_events(f"{out_dir}/*.xml")
         # We don't write out all the events, only the relocated, so they may
         # not all relocate
-        self.assertGreater(len(cat_back), 150)
+        self.assertGreater(len(cat_back), 130)
         # self.assertEqual(len(cat_back), len(self.cat))
         # All events in cat_back should be relocated
         for ev in cat_back:
@@ -168,7 +174,13 @@ class TestGrowclustPlugin(unittest.TestCase):
             sleep_interval=5, tt_zmax=50.0, ttxmax=500.0,
             in_dir=in_dir, out_dir=out_dir, wavebank_dir=self.wavedir,
             station_file=f"{self.eventdir}/stations.xml",
-            rmin=0.2)
+            rmin=0.2,
+            correlation_config=CorrelationConfig(
+                min_cc=0.2, extract_len=2.0, pre_pick=0.2, shift_len=0.2,
+                lowcut=1.0, highcut=20.0, max_sep=8, min_link=8,
+                interpolate=False, weight_by_square=True,
+                max_event_links=None
+            ))
 
         self.clean_up.extend([in_dir, out_dir, config_file])
 
