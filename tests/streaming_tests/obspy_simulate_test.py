@@ -5,6 +5,7 @@ Tests for simulating a real-time client.
 import unittest
 import time
 import logging
+import pytest
 
 from obspy import UTCDateTime
 from obspy.clients.fdsn import Client
@@ -16,6 +17,7 @@ SLEEP_STEP = 20
 Logger = logging.getLogger(__name__)
 
 
+@pytest.mark.streaming
 class TestStreamBuffer(unittest.TestCase):
     def test_maintain(self):
         client = Client("GEONET")
@@ -61,6 +63,7 @@ class TestStreamBuffer(unittest.TestCase):
             buffer.background_stop()
 
 
+@pytest.mark.streaming
 class FDSNTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

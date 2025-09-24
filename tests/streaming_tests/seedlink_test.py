@@ -23,6 +23,7 @@ SLEEP_STEP = 30
 
 # Note:: Must always have try: finally: to stop the streamer to avoid
 # continuous running on fail!
+@pytest.mark.streaming
 class SeedLinkTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -85,6 +86,7 @@ class SeedLinkTest(unittest.TestCase):
         self.assertNotEqual(stream, stream2)
 
 
+@pytest.mark.streaming
 class SeedLinkThreadedTests(unittest.TestCase):
     """ Checks that operations are thread-safe. """
     @classmethod

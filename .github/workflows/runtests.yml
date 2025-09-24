@@ -43,13 +43,13 @@ jobs:
         shell: bash -l {0}
         run: |
           export CI="true"
-          pytest -n 4 --dist=loadscope -v --cov-report=xml -m "not hyp and not growclust"
+          pytest -n 4 --dist=loadscope -v --cov-report=xml -m "not hyp and not growclust and not streaming"
 
-#      - name: run streamer tests
-#        shell: bash -l {0}
-#        run: |
-#          export CI="true"
-#          py.test tests/streaming_tests -v --cov-report=xml
+      - name: run streamer tests
+        shell: bash -l {0}
+        run: |
+          export CI="true"
+          py.test -n 1 --dist=loadscope -v --cov-report=xml -m "streaming"
 
       - name: upload coverage
         uses: codecov/codecov-action@v4
