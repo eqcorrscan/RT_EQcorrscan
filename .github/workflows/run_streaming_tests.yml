@@ -1,4 +1,4 @@
-name: test
+name: test streaming
 on:
   push:
     branches:
@@ -43,7 +43,7 @@ jobs:
         shell: bash -l {0}
         run: |
           export CI="true"
-          py.test -n 1 --dist=loadscope -v --cov-report=xml -m "streaming"
+          pytest -n 2 --dist=loadscope -v --cov-report=xml -m "streaming"
 
       - name: upload coverage
         uses: codecov/codecov-action@v4
