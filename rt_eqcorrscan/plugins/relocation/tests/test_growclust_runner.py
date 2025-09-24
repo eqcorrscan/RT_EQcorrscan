@@ -150,7 +150,10 @@ class TestGrowclustPlugin(unittest.TestCase):
         gc_runner = GrowClust(config_file=config_file,
                               working_dir=".growclust_test_main")
         self.clean_up.extend(gc_runner.working_dir)
-        gc_runner.run(loop=False)
+        gc_runner.run(loop=False, cleanup=False)
+
+        # TODO: Check that dt.cc matches the test dt.cc - it seems that
+        # different Growclust runs give different results...
 
 
         cat_back = read_events(f"{out_dir}/*.xml")

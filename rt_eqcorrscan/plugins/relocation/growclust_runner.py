@@ -706,6 +706,7 @@ class GrowClust(_Plugin):
             weight_by_square=self.config.correlation_config.weight_by_square,
             outfile=self._cc_file,
             max_event_links=self.config.correlation_config.max_event_links,
+            waveform_cache_dir=f"{working_dir}_dt_waveforms"
             )
         self._all_event_files = dict()
         # Keep record of all event files keyed by event id
@@ -801,6 +802,9 @@ class GrowClust(_Plugin):
             self._cleanup()
             Logger.info(f"Removing {working_dir} and all files therein")
             shutil.rmtree(working_dir)
+            Logger.info(f"Removing {self.correlator._wf_cache_dir} and all "
+                        f"files therein")
+            shutil.rmtree(self.correlator._wf_cache_dir)
         if not os.path.isdir(outdir):
             os.makedirs(outdir)
         for ev in catalog_out:

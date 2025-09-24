@@ -591,6 +591,7 @@ class Correlator:
         outfile: str = "dt.cc",
         weight_by_square: bool = False,
         tdifmax: float = 30.0,
+        waveform_cache_dir: str = "./.dt_waveforms"
         # correlation_cache: str = None
     ):
         self.minlink = minlink
@@ -614,7 +615,7 @@ class Correlator:
         self._catalog = set()  # List of Sparse Events
         self._pairs_run = set()  # Cache of what work has already been done
         self.event_mapper = dict()  # Key to map event ids to dt.cc ids
-        self._wf_cache_dir = os.path.abspath(("./.dt_waveforms"))
+        self._wf_cache_dir = os.path.abspath(waveform_cache_dir)
         self._wf_naming = "{cache_dir}/{event_id}.ms"
         self.tdifmax = tdifmax
 
