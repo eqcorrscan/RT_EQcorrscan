@@ -151,7 +151,7 @@ class StreamClient:
         Stream of selected data.
         """
         return self.get_waveforms_bulk(
-            [network, station, location, channel, starttime, endtime])
+            [(network, station, location, channel, starttime, endtime)])
 
     def get_waveforms_bulk(
             self,
@@ -430,10 +430,11 @@ class RealTimeClient(_StreamingClient):
 
         # Convert to pre-emptive client.
         if pre_empt_data and not isinstance(self.client, StreamClient):
-            self.client = StreamClient(
-                self.client, min_buffer_fraction=0.2,
-                buffer_length=pre_empt_len or 10 * buffer_capacity,
-                speed_up=speed_up)
+            Logger.warning("Pre-emptive collection no longer supported")
+            # self.client = StreamClient(
+            #     self.client, min_buffer_fraction=0.2,
+            #     buffer_length=pre_empt_len or 10 * buffer_capacity,
+            #     speed_up=speed_up)
         Logger.info(
             "Instantiated simulated real-time client "
             "(starttime = {0}): {1}".format(self.starttime, self))
@@ -457,7 +458,8 @@ class RealTimeClient(_StreamingClient):
             server_url=self.client.base_url,
             client=self.client, starttime=self.starttime,
             query_interval=self.query_interval, speed_up=self.speed_up,
-            buffer=buffer, buffer_capacity=self.buffer_capacity)
+            buffer=buffer, buffer_capacity=self.buffer_capacity,
+            pre_empt_data=self.pre_empt_data)
 
     def select_stream(self, net: str, station: str, selector: str) -> None:
         """
@@ -498,8 +500,15 @@ class RealTimeClient(_StreamingClient):
         if executor is None:
             for _bulk in bulk:
                 Logger.debug(f"Getting data for {_bulk}")
+                Logger.debug(self.client)
                 try:
-                    _st = self.client.get_waveforms(**_bulk)
+                    _st = self.client.get_waveforms(
+                        network=_bulk["network"],
+                        station=_bulk["station"],
+                        location=_bulk["location"],
+                        channel=_bulk["channel"],
+                        starttime=_bulk["starttime"],
+                        endtime=_bulk["endtime"])
                 except Exception as e:
                     Logger.error(f"Failed (bulk={_bulk})")
                     Logger.error(e)
@@ -535,15 +544,17 @@ class RealTimeClient(_StreamingClient):
 
         # Start and manage the maintainer here
         if self.pre_empt_data:
-            assert len(self.bulk) > 0, "Select a stream first"
-            Logger.debug("Collecting pre-emptive data")
-            _sids = [
-                f"{b['network']}.{b['station']}.{b['location']}.{b['channel']}"
-                for b in self.bulk]
-            self.client.initiate_buffer(
-                seed_ids=_sids, starttime=self.starttime)
-            self.client.maintain_buffer()
-            self.processes.extend(self.client.processes)
+            Logger.warning("Pre-empting data is no longer supported")
+            self.pre_empt_data = False
+            # assert len(self.bulk) > 0, "Select a stream first"
+            # Logger.debug("Collecting pre-emptive data")
+            # _sids = [
+            #     f"{b['network']}.{b['station']}.{b['location']}.{b['channel']}"
+            #     for b in self.bulk]
+            # self.client.initiate_buffer(
+            #     seed_ids=_sids, starttime=self.starttime)
+            # self.client.maintain_buffer()
+            # self.processes.extend(self.client.processes)
         streaming_process = Process(
             target=self._bg_run, name="StreamProcess",
             kwargs={"do_not_start_maintainer": True})
@@ -605,13 +616,15 @@ class RealTimeClient(_StreamingClient):
     def run(self, do_not_start_maintainer: bool = False) -> None:
         assert len(self.bulk) > 0, "Select a stream first"
         if self.pre_empt_data and not do_not_start_maintainer:
-            Logger.debug("Collecting pre-emptive data")
-            _sids = [
-                f"{b['network']}.{b['station']}.{b['location']}.{b['channel']}"
-                for b in self.bulk]
-            self.client.initiate_buffer(
-                seed_ids=_sids, starttime=self.starttime)
-            self.client.maintain_buffer()
+            Logger.warning("Pre-empting data is no longer supported")
+            self.pre_empt_data = False
+            # Logger.debug("Collecting pre-emptive data")
+            # _sids = [
+            #     f"{b['network']}.{b['station']}.{b['location']}.{b['channel']}"
+            #     for b in self.bulk]
+            # self.client.initiate_buffer(
+            #     seed_ids=_sids, starttime=self.starttime)
+            # self.client.maintain_buffer()
 
         self.streaming = True
         # start threadpool executor
@@ -622,6 +635,7 @@ class RealTimeClient(_StreamingClient):
         last_query_start = query_starttime - self.query_interval
         killed = False
         elapsed = 0.0
+        Logger.info("Starting collect loop")
         while not self._stop_called:
             tic = time.perf_counter()
             now = query_starttime + (elapsed * self.speed_up)
