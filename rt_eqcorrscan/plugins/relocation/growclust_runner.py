@@ -15,7 +15,9 @@ import logging
 import math
 import os
 import shutil
-import tempfile
+import json
+import datetime
+import uuid
 
 import numpy as np
 
@@ -685,11 +687,14 @@ def _cleanup():
 
 
 class GrowClust(_Plugin):
-    _cc_file = "dt.cc"
-
     def __init__(self, config_file: str, name: str = "GrowClustRunner",
                  working_dir: str = ".growclust_working"):
         super().__init__(config_file=config_file, name=name)
+
+        self._cc_file = (
+            f"{uuid.uuid4().hex}_{datetime.datetime.now():%Y%m%d%H%M%S}_dt.cc")
+        Logger.info(f"Writing correlations to {self._cc_file}")
+
         self.in_memory_wavebank = InMemoryWaveBank(self.config.wavebank_dir)
         self.in_memory_wavebank.get_data_availability()
         self.correlator = Correlator(
@@ -759,6 +764,12 @@ class GrowClust(_Plugin):
                     f"{os.path.join(working_dir, 'dt.cc')}")
         os.chdir(working_dir)
 
+
+        # Cache the event mapper
+        Logger.info(f"Writing the event mapper to event_mapper.json")
+        with open("event_mapper.json", "w") as f:
+            json.dump(self.correlator.event_mapper, f)
+
         # In temp dir
         # Find centroid
         mean_lat, mean_lon = get_catalog_mean_location(catalog)
@@ -824,6 +835,8 @@ class GrowClust(_Plugin):
         cleanup: bool = True,
     ) -> List:
 
+        # Sort the files to ensure similar order on re-runs
+        new_files.sort()
         workers = workers or 1
         internal_config = self.config.copy()
         # indir = internal_config.pop("in_dir")
