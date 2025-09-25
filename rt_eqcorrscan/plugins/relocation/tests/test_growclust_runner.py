@@ -207,7 +207,7 @@ class TestGrowclustPlugin(unittest.TestCase):
 
         gc_runner = GrowClust(config_file=config_file,
                               working_dir=".growclust_test_main")
-        self.clean_up.extend(gc_runner.working_dir)
+        self.clean_up.append(gc_runner.working_dir)
         gc_runner.run(loop=False, cleanup=False)
 
         # TODO: Check that dt.cc matches the test dt.cc - it seems that
@@ -306,7 +306,7 @@ class TestGrowclustPlugin(unittest.TestCase):
         try:
             gc_runner = GrowClust(config_file=config_file,
                                   working_dir=".growclust_test_updating")
-            self.clean_up.extend(gc_runner.working_dir)
+            self.clean_up.append(gc_runner.working_dir)
             gc_runner.run()
         except Exception as e:
             Logger.exception(f"Failed due to {e}")
@@ -335,11 +335,13 @@ class TestGrowclustPlugin(unittest.TestCase):
             for thing in cls.clean_up:
                 if os.path.isdir(thing):
                     try:
+                        Logger.warning(f"Removing {thing}")
                         shutil.rmtree(thing)
                     except Exception:
                         pass
                 else:
                     try:
+                        Logger.warning(f"Removing {thing}")
                         os.remove(thing)
                     except Exception:
                         pass
