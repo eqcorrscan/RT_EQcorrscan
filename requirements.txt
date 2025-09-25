@@ -7,12 +7,16 @@ obspy>=1.0.3
 notifiers
 h5py
 pyyaml
+tqdm
 pyproj>2.1
 codecov
+pygmt
+psutil
+geographiclib
 EQcorrscan>=0.5.0
-tqdm
 urllib3>=2.2.2
 obsplus>=0.1.1
+statsmodels
 pytest>=2.0.0
 pytest-cov
 pytest-pep8

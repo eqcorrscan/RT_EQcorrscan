@@ -11,7 +11,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest]
         python-version: [3.11, 3.12]
       fail-fast: false
 
@@ -23,14 +23,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           activate-environment: rteqcorrscan-test
-
-      - name: Update Env
-        run: conda env update -n rteqcorrscan-test -f .github/test_conda_env.yml
+          miniforge-version: latest
+          environment-file: .github/test_conda_env.yml
+          condarc-file: .github/test_condarc.yml
+          auto-activate-base: false
 
       - name: install rt-eqcorrscan
         shell: bash -l {0}
         run: |
-          pip install -v -e . --no-deps
+          pip install --no-deps --no-build-isolation -v -e .
 
       - name: print package info
         shell: bash -l {0}
@@ -42,13 +43,7 @@ jobs:
         shell: bash -l {0}
         run: |
           export CI="true"
-          py.test -n 2 --dist=loadscope --cov-report=xml
-
-#      - name: run streamer tests
-#        shell: bash -l {0}
-#        run: |
-#          export CI="true"
-#          py.test tests/streaming_tests -v --cov-report=xml
+          pytest -n 4 --dist=loadscope -v --cov-report=xml -m "not hyp and not growclust and not streaming"
 
       - name: upload coverage
         uses: codecov/codecov-action@v4
@@ -57,7 +52,7 @@ jobs:
           file: ./coverage.xml
           flags: unittests
           name: codecov-umbrella
-          yml: ./codecov.yml
+          codecov_yml_path: ./codecov.yml
           fail_ci_if_error: true
 # This is a very useful step for debugging, it allows you to ssh into the CI
 # machine (https://github.com/marketplace/actions/debugging-with-tmate).

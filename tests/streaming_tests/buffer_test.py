@@ -4,6 +4,7 @@ Test for RT_EQcorrscan's buffer implementation
 
 import unittest
 import numpy as np
+import pytest
 
 from obspy import read, UTCDateTime
 
@@ -11,6 +12,7 @@ from rt_eqcorrscan.streaming.buffers import (
     Buffer, BufferStats, TraceBuffer, NumpyDeque)
 
 
+@pytest.mark.streaming
 class TestBuffer(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:

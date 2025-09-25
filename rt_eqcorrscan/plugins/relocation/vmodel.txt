@@ -1,0 +1,14 @@
+VelocityModel
+-1.0,3.464,False
+3.0,4.38,False
+8.0,5.181,False
+15.0,5.638,False
+23.0,6.095,False
+30.0,6.603,True
+38.0,7.309,False
+48.0,7.876,False
+65.0,7.942,False
+85.0,7.965,False
+105.0,7.851,False
+130.0,8.652,False
+vpvs: 1.73

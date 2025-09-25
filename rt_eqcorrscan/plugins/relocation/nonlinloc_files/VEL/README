@@ -1,0 +1,7 @@
+Velocity models converted from those downloaded from zenodo - https://zenodo.org/records/3779523
+
+Models converted using the generate_simul_vmodel.py functions.
+
+If you use these velocity models you must cite the appropriate papers linked
+above. You are recommended to check for updates to the velocity model on zenodo
+and download those.

@@ -10,20 +10,20 @@ import platform
 import pickle
 
 from copy import deepcopy
-from typing import Callable, Union, List
+from typing import Callable, Union, List, Tuple
 from multiprocessing import cpu_count
 
-from obspy import UTCDateTime, Catalog
+from obspy import UTCDateTime, Catalog, read_events
 from obspy.core.event import Event, Magnitude
 
 from obsplus.events import get_events
-
-from eqcorrscan.core.match_filter import read_tribe
+from obspy.geodetics import degrees2kilometers
 
 from rt_eqcorrscan.database.database_manager import (
     TemplateBank, check_tribe_quality)
 from rt_eqcorrscan.event_trigger.listener import _Listener
 from rt_eqcorrscan.config import Config
+from rt_eqcorrscan.helpers.sparse_event import get_origin_attr
 from rt_eqcorrscan.reactor.scaling_relations import get_scaling_relation
 
 
@@ -38,6 +38,28 @@ def _get_triggered_working_dir(
         os.path.abspath(os.getcwd()), triggering_event_id)
     os.makedirs(working_dir, exist_ok=exist_ok)
     return working_dir
+
+
+def _scan_for_events(directory: str) -> Tuple[Catalog, List[str]]:
+    Logger.debug(f"Scanning {directory}")
+    out_cat, files = Catalog(), []
+    with os.scandir(directory) as it:
+        for entry in it:
+            if entry.is_dir():
+                c, f = _scan_for_events(entry.path)
+                out_cat += c
+                files.extend(f)
+            elif entry.is_file():
+                try:
+                    event = read_events(entry.path)
+                except Exception as e:
+                    Logger.debug(f"Could not read {entry.path} due to {e}")
+                    continue
+                else:
+                    out_cat += event
+                    files.append(entry.path)
+    Logger.debug(f"Found {len(out_cat)} events")
+    return out_cat, files
 
 
 class Reactor(object):
@@ -82,14 +104,15 @@ class Reactor(object):
     ...     rate_threshold=20, rate_bin=0.5)
     """
     _triggered_events = []
-    _running_templates = dict()
+    _running_templates = None # dict()
     # Template events ids keyed by triggering-event-id
-    _running_regions = dict()  # Regions keyed by triggering-event-id
+    _running_regions = None # dict()  # Regions keyed by triggering-event-id
     max_station_distance = 1000
     n_stations = 10
     sleep_step = 15
 
     # Fudge factors for past sequence simulation
+    _simulation = False  # Set to true to enable some extra simulation output
     _speed_up = 1
     _test_start_step = 0.0
 
@@ -97,8 +120,7 @@ class Reactor(object):
     _max_detect_cores = 12
 
     # The processes that are detecting away!
-    detecting_processes = dict()
-    # TODO: Build in an AWS spin-up functionality - would need some communication...
+    detecting_processes = None # Don't use mutable objects
 
     def __init__(
         self,
@@ -119,12 +141,20 @@ class Reactor(object):
             template_kwargs=config.template,
             starttime=listener_starttime)
         self.notifier = config.notifier.notifier
+        self._manual_trigger_dir = os.path.join(
+            os.path.abspath(os.curdir), f"manual_triggers_{id(self)}")
+        if not os.path.isdir(self._manual_trigger_dir):
+            os.makedirs(self._manual_trigger_dir)
+        Logger.info(f"To manually trigger this Reactor, write the trigger "
+                    f"event quakeml to {self._manual_trigger_dir}")
         # Time-keepers
         self._run_start = None
         self._running = False
         self.up_time = 0
         signal.signal(signal.SIGINT, self._handle_interupt)
         signal.signal(signal.SIGTERM, self._handle_interupt)
+        (self.detecting_processes, self._running_templates,
+         self._running_regions) = dict(), dict(), dict()
 
     @property
     def available_cores(self) -> int:
@@ -165,7 +195,8 @@ class Reactor(object):
                 self._listener_kwargs["starttime"]) + 3600
             self.listener.keep = max(_keep_len, listener_keep)
             Logger.info(f"Setting listener keep to {self.listener.keep}")
-        # Try a get and put to make sure that threads have the same memory space...
+        # Try a get and put to make sure that threads have the same
+        # memory space...
         old_events = self.listener.old_events
         self.listener.old_events = old_events
         # Run the listener!
@@ -174,38 +205,51 @@ class Reactor(object):
         # Query the catalog in the listener every so often and check
         self._running = True
         first_iteration = True
-        previous_old_events , working_cat = [], Catalog()  # Initialise state
+        previous_old_events, working_cat = [], Catalog()  # Initialise state
         while self._running:
             old_events = deepcopy(self.listener.old_events)
-            Logger.info(f"Old events from the listener has {len(old_events)} events")
+            Logger.info(f"Old events from the listener has {len(old_events)} "
+                        f"events")
             # Clear out stale events from working_cat
             event_ids = [_[0] for _ in old_events]
-            working_cat.events = [ev for ev in working_cat if ev.resource_id in event_ids]
-            new_old_events = [ev for ev in old_events if ev not in previous_old_events]
+            working_cat.events = [ev for ev in working_cat
+                                  if ev.resource_id in event_ids]
+            new_old_events = [ev for ev in old_events
+                              if ev not in previous_old_events]
             # Get these locally to avoid accessing shared memory multiple times
             if len(new_old_events) > 0:
                 working_ids = [_[0] for _ in new_old_events]
-                Logger.info(f"Getting event info from database for {', '.join(working_ids)}")
+                Logger.info(f"Getting event info from database for "
+                            f"{', '.join(working_ids)}")
                 try:
                     new_working_cat = self.template_database.get_events(
                         eventid=working_ids, _allow_update=False)
                 except Exception as e:
-                    Logger.error(f"Could not get template events from database due to {e}")
+                    Logger.error(f"Could not get template events "
+                                 f"from database due to {e}")
+                    new_working_cat = []
                 if len(working_ids) and not len(new_working_cat):
-                    Logger.warning("Error getting events from database, getting individually")
+                    Logger.warning("Error getting events from database, "
+                                   "getting individually")
                     for working_id in working_ids:
                         try:
                             working_cat += self.template_database.get_events(
                                 eventid=working_id, _allow_update=False)
                         except Exception as e:
-                            Logger.error(f"Could not read {working_id} due to {e}")
+                            Logger.error(f"Could not read {working_id} "
+                                         f"due to {e}")
                             continue
                 else:
                     working_cat += new_working_cat
-                Logger.info("Currently analysing a catalog of {0} events".format(
-                    len(working_cat)))
+                Logger.info("Currently analysing a catalog of "
+                            "{0} events".format(len(working_cat)))
                 self.process_new_events(new_events=working_cat)
                 Logger.debug("Finished processing new events")
+            # Check for manual triggers
+            manual_triggers = self.get_manual_triggers(clean=True)
+            if len(manual_triggers) > 0:
+                self.trigger(trigger_events=manual_triggers)
+            # Process old events
             previous_old_events = old_events  # Overload
             self.set_up_time(UTCDateTime.now())
             Logger.debug(f"Up-time: {self.up_time}")
@@ -238,7 +282,20 @@ class Reactor(object):
                 Logger.info(f"Found stopfile for {trigger_event_id}")
                 self.stop_tribe(trigger_event_id)
 
-    def process_new_events(self, new_events: Union[Catalog, List[Event]]) -> None:
+    def get_manual_triggers(self, clean=True) -> Catalog:
+        manual_triggers, event_files = _scan_for_events(
+            self._manual_trigger_dir)
+        # Remove events that have been read in
+        if clean:
+            for event_file in event_files:
+                Logger.debug(f"Removing trigger file {event_file}")
+                os.remove(event_file)
+        return manual_triggers
+
+    def process_new_events(
+            self,
+            new_events: Union[Catalog, List[Event]]
+        ) -> None:
         """
         Process any new events in the system.
 
@@ -288,6 +345,11 @@ class Reactor(object):
                     self._running_templates[triggering_event_id].update(
                         added_ids)
         trigger_events = self.trigger_func(new_events)
+        # Check for manually added trigger events
+        trigger_events += self.get_manual_triggers()
+        self.trigger(trigger_events=trigger_events)
+
+    def trigger(self, trigger_events: Catalog) -> None:
         # Sanitize trigger-events - make sure that multiple events that would otherwise
         # run together do not all trigger - sort by magnitude
         for trigger_event in trigger_events:
@@ -326,14 +388,21 @@ class Reactor(object):
             Event that triggered this run - needs to have at-least an origin.
         """
         triggering_event_id = triggering_event.resource_id.id.split('/')[-1]
+        if get_origin_attr(triggering_event, "depth") > self.config.reactor.scaling_depth_switch:
+            scaling_relation = self.config.reactor.scaling_relation_deep
+        else:
+            scaling_relation = self.config.reactor.scaling_relation_shallow
+        Logger.info(f"Using {scaling_relation} to determine search region")
         region = estimate_region(
             triggering_event,
             multiplier=self.config.reactor.scaling_multiplier or 1.0,
-            min_length=self.config.reactor.minimum_lookup_radius or 50.0)
+            min_radius=self.config.reactor.minimum_lookup_radius or 50.0,
+            scaling_relation=scaling_relation)
         if region is None:
             return
         region.update(
-            {"starttime": self.config.database_manager.lookup_starttime})
+            {"starttime": self.config.database_manager.lookup_starttime or
+                          UTCDateTime.now()})
         Logger.info("Getting templates within {0}".format(region))
         df = self.template_database.get_event_summary(**region)
         event_ids = {e for e in df["event_id"]}
@@ -343,16 +412,30 @@ class Reactor(object):
         if len(event_ids) == 0:
             Logger.warning(f"Found no events in region: {region} - no detection to run.")
             return
-        tribe = self.template_database.get_templates(eventid=event_ids)
-        Logger.info(f"Found {len(tribe)} templates")
-        if len(tribe) == 0:
-            Logger.info("No templates, not running")
-            return
+        # tribe = self.template_database.get_templates(eventid=event_ids)
+        # Logger.info(f"Found {len(tribe)} templates")
+        # if len(tribe) == 0:
+        #     Logger.info("No templates, not running")
+        #     return
+        tribe_files = self.template_database.get_template_paths(
+            eventid=event_ids)
         working_dir = _get_triggered_working_dir(
             triggering_event_id, exist_ok=True)
-        with open(os.path.join(working_dir, "tribe.pkl"), "wb") as f:
-            pickle.dump(tribe, f)
         # tribe.write(os.path.join(working_dir, "tribe.tgz"))
+        tribe_dir = os.path.join(working_dir, "tribe")
+        os.makedirs(tribe_dir, exist_ok=True)
+        for tf in tribe_files:
+            os.symlink(tf, os.path.join(tribe_dir, os.path.basename(tf)))
+        # Add search radius for things that need it
+        if self.config.plugins["plotter"]:
+            # Roughly convert to km
+            self.config.plugins["plotter"].search_radius = degrees2kilometers(
+                region["maxradius"])
+        if self.config.plugins["output"]:
+            # Roughly convert to km
+            self.config.plugins["output"].cluster_threshold = degrees2kilometers(
+                region["maxradius"])
+
         self.config.write(
             os.path.join(working_dir, 'rt_eqcorrscan_config.yml'))
         triggering_event.write(
@@ -363,13 +446,14 @@ class Reactor(object):
                  "-n", str(min(self.available_cores, self._max_detect_cores)),
                  "-s", str(self._speed_up),
                  "-o", str(self._test_start_step)]
+        if self._simulation:
+            _call.append("--simulation")
         Logger.info("Running `{call}`".format(call=" ".join(_call)))
         proc = subprocess.Popen(_call)
         self.detecting_processes.update({triggering_event_id: proc})
         self._running_regions.update({triggering_event_id: region})
         self._running_templates.update(
-            {triggering_event_id:
-             {t.event.resource_id.id for t in tribe}})
+            {triggering_event_id: set(event_ids)})
         Logger.info("Started detector subprocess - continuing listening")
 
     def stop_tribe(self, triggering_event_id: str = None) -> None:
@@ -419,7 +503,7 @@ class Reactor(object):
 
 def estimate_region(
     event: Event,
-    min_length: float = 50.,
+    min_radius: float = 50.,
     scaling_relation: Union[str, Callable] = 'default',
     multiplier: float = 1.25,
 ) -> dict:
@@ -430,7 +514,7 @@ def estimate_region(
     ----------
     event
         The event that triggered this function
-    min_length
+    min_radius
         Minimum length in km for diameter of event circle around the
         triggering event
     scaling_relation
@@ -458,24 +542,33 @@ def estimate_region(
         magnitude = event.preferred_magnitude() or event.magnitudes[0]
     except IndexError:
         Logger.warning("Triggering event has no magnitude, using minimum "
-                       "length or {0}".format(min_length))
+                       "length or {0}".format(min_radius))
         magnitude = None
 
     if magnitude:
         if not callable(scaling_relation):
-            scaling_relation = get_scaling_relation(scaling_relation)
+            try:
+                scaling_relation = get_scaling_relation(scaling_relation)
+            except Exception as e:
+                Logger.exception(
+                    f"Could not get {scaling_relation} scaling due to {e}. "
+                    f"Reverting to default")
+                scaling_relation = get_scaling_relation("default")
         length = scaling_relation(magnitude.mag)
         length *= multiplier
     else:
-        length = min_length
+        length = min_radius * 2
 
-    if length <= min_length:
-        length = min_length
-    length = kilometer2degrees(length)
-    length /= 2.
+    # Convert from length to radius
+    radius = length / 2.
+
+    if radius <= min_radius:
+        radius = min_radius
+    radius = kilometer2degrees(radius)
+
     return {
         "latitude": origin.latitude, "longitude": origin.longitude,
-        "maxradius": length}
+        "maxradius": radius}
 
 
 if __name__ == "__main__":

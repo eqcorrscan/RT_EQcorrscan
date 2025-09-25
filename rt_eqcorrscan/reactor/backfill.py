@@ -18,6 +18,8 @@ import psutil
 from obspy import read, UTCDateTime, Stream
 
 from eqcorrscan import Tribe, Party, Template
+from eqcorrscan.core.match_filter.helpers import _moveout
+
 from rt_eqcorrscan import Config
 from rt_eqcorrscan.database.client_emulation import LocalClient
 from rt_eqcorrscan.rt_match_filter import (
@@ -42,6 +44,7 @@ def backfill(
     starttime: UTCDateTime = None,
     endtime: UTCDateTime = None,
     plot_detections: bool = False,
+    save_waveforms: bool = False,
     **kwargs
 ) -> None:
     """ Background backfill method designed to work in a subprocess. """
@@ -93,13 +96,34 @@ def backfill(
                        f"Need {minimum_data_for_detection}s of data")
         return
     # Try to send off twice the minimum data to allow for overlaps.
-    _starttime, _endtime = (
-        starttime, min(endtime, starttime + 2 * minimum_data_for_detection))
-    new_party = Party()
-    if _endtime >= (endtime + minimum_data_for_detection):
-        Logger.warning("Insufficient data for backfill, not running")
-        Logger.warning(f"{_endtime} >= {endtime + minimum_data_for_detection}")
-    while _endtime < (endtime + minimum_data_for_detection):
+    # EQcorrscan overlaps data by the maximum moveout in the templates
+    overlap = max(_moveout(template.st) for template in new_tribe)
+
+    # We need to make sure our data are a multiple of the
+    # minimum_data_for_detection, otherwise data at the end are dropped. This
+    # often leads to missing self-detections.
+    total_seconds = endtime - starttime
+    chunk_len = (2 * minimum_data_for_detection) - overlap
+
+    # Work out start and end times for chunks that maximize our data at the end
+    _starttime, _endtime = endtime - chunk_len, endtime
+    chunk_times = []
+    while _starttime >= starttime:
+        chunk_times.append((_starttime, _endtime))
+        _starttime -= minimum_data_for_detection
+        _endtime -= minimum_data_for_detection
+
+    # Add in an additional chukn that overlaps with the first chunk if we are
+    # missing inital data - we cope by declusetring later
+    if chunk_times[-1][0] > starttime:
+        chunk_times.append((starttime, starttime + chunk_len))
+
+    # Go forward in time because it makes more sense...?
+    chunk_times = chunk_times[::-1]
+
+    new_parties = []
+    for _starttime, _endtime in chunk_times:
+        Logger.info(f"Running between {_starttime} and {_endtime}")
         st_chunk = st_client.get_waveforms(
             network="*", station="*", location="*", channel="*",
             starttime=_starttime, endtime=_endtime)
@@ -123,23 +147,22 @@ def backfill(
                 parallel_process=parallel_processing,
                 process_cores=process_cores, copy_data=False,
                 ignore_bad_data=True,
-                overlap=None,
+                overlap=overlap,
                 **kwargs)
+            # Remove nan channels from templates - there are sometimes issues with
+            for family in _party:
+                family.template = _rm_nan(family.template)
             Logger.info(f"Backfiller made {len(_party)} detections between {_starttime} and {_endtime}")
             if len(_party):
-                new_party += _party
+                new_parties.append(_party)
         except Exception as e:
             Logger.critical(f"Uncaught error: {e}")
             Logger.error(traceback.format_exc())
-            _starttime += minimum_data_for_detection
-            _endtime += minimum_data_for_detection
             continue
 
         Logger.info(
             f"Backfill detection between {_starttime} and {_endtime} "
             f"completed - handling detections")
-        _starttime += minimum_data_for_detection
-        _endtime += minimum_data_for_detection
 
         # Clear up un-needed objects
         del st_chunk
@@ -150,11 +173,15 @@ def backfill(
         #     Logger.info(line)
         total_memory_mb = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
         Logger.info(f"Total memory used by {os.getpid()}: {total_memory_mb:.2f} MB")
+    # Make a single party from all these parties
+    new_party = Party()
+    for _party in new_parties:
+        new_party += _party
     # Because of overlap we need to decluster
     new_party = new_party.decluster(trig_int=trig_int)
     new_party.families = [f for f in new_party if len(f)]
 
-    Logger.info("Handling detections")
+    Logger.info(f"Handling {len(new_party)} detections")
     os.makedirs("detections")
     fig = plt.Figure()
     for family in new_party:
@@ -170,7 +197,7 @@ def backfill(
                 detection=detection,
                 detect_file_base=_detection_filename(
                     detection=detection, detect_directory="detections"),
-                save_waveform=True, plot_detection=plot_detections,
+                save_waveform=save_waveforms, plot_detection=plot_detections,
                 stream=st, fig=fig)
 
     if len(new_party):
@@ -234,6 +261,9 @@ if __name__ == "__main__":
         help="Starttime as UTCDateTime parsable string"
     )
     parser.add_argument(
+        "--save-waveforms", action="store_true",
+        help="Falg to save waveforms from detected events")
+    parser.add_argument(
         "--endtime", type=UTCDateTime, required=False,
         help="Endtime as UTCDateTime parsable string"
     )
@@ -244,11 +274,14 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    backfill(working_dir=args.working_dir, expected_seed_ids=args.expected_seed_ids,
+    working_dir = os.path.abspath(args.working_dir)
+
+    backfill(working_dir=working_dir, expected_seed_ids=args.expected_seed_ids,
              minimum_data_for_detection=args.minimum_data_for_detection,
              threshold=args.threshold, threshold_type=args.threshold_type,
              trig_int=args.trig_int, peak_cores=args.peak_cores,
              cores=args.cores, parallel_processing=args.parallel_processing,
              process_cores=args.process_cores,
              log_to_screen=args.log_to_screen, starttime=args.starttime,
-             endtime=args.endtime, plot_detections=args.plot)
+             endtime=args.endtime, plot_detections=args.plot,
+             save_waveforms=args.save_waveforms)

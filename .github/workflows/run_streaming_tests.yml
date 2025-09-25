@@ -1,0 +1,66 @@
+name: test streaming
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  # Runs the tests on combinations of the supported python/os matrix.
+  test_code:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        python-version: [3.11, 3.12]
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup conda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: ${{ matrix.python-version }}
+          activate-environment: rteqcorrscan-test
+          miniforge-version: latest
+          environment-file: .github/test_conda_env.yml
+          condarc-file: .github/test_condarc.yml
+          auto-activate-base: false
+
+      - name: install rt-eqcorrscan
+        shell: bash -l {0}
+        run: |
+          pip install --no-deps --no-build-isolation -v -e .
+
+      - name: print package info
+        shell: bash -l {0}
+        run: |
+          conda info -a
+          conda list
+
+      - name: run streamer tests
+        shell: bash -l {0}
+        run: |
+          export CI="true"
+          pytest -n 2 --dist=loadscope -v --cov-report=xml -m "streaming" --log-cli-level=INFO
+
+      - name: upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          codecov_yml_path: ./codecov.yml
+          fail_ci_if_error: true
+# This is a very useful step for debugging, it allows you to ssh into the CI
+# machine (https://github.com/marketplace/actions/debugging-with-tmate).
+# Make sure to open the log before the job starts else you cant see the tmate
+# url. See https://github.com/mxschmitt/action-tmate/issues/1.
+# Also, the CI machine will close on a non-zero exit code (annoying). This can
+# be overcome by coalescing the null command like so:
+# $ some-command-that-can-fail || :
+#
+#- name: Setup tmate session
+#  uses: mxschmitt/action-tmate@v1

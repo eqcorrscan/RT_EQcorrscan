@@ -5,6 +5,7 @@ import shutil
 import time
 import traceback
 import os
+import pickle
 import logging
 import copy
 import numpy
@@ -21,16 +22,22 @@ import platform
 
 from typing import Union, List, Iterable
 
-from obspy import Stream, UTCDateTime, Inventory, Trace
+from obspy import Stream, UTCDateTime, Inventory, Trace, read_events
+from obspy.core.event import ResourceIdentifier
 from obsplus import WaveBank
 from matplotlib.figure import Figure
 from multiprocessing import Lock
+
+from eqcorrscan.core.match_filter.helpers import _moveout
 from eqcorrscan import Tribe, Template, Party, Detection
 from eqcorrscan.utils.pre_processing import _prep_data_for_correlation
 
 from rt_eqcorrscan.streaming.streaming import _StreamingClient
 from rt_eqcorrscan.event_trigger.triggers import average_rate
 from rt_eqcorrscan.config.mailer import Notifier
+from rt_eqcorrscan.plugins import (
+    REGISTERED_PLUGINS, run_plugin, ORDERED_PLUGINS)
+from rt_eqcorrscan.helpers.sparse_event import get_comment_val
 
 Logger = logging.getLogger(__name__)
 
@@ -77,14 +84,18 @@ class RealTimeTribe(Tribe):
     lock = Lock()  # Lock for access to internals
     _running = False
     _detecting_thread = None
-    _backfillers = dict()  # Backfill subprocesses
+    _backfillers = None # dict()  # Backfill subprocesses
     _backfill_tribe = Tribe()  # Tribe of as-yet unused templates for backfilling
     _last_backfill_start = UTCDateTime.now()  # Time of last backfill run - update on run
     _number_of_backfillers = 0  # Book-keeping of backfiller processes.
-    _clean_backfillers = True  # If false will leave temporary backfiller dirs
+    _clean_backfillers = False  # If false will leave temporary backfiller dirs
+
+    _plugins = None # dict()  # Plugin subprocesses
 
     busy = False
 
+    _simulation = False  # Flag to get extra output for simulations
+    _simulation_time_offset = 0.0  # Time offset in seconds between real-time and simulation time
     _speed_up = 1.0  # For simulated runs - do not change for real-time!
     _stream_end = UTCDateTime(1970, 1, 1)  # End of real-time data - will be
     # updated in first loop. Used for keeping track of when templates are relative
@@ -97,10 +108,14 @@ class RealTimeTribe(Tribe):
     _template_dir = "new_templates"  # Where new templates should be.
     _min_run_length = 24 * 3600  # Minimum run-length in seconds.
     # Usurped by max_run_length, used to set a threshold for rate calculation.
+    __killfile = None  # Killfile pathname
 
     # WaveBank management
     wavebank_lock = Lock()
     has_wavebank = False
+
+    # Plugin management
+    plugins = []
 
     def __init__(
         self,
@@ -113,7 +128,8 @@ class RealTimeTribe(Tribe):
         plot: bool = True,
         plot_options: dict = None,
         wavebank: Union[str, WaveBank] = WaveBank("Streaming_WaveBank"),
-        notifer: Notifier = Notifier()
+        notifier: Notifier = Notifier(),
+        plugin_config: dict = None,
     ) -> None:
         super().__init__(templates=tribe.templates)
         self.rt_client = rt_client
@@ -126,14 +142,17 @@ class RealTimeTribe(Tribe):
         self.detect_interval = detect_interval
         self.backfill_interval = backfill_interval
         self.plot = plot
-        self.notifier = notifer
+        self.notifier = notifier
         self.plot_options = {}
+        self.plugin_config = plugin_config
         if plot_options is not None:
             self.plot_length = plot_options.get("plot_length", 300)
             self.plot_options.update({
                 key: value for key, value in plot_options.items()
                 if key != "plot_length"})
-        self.detections = set()
+        self.detections = []
+        self._killfile = f"kill_{self.name}_{id(self)}"
+        self._plugins, self._backfillers = dict(), dict()
 
         # Wavebank status to avoid accessing the underlying, lockable, wavebank
         if isinstance(wavebank, str):
@@ -165,6 +184,72 @@ class RealTimeTribe(Tribe):
             self.__len__(), self.rt_client)
 
     @property
+    def _latitude(self):
+        lats = []
+        for network in self.inventory:
+            for station in network:
+                if station.latitude is not None:
+                    lats.append(station.latitude)
+        for template in self.templates:
+            if template.event is None:
+                continue
+            if len(template.event.origins) == 0:
+                continue
+            ori = (template.event.preferred_origin() or
+                   template.event.origins[-1])
+            if ori.latitude is not None:
+                lats.append(ori.latitude)
+        return lats
+
+    @property
+    def _longitude(self):
+        lons = []
+        for network in self.inventory:
+            for station in network:
+                if station.longitude is not None:
+                    lons.append(station.longitude)
+        for template in self.templates:
+            if template.event is None:
+                continue
+            if len(template.event.origins) == 0:
+                continue
+            ori = (template.event.preferred_origin() or
+                   template.event.origins[-1])
+            if ori.longitude is not None:
+                lons.append(ori.longitude)
+        return lons
+
+    @property
+    def minlat(self):
+        return min(self._latitude)
+
+    @property
+    def minlon(self):
+        return min(self._longitude)
+
+    @property
+    def maxlat(self):
+        return max(self._latitude)
+
+    @property
+    def maxlon(self):
+        return max(self._longitude)
+
+    @property
+    def _killfile(self):
+        return self.__killfile
+
+    @_killfile.setter
+    def _killfile(self, killfile: str):
+        self.__killfile = killfile
+        Logger.info(f"To stop this RTTribe, run: touch "
+                    f"{os.path.abspath(os.curdir)}/{killfile}")
+
+    @property
+    def running_template_dir(self) -> str:
+        return f"{self.name}_running_templates"
+
+    @property
     def template_seed_ids(self) -> set:
         """ Channel-ids used in the templates. """
         return set(tr.id for template in self.templates for tr in template.st)
@@ -183,7 +268,12 @@ class RealTimeTribe(Tribe):
         """ ids of channels to be used for detection. """
         if self.inventory is None or len(self.inventory) == 0:
             return self.template_seed_ids
-        return self.template_seed_ids.intersection(self.used_seed_ids)
+        # return self.template_seed_ids.intersection(self.used_seed_ids)
+        # Nice idea to look for overlap between templates and requested, but if
+        # we only have a few templates to start with then we end up starting
+        # the streamer without the full set and miss channels that we might
+        # later want.
+        return self.used_seed_ids
 
     @property
     def used_stations(self) -> set:
@@ -229,8 +319,8 @@ class RealTimeTribe(Tribe):
         """ Remove detections older than keep duration. Works in-place. """
         # Use a copy to avoid changing while iterating
         for d in copy.copy(self.detections):
-            if d <= endtime:
-                self.detections.discard(d)
+            if d.detect_time <= endtime:
+                self.detections.remove(d)
 
     def _remove_unused_backfillers(
         self,
@@ -314,7 +404,8 @@ class RealTimeTribe(Tribe):
                     out = func(*args, **kwargs)
                     break
                 except (IOError, OSError) as e:
-                    Logger.warning(f"Call to {method} failed due to {e}")
+                    Logger.warning(f"Call to {method} failed due to {e}",
+                                   exc_info=True)
                     time.sleep(wait_step)
                 toc = time.time()
                 timer += toc - tic
@@ -394,7 +485,7 @@ class RealTimeTribe(Tribe):
         save_waveforms: bool,
         plot_detections: bool,
         st: Stream = None,
-        skip_existing: bool = True,
+        skip_existing: bool = False,
         backfill_dir: str = None,
         **kwargs
     ) -> None:
@@ -433,93 +524,106 @@ class RealTimeTribe(Tribe):
                 continue
             for d in family:
                 d._calculate_event(template=family.template)
+                # EQcorrscan (as of v 0.5.0) names detections as below. We NEED this to cope
+                # with template retention at the end of the workflow
+                """
+                ev = Event(resource_id=ResourceIdentifier(
+                    id=self.template_name + '_' + det_time,
+                    prefix='smi:local'))
+                """
+                # Re-setting this here in case changes happen to EQcorrscan IDs
+                ##### DO NOT CHANGE THIS NAMING CONVENTION!!!! THINGS WILL BREAK!!!!
+                d.event.resource_id = ResourceIdentifier(
+                    id="_".join(
+                        [d.template_name,
+                         d.detect_time.strftime("%Y%m%dT%H%M%S.%f")]),
+                    prefix='smi:local')
                 Logger.debug(f"New detection at {d.detect_time}")
             # Cope with no picks and hence no origins - these events have to be removed
             family.detections = [d for d in family if len(d.event.origins)]
+            if family.template.name not in _detected_templates:
+                self.party.families.append(family)
+            else:
+                self.party.select(family.template.name).detections.extend(
+                    family.detections)
+
+        Logger.info("Removing duplicate detections")
+        Logger.info(f"Party contained {len(self.party)} before decluster")
+        if len(self.party) > 0:
+            # TODO: Need to remove detections from disk that are removed in decluster
+            self.party.decluster(
+                trig_int=trig_int, timing="origin", metric="cor_sum",
+                hypocentral_separation=hypocentral_separation)
+        Logger.info("Completed decluster")
+        Logger.info(f"Party contains {len(self.party)} after decluster")
+        Logger.info("Writing detections to disk")
+
+        # Cope with not being given a stream
+        read_st = False
+        if st is None and backfill_dir is None:
+            read_st = True
+
+        # TODO: Need a better way to keep track of written detections - unique keys for detections?
+        # TODO: This is slow, and for Kaikoura, this is what stops it from running in real time
+        for family in self.party:
             for detection in family:
+                # TODO: this check doesn't necessarily work well - detections may be the same physical detection, but different Detection objects
+                if detection in self.detections:
+                    continue
                 detect_file_base = _detection_filename(
                     detection=detection, detect_directory=detect_directory)
-                _filename = f"{detect_file_base}.pkl"
-                if not os.path.exists(_filename) or not skip_existing:
-                    Logger.debug(f"Writing detection: {detection.detect_time}")
-                    with open(_filename, "wb") as f:
-                        pickle.dump(detection, f)
-                    self.detections.add(detection.detect_time.datetime)
+                _filename = f"{detect_file_base}.xml"
+                if os.path.isfile(_filename):
+                    if skip_existing:
+                        Logger.info(f"{_filename} exists, skipping")
+                        continue
+                    else:
+                        # Check which is "better"
+                        old_ev = read_events(_filename)[0]
+                        old_detect_val = get_comment_val("detect_val", event=old_ev)
+                        if detection.detect_val > old_detect_val:
+                            Logger.info(f"{_filename} exists, but detect val for new detection "
+                                        f"({detection.detect_val}) is greater than old "
+                                        f"value ({old_detect_val}). Overwriting")
+                        else:
+                            Logger.info(f"{_filename} exists and new detection is not "
+                                        f"better, skipping")
+                            continue
+                Logger.debug(f"Writing detection at {detection.detect_time}")
+                # TODO: Do not do this, let some other process work on making the waveforms.
+                if read_st:
+                    max_shift = (
+                        max(tr.stats.endtime for tr in family.template.st) -
+                        min(tr.stats.starttime for tr in family.template.st))
+                    bulk = [
+                        (tr.stats.network,
+                         tr.stats.station,
+                         tr.stats.location,
+                         tr.stats.channel,
+                         (detection.detect_time - 5),
+                         (detection.detect_time + max_shift + 5))
+                        for tr in family.template.st]
+                    st = self.wavebank.get_waveforms_bulk(bulk)
+                self._fig = _write_detection(
+                    detection=detection,
+                    detect_file_base=detect_file_base,
+                    save_waveform=save_waveforms,
+                    plot_detection=plot_detections, stream=st,
+                    fig=self._fig, backfill_dir=backfill_dir,
+                    detect_dir=detect_directory)
+        Logger.info("Expiring old detections")
+        # Empty self.detections
+        self.detections.clear()
+        for family in self.party:
+            Logger.debug(f"Checking for {family.template.name}")
+            family.detections = [
+                d for d in family.detections
+                if d.detect_time >= earliest_detection_time]
+            Logger.debug(f"Appending {len(family)} detections")
+            for detection in family:
+                # Need to append rather than create a new object
+                self.detections.append(detection)
         return
-
-        # TODO: Move all of this old handling of detections to a seperate post-process process.
-
-        #
-        #     if family.template.name not in _detected_templates:
-        #         self.party.families.append(family)
-        #     else:
-        #         self.party.select(family.template.name).detections.extend(
-        #             family.detections)
-        #
-        # Logger.info("Removing duplicate detections")
-        # Logger.info(f"Party contained {len(self.party)} before decluster")
-        # if len(self.party) > 0:
-        #     # TODO: Need to remove detections from disk that are removed in decluster
-        #     self.party.decluster(
-        #         trig_int=trig_int, timing="origin", metric="cor_sum",
-        #         hypocentral_separation=hypocentral_separation)
-        # Logger.info("Completed decluster")
-        # Logger.info(f"Party contains {len(self.party)} after decluster")
-        # Logger.info("Writing detections to disk")
-
-        # # Cope with not being given a stream
-        # read_st = False
-        # if st is None and backfill_dir is None:
-        #     read_st = True
-        #
-        # # TODO: Need a better way to keep track of written detections - unique keys for detections?
-        # # TODO: This is slow, and for Kaikoura, this is what stops it from running in real time
-        # for family in self.party:
-        #     for detection in family:
-        #         # TODO: this check doesn't necassarily work well - detections may be the same physical detection, but different Detection objects
-        #         if detection in self.detections:
-        #             continue
-        #         detect_file_base = _detection_filename(
-        #             detection=detection, detect_directory=detect_directory)
-        #         _filename = f"{detect_file_base}.xml"
-        #         if os.path.isfile(f"{detect_file_base}.xml") and skip_existing:
-        #             Logger.info(f"{_filename} exists, skipping")
-        #             continue
-        #         Logger.debug(f"Writing detection: {detection.detect_time}")
-        #         # TODO: Do not do this, let some other process work on making the waveforms.
-        #         if read_st:
-        #             max_shift = (
-        #                 max(tr.stats.endtime for tr in family.template.st) -
-        #                 min(tr.stats.starttime for tr in family.template.st))
-        #             bulk = [
-        #                 (tr.stats.network,
-        #                  tr.stats.station,
-        #                  tr.stats.location,
-        #                  tr.stats.channel,
-        #                  (detection.detect_time - 5),
-        #                  (detection.detect_time + max_shift + 5))
-        #                 for tr in family.template.st]
-        #             st = self.wavebank.get_waveforms_bulk(bulk)
-        #             st_read = True
-        #         self._fig = _write_detection(
-        #             detection=detection,
-        #             detect_file_base=detect_file_base,
-        #             save_waveform=save_waveforms,
-        #             plot_detection=plot_detections, stream=st,
-        #             fig=self._fig, backfill_dir=backfill_dir,
-        #             detect_dir=detect_directory)
-        # Logger.info("Expiring old detections")
-        # # Empty self.detections
-        # self.detections.clear()
-        # for family in self.party:
-        #     Logger.debug(f"Checking for {family.template.name}")
-        #     family.detections = [
-        #         d for d in family.detections if d.detect_time >= earliest_detection_time]
-        #     Logger.debug(f"Appending {len(family)} detections")
-        #     for detection in family:
-        #         # Need to append rather than create a new object
-        #         self.detections.append(detection)
-        # return
 
     def _plot(self) -> None:  # pragma: no cover
         """ Plot the data as it comes in. """
@@ -534,22 +638,38 @@ class RealTimeTribe(Tribe):
         self.plotter = EQcorrscanPlot(
             rt_client=self.rt_client, plot_length=self.plot_length,
             tribe=self, inventory=self.inventory,
-            detections=[],
+            detections=self.detections,
             exclude_channels=self.plotting_exclude_channels,
             update_interval=update_interval, plot_height=plot_height,
             plot_width=plot_width, offline=offline,
             **plot_options)
         self.plotter.background_run()
 
-    def _wait(self, wait: float = None, detection_kwargs: dict = None) -> None:
+    def _check_for_killfile(self):
+        """ Check to see if the killfile for this RTTribe exists """
+        if self._killfile is None:
+            return False
+        if os.path.isfile(self._killfile):
+            Logger.info(f"Found killfile: {self._killfile}, stopping")
+            return True
+        return False
+
+    def _wait(self, wait: float = None, detection_kwargs: dict = None) -> bool:
         """ Wait for `wait` seconds, or until all channels are available. """
+        if self._check_for_killfile():
+            Logger.critical("Kill file found during _wait - stopping")
+            self.stop()
+            return False
         if wait is not None and wait <= 0:
             Logger.info(f"No fucking about - get back! (wait: {wait}")
-            return
+            return True
         Logger.info("Waiting for data.")
         max_wait = min(self._max_wait_length, self.rt_client.buffer_capacity)
         wait_length = 0.
         while True:
+            if self._check_for_killfile():
+                self.stop()
+                return False
             tic = time.time()
             if detection_kwargs:
                 # Check on backfillers
@@ -592,7 +712,110 @@ class RealTimeTribe(Tribe):
             elif wait_length >= wait:
                 break
             pass
+        return True
+
+    def _start_plugins(self):
+        """ Start up any registered plugins. """
+        if self.plugin_config is None:
+            Logger.debug("No plugins configured")
+            return
+        Logger.info(
+            f"Setting up plugins according to {self._plugin_order}")
+        for key in self._plugin_order:
+            value = self.plugin_config.get(key, None)
+            if value is None:
+                continue
+            if key not in REGISTERED_PLUGINS.keys() and key != "order":
+                Logger.error(f"Plugin {key} is not known to RT-EQcorrscan. "
+                             f"Known plugins: {REGISTERED_PLUGINS.keys()}")
+                continue
+            config_name = f"{key}-config-{self.name}.yml"
+            Logger.info(f"Writing config file for {key} to {config_name}")
+            value.write(config_name)
+            plugin_args = ["-c", config_name]
+            if self._simulation:
+                plugin_args.append("--simulation")
+                if key in ["plotter"]:
+                    plugin_args.extend(["--simulation-time-offset",
+                                        str(self._simulation_time_offset)])
+            plugin_proc = run_plugin(key, plugin_args)
+            self._plugins.update({key: plugin_proc})
         return
+
+    def _stop_plugins(self):
+        if self.plugin_config is None:
+            Logger.debug("No plugins configured")
+            return
+        for key, proc in self._plugins.items():
+            Logger.info(f"Stopping subprocess for plugin {key}")
+            config = self.plugin_config[key]
+            outdir = config.out_dir
+            if os.path.isdir(outdir):
+                with open(f"{outdir}/poison", "w") as f:
+                    f.write(f"Poisoned at {time.time()}")
+                # proc.terminate()
+                Logger.info(f"{key} poisoned")
+
+        return
+
+    def _configure_plugins(self, in_dir: str, zero_time: UTCDateTime):
+        # Nuance of attribdict means that even key lookup doesn't work as
+        # expected, so need to do try/except
+        try:
+            # Need to pop this from configs so that order doesn't get
+            # run as a plugin
+            self._plugin_order = self.plugin_config.pop("order")
+        except KeyError:
+            self._plugin_order = ORDERED_PLUGINS
+        outputter_in_dirs = []
+        if "output" in self._plugin_order:
+            # We don't want to output anything that comes after the output (e.g. the plotter)
+            output_plugin_input_skips = self._plugin_order[self._plugin_order.index("output"):]
+        else:
+            output_plugin_input_skips = []
+        output_plugin_input_skips.append("picker")  # We don't want to output anything that hasn't been located
+        for i, plugin_name in enumerate(self._plugin_order):
+            config = self.plugin_config.get(plugin_name, None)
+            if config is None:
+                continue
+            config.out_dir = f"{self.name}/{plugin_name}_out"
+            # We only want to output events that have passed the hyp stage
+            if plugin_name not in output_plugin_input_skips:
+                outputter_in_dirs.append(config.out_dir)
+            if plugin_name in ["output"]:
+                # The outputter wants all the intermediate outputs
+                config.in_dir = outputter_in_dirs
+            else:
+                config.in_dir = in_dir
+            if plugin_name == "nll":
+                # We need to set the bounds to be useful
+                config.maxlat = (
+                        self.maxlat + (0.1 * (self.maxlat - self.minlat)))
+                config.minlat = (
+                        self.minlat - (0.1 * (self.maxlat - self.minlat)))
+                config.maxlon = (
+                        self.maxlon - (0.1 * (self.maxlon - self.minlon)))
+                config.minlon = (
+                        self.minlon - (0.1 * (self.maxlon - self.minlon)))
+            if plugin_name == "growclust" and "nll" in self._plugin_order:
+                # If we are running both growclust and nonlinloc we can use the nll 3D grids
+                if config.ttabsrc == "nllgrid":
+                    nll_config = self.plugin_config.get('nll')
+                    # Point to the location of the to-be-generated NonLinLoc config file.
+                    # The growclust plugin should read from this and set the appropriate values.
+                    config.nll_config_file = os.path.abspath(
+                        os.path.join(
+                            nll_config.working_dir,
+                            os.path.basename(nll_config.infile)))
+            config.wavebank_dir = os.path.abspath(self.wavebank.bank_path)
+            config.template_dir = os.path.abspath(
+                self.running_template_dir)
+            config.zero_time = zero_time
+            # Output of previous plugin as input to next
+            # If plugin came after plot, then plugin in dir should be plot plugin in dir
+            if plugin_name not in ["plotter"]:
+                in_dir = config.out_dir
+        return in_dir
 
     def _start_streaming(self):
         if not self.rt_client.started:
@@ -639,7 +862,7 @@ class RealTimeTribe(Tribe):
         max_run_length: float = None,
         minimum_rate: float = None,
         backfill_to: UTCDateTime = None,
-        backfill_client=None,
+        backfill_client = None,
         **kwargs
     ) -> Party:
         """
@@ -693,6 +916,7 @@ class RealTimeTribe(Tribe):
         The party created - will not contain detections expired by
         `keep_detections` threshold.
         """
+        stopped = False
         # First: start collecting data NOW
         # Get this locally before streaming starts
         buffer_capacity = self.rt_client.buffer_capacity
@@ -724,6 +948,23 @@ class RealTimeTribe(Tribe):
             Logger.critical("No templates remain, not running")
             return Party()
         # Fix unsupported args
+        if "overlap" in kwargs.keys():
+            detect_overlap = kwargs.pop("overlap")
+        else:
+            detect_overlap = "calculate"  # Start off with an overlap,
+            # then we set to 0 and handle overlap here
+        if detect_overlap == "calculate":
+            # Work this out here and keep track
+            detect_overlap = max(_moveout(t.st) for t in self.templates)
+        maximum_data_step = self.minimum_data_for_detection - detect_overlap * 2
+        if self.detect_interval > maximum_data_step:
+            Logger.warning(
+                f"Requested detect interval ({self.detect_interval}s) would "
+                f"result in skipping data due to required overlap of "
+                f"{detect_overlap}s. Setting detect_interval to "
+                f"{maximum_data_step}s.")
+            self.detect_interval = maximum_data_step
+
         try:
             if kwargs.pop("plot"):
                 Logger.info("EQcorrscan plotting disabled")
@@ -741,21 +982,52 @@ class RealTimeTribe(Tribe):
         if not os.path.isdir(detect_directory):
             os.makedirs(detect_directory)
 
+        # dump templates to the record of templates running
+        if not os.path.isfile(self.running_template_dir):
+            os.makedirs(self.running_template_dir)
+        for template in self.templates:
+            _tout = f"{self.running_template_dir}/{template.name}.pkl"
+            Logger.info(f"Writing template to {_tout}")
+            with open(_tout, "wb") as f:
+                pickle.dump(template, f)
+        # Get this locally before streaming starts
+        buffer_capacity = self.rt_client.buffer_capacity  
+        # Start the streamer
+        self._start_streaming()
+
+        # Add config options for plugins as needed
+        in_dir = detect_directory
+        if self.plugin_config:
+            plugin_out_dir = self._configure_plugins(
+                in_dir=in_dir, zero_time=backfill_to)
+            # Start any plugins
+            self._start_plugins()
+
         Logger.info("Detection will use the following data: {0}".format(
             self.expected_seed_ids))
         if backfill_client and backfill_to:
             backfill = Stream()
-            self._wait()
+            # Wait for the streamer to have some data
+            _continue = self._wait()
+            if not _continue:
+                return Party()
             _buffer = self.rt_client.stream
             for tr_id in self.expected_seed_ids:
                 try:
-                    tr_in_buffer = _buffer.select(id=tr_id)[0]
+                    tr_in_buffer = _buffer.select(id=tr_id).merge()[0]
                 except IndexError:
                     continue
-                endtime = tr_in_buffer.stats.starttime
+                # Overlap - request more data than we are likely to get
+                endtime = tr_in_buffer.stats.endtime + 120
+                Logger.info(f"Buffer for {tr_in_buffer.id} between "
+                            f"{tr_in_buffer.stats.starttime} and "
+                            f"{tr_in_buffer.stats.endtime}")
                 if endtime - backfill_to > buffer_capacity:
-                    Logger.info("Truncating backfill to buffer length")
                     starttime = endtime - buffer_capacity
+                    Logger.info(
+                        f"Truncating backfill to buffer length: "
+                        f"{buffer_capacity} (getting data between {starttime} "
+                        f"and {endtime}")
                 else:
                     starttime = backfill_to
                 if starttime > endtime:
@@ -763,20 +1035,26 @@ class RealTimeTribe(Tribe):
                 try:
                     tr = backfill_client.get_waveforms(
                         *tr_id.split('.'), starttime=starttime,
-                        endtime=endtime).merge()[0]
+                        endtime=endtime).merge(method=1)[0]
                 except Exception as e:
-                    Logger.error("Could not back fill due to: {0}".format(e))
+                    Logger.error("Could not back fill due to: {0}".format(e),
+                                 exc_info=True)
                     Logger.error(f"The request was: {tr_id.split('.')},"
                                  f" starttime={starttime}, endtime={endtime}")
                     continue
                 Logger.debug("Downloaded backfill: {0}".format(tr))
                 backfill += tr
-            for tr in backfill:
-                # Get the lock!
-                Logger.debug(f"Adding {tr.id} to the buffer")
-                self.rt_client.on_data(tr)
-            Logger.debug("Stream in buffer is now: {0}".format(
-                self.rt_client.stream))
+            # for tr in backfill:
+            #     # Get the lock!
+            #     Logger.info(f"Adding {tr.id} {tr.stats.starttime} -- "
+            #                 f"{tr.stats.endtime} to the buffer")
+            #     self.rt_client.on_data(tr)
+            # Logger.info("Stream in buffer is now: {0}".format(
+            #     self.rt_client.stream))
+            # Use this to get around adding to rt client from another thread
+            past_st = backfill
+        else:
+            past_st = Stream()
         if self.plot:  # pragma: no cover
             # Set up plotting thread
             self._plot()
@@ -787,9 +1065,11 @@ class RealTimeTribe(Tribe):
                 self.rt_client.buffer_length + 5) / self._speed_up
             Logger.info("Sleeping for {0:.2f}s while accumulating data".format(
                 sleep_step))
-            self._wait(sleep_step)
+            _continue = self._wait(sleep_step)
+            if not _continue:
+                return Party()
         first_data = min([tr.stats.starttime
-                          for tr in self.rt_client.stream.merge()])
+                          for tr in self.rt_client.stream.merge(method=1)])
         detection_kwargs = dict(
             threshold=threshold, threshold_type=threshold_type,
             trig_int=trig_int, hypocentral_separation=hypocentral_separation,
@@ -799,55 +1079,79 @@ class RealTimeTribe(Tribe):
             min_stations=min_stations, earliest_detection_time=None)
 
         long_runs, long_run_time = 0, 0  # Keep track of over-running loops
+        overlap = detect_overlap
         try:
             while self.busy:
                 try:
                     self._running = True  # Lock tribe
                     start_time = UTCDateTime.now()
-                    st = self.rt_client.stream.split().merge()
+                    st = self.rt_client.stream.split().merge(method=1)
+                    Logger.info(f"RTTribe received this stream from client:\n{st.__str__(extended=True)}")
+                    # Add in past data if needed - will be trimmed later
+                    Logger.debug(f"Past stream is:\n{past_st.__str__(extended=True)}")
+                    st = (st + past_st).merge(method=1)  # Keep overlapping data
+                    Logger.debug(f"Adding st to past_st results in:\n{st.__str__(extended=True)}")
                     # Warn if data are gappy
                     gappy = False
                     for tr in st:
                         if np.ma.is_masked(tr.data):
                             gappy = True
                             gaps = tr.split().get_gaps()
-                            Logger.warning(f"Masked data found on {tr.id}. Gaps: {gaps}")
+                            Logger.warning(
+                                f"Masked data found on {tr.id}. Gaps: {gaps}")
                     if gappy:
-                        st = st.merge() # Re-merge after gap checking
+                        st = st.merge(method=1)  # Re-merge after gap checking
                     if self.has_wavebank:
                         st = _check_stream_is_int(st)
-                        try:
-                            self._access_wavebank(
-                                method="put_waveforms", timeout=10.,
-                                stream=st)
-                        except Exception as e:
+                        wb_retries, wb_max_retries, e = 0, 10, None
+                        while wb_retries <= wb_max_retries:
+                            try:
+                                Logger.info(f"Putting stream into wavebank: "
+                                            f"{st.__str__(extended=True)}")
+                                self._access_wavebank(
+                                    method="put_waveforms", timeout=10.,
+                                    stream=st)
+                                break
+                            except Exception as e:
+                                Logger.info(f"Retry {wb_retries}/{wb_max_retries}")
+                                wb_retries += 1
+                                # time.sleep(0.1)
+                                continue
+                        else:
                             Logger.error(
-                                f"Could not write to wavebank due to {e}")
+                                f"Could not write to wavebank due to {e}",
+                                exc_info=True)
                     last_data_received = self.rt_client.last_data
                     # Split to remove trailing mask
                     if len(st) == 0:
                         Logger.warning("No data")
                         continue
                     elif last_data_received is None:
-                        Logger.warning("Streamer incorrectly reported None for last data received, "
-                                       "setting to stream end")
+                        Logger.warning(
+                            "Streamer incorrectly reported None for last "
+                            "data received, setting to stream end")
                         last_data_received = max(tr.stats.endtime for tr in st)
                     Logger.info(
                         f"Streaming Client last received data at "
                         f"{last_data_received}")
                     self._stream_end = max(tr.stats.endtime for tr in st)
                     min_stream_end = min(tr.stats.endtime for tr in st)
-                    # Update detection kwargs endtime to end of current data - no need to backfill beyond that
+                    # Update detection kwargs endtime to end of current data -
+                    # no need to backfill beyond that
                     detection_kwargs["endtime"] = self._stream_end
                     Logger.info(
-                        f"Real-time client provided data: \n{st.__str__(extended=True)}")
+                        "Real-time client provided data: \n"
+                        f"{st.__str__(extended=True)}")
                     # Cope with data that doesn't come
                     if start_time - last_data_received > restart_interval:
                         Logger.warning(
-                            "The streaming client has not given any new data for "
-                            f"{restart_interval} seconds. Restarting Streaming client")
-                        Logger.info(f"start_time: {start_time}, last_data_received: "
-                                    f"{last_data_received}, stream_end: {self._stream_end}")
+                            "The streaming client has not given any new "
+                            f"data for {restart_interval} seconds. Restarting"
+                            " Streaming client")
+                        Logger.info(
+                            f"start_time: {start_time}, last_data_received: "
+                            f"{last_data_received}, "
+                            f"stream_end: {self._stream_end}")
                         Logger.info("Stopping streamer")
                         self.rt_client.background_stop()
                         self.rt_client.stop()
@@ -855,7 +1159,7 @@ class RealTimeTribe(Tribe):
                         Logger.info("Starting streamer")
                         self._start_streaming()
                         Logger.info("Streamer started")
-                        st = self.rt_client.stream.split().merge()  # Get data again.
+                        st = self.rt_client.stream.split().merge(method=1)  # Get data again.
                     Logger.info("Streaming client seems healthy")
                     # Remove any data that shouldn't be there - sometimes GeoNet's
                     # Seedlink client gives old data.
@@ -866,11 +1170,15 @@ class RealTimeTribe(Tribe):
                         starttime=self._stream_end - (buffer_capacity + 20.0),
                         endtime=self._stream_end)
                     if detection_iteration > 0:
+                        Logger.info(f"Re-trimming to starttime "
+                                    f"{min_stream_end - self.minimum_data_for_detection} to "
+                                    f"give only {self.minimum_data_for_detection} s of data")
                         # For the first run we want to detect in everything we have.
                         # Otherwise trim so that all channels have at-least minimum data for detection
                         st.trim(
                             starttime=min_stream_end - self.minimum_data_for_detection,
                             endtime=self._stream_end)
+                        overlap = 0.0
                     Logger.info("Trimmed data")
                     if len(st) == 0:
                         Logger.warning("No data")
@@ -885,7 +1193,7 @@ class RealTimeTribe(Tribe):
                         continue
                     Logger.info("Starting detection run")
                     # merge again - checking length can split the data?
-                    st = st.merge()
+                    st = st.merge(method=1)
                     Logger.info("Using data: \n{0}".format(
                         st.__str__(extended=True)))
                     try:
@@ -899,25 +1207,29 @@ class RealTimeTribe(Tribe):
                             process_cores=self.process_cores,
                             parallel_process=self._parallel_processing,
                             ignore_bad_data=True, copy_data=False,
-                            concurrent_processing=False, overlap=None,
+                            concurrent_processing=False,
+                            overlap=overlap,
                             **kwargs)
                         Logger.info("Completed detection")
                     except Exception as e:  # pragma: no cover
-                        Logger.error(e)
-                        Logger.error(traceback.format_exc())
+                        Logger.error(e, exc_info=True)
                         if "Cannot allocate memory" in str(e):
-                            Logger.error("Out of memory, stopping this detector")
+                            Logger.error(
+                                "Out of memory, stopping this detector")
                             self.stop()
+                            stopped = True
                             break
                         if not self._runtime_check(
-                                run_start=run_start, max_run_length=max_run_length):
+                                run_start=run_start,
+                                max_run_length=max_run_length):
                             break
                         Logger.info(
                             "Waiting for {0:.2f}s and hoping this gets "
                             "better".format(self.detect_interval))
                         time.sleep(self.detect_interval)
                         continue
-                    Logger.info(f"Trying to get lock - Lock status: {self.lock}")
+                    Logger.info(
+                        f"Trying to get lock - Lock status: {self.lock}")
                     detection_kwargs.update(
                         dict(earliest_detection_time=self._stream_end - keep_detections))
                     with self.lock:
@@ -952,12 +1264,15 @@ class RealTimeTribe(Tribe):
                     Logger.info("Waiting {0:.2f}s until next run".format(
                         self.detect_interval - run_time))
                     detection_iteration += 1
-                    self._wait(
+                    _continue = self._wait(
                         wait=(self.detect_interval - run_time) / self._speed_up,  # Convert to real-time
                         detection_kwargs=detection_kwargs)
-                    if not self._runtime_check(
-                            run_start=run_start, max_run_length=max_run_length):
+                    _runtime_continue = self._runtime_check(
+                        run_start=run_start, max_run_length=max_run_length)
+                    if not _continue or not _runtime_continue:
+                        Logger.info(f"Stopping\t wait check: {_continue}, runtime check: {_runtime_continue}")
                         self.stop()
+                        stopped = True
                         break
                     if minimum_rate and UTCDateTime.now() > run_start + self._min_run_length:
                         _rate = average_rate(
@@ -972,7 +1287,10 @@ class RealTimeTribe(Tribe):
                                 "Rate ({0:.2f}) has dropped below minimum rate, "
                                 "stopping.".format(_rate))
                             self.stop()
+                            stopped = True
                             break
+                    # Re-use this stream
+                    past_st = st
                     # Logger.info("Enforcing garbage collection")
                     # gc.collect()
                     # Memory output
@@ -985,8 +1303,7 @@ class RealTimeTribe(Tribe):
                     # Logger.info(f"Total memory used by {os.getpid()}: {total_memory_mb:.4f} MB")
                 except Exception as e:
                     # Error locally and mail this in!
-                    Logger.critical(f"Uncaught error: {e}")
-                    Logger.error(traceback.format_exc())
+                    Logger.critical(f"Uncaught error: {e}", exc_info=True)
 
                     message = f"""\
                     Uncaught error on {platform.node()}: {e}
@@ -1001,24 +1318,26 @@ class RealTimeTribe(Tribe):
                         break
         finally:
             Logger.critical("Stopping")
-            self.stop()
+            if not stopped:
+                self.stop()
         return self.party
 
     def _read_templates_from_disk(self):
         template_files = glob.glob(f"{self._template_dir}/*")
         if len(template_files) == 0:
             return []
-        Logger.debug(f"Checking for events in {self._template_dir}")
+        Logger.info(f"Checking for events in {self._template_dir}")
         new_tribe = Tribe()
         for template_file in template_files:
             if os.path.isdir(template_file):
                 # Can happen if the archive hasn't finished being created
                 continue
-            Logger.debug(f"Reading from {template_file}")
+            Logger.info(f"Reading from {template_file}")
             try:
                 template = Template().read(template_file)
             except Exception as e:
-                Logger.error(f"Could not read {template_file} due to {e}")
+                Logger.error(f"Could not read {template_file} due to {e}",
+                             exc_info=True)
                 continue
             template_endtime = max(tr.stats.endtime for tr in template.st)
             if template_endtime > self._stream_end:
@@ -1037,6 +1356,15 @@ class RealTimeTribe(Tribe):
                                if t.name not in self.running_templates]
         if len(new_tribe):
             Logger.info(f"Read in {len(new_tribe)} new templates from disk")
+
+        # dump them to the record of templates running
+        if not os.path.isdir(self.running_template_dir):
+            os.makedirs(self.running_template_dir)
+        for template in new_tribe:
+            _tout = f"{self.running_template_dir}/{template.name}.pkl"
+            Logger.info(f"Writing template to {_tout}")
+            with open(_tout, "wb") as f:
+                pickle.dump(template, f)
         return new_tribe
 
     def _add_templates_from_disk(
@@ -1262,7 +1590,8 @@ class RealTimeTribe(Tribe):
             Logger.info("Writing stopfile")
             with open(".stopfile", "a") as f:
                 f.write(f"{self.name}\n")
-            Logger.info("Written stopfile")
+        # Stop plugins
+        self._stop_plugins()
 
 
 def reshape_templates(
@@ -1288,6 +1617,10 @@ def reshape_templates(
     """
     template_streams = [t.st for t in templates]
     template_names = [t.name for t in templates]
+
+    # Remove any traces not in used seed ids
+    for tst in template_streams:
+        tst.traces = [tr for tr in tst if tr.id in used_seed_ids]
 
     samp_rate = template_streams[0][0].stats.sampling_rate
     process_len = max(t.process_length for t in templates)
@@ -1444,7 +1777,10 @@ def _write_detection(
     try:
         detection.event.write(f"{detect_file_base}.xml", format="QUAKEML")
     except Exception as e:
-        Logger.error(f"Could not write event file due to {e}")
+        Logger.error(f"Could not write event file due to {e}", exc_info=True)
+    else:
+        Logger.info(f"Written detection at {detection.detect_time} to "
+                    f"{detect_file_base}")
     detection.event.picks.sort(key=lambda p: p.time)
     st = stream.slice(
         detection.event.picks[0].time - 10,
@@ -1456,14 +1792,14 @@ def _write_detection(
         try:
             fig.savefig(f"{detect_file_base}.png")
         except Exception as e:
-            Logger.error(f"Could not write plot due to {e}")
+            Logger.error(f"Could not write plot due to {e}", exc_info=True)
         fig.clf()
     if save_waveform:
         st = _check_stream_is_int(st)
         try:
             st.write(f"{detect_file_base}.ms", format="MSEED")
         except Exception as e:
-            Logger.error(f"Could not write stream due to {e}")
+            Logger.error(f"Could not write stream due to {e}", exc_info=True)
     return fig
 
 

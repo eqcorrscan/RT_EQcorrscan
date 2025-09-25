@@ -10,7 +10,7 @@ This script has 3 main steps:
 import logging
 import os
 
-from obspy import UTCDateTime
+from obspy import UTCDateTime, Catalog
 from obspy.core.event import Event
 from obspy.clients.fdsn import Client
 
@@ -84,7 +84,10 @@ def synthesise_real_time(
 
     trigger_origin = (
             triggering_event.preferred_origin() or triggering_event.origins[0])
-    region = estimate_region(triggering_event)
+    region = estimate_region(
+        triggering_event,
+        multiplier=config.reactor.scaling_multiplier or 1.0,
+        min_radius=config.reactor.minimum_lookup_radius or 50.0)
     database_starttime = trigger_origin.time - (database_duration * 86400)
     database_endtime = trigger_origin.time
 
@@ -114,8 +117,16 @@ def synthesise_real_time(
             catalog=catalog, client=client, **config.template)
     else:
         template_bank.update_index()
+    # Tribe must include the triggering event for getting inventory -
+    # becomes an issue if no pre-trigger templates are used as different
+    # stations are likely to be used between here (downloading closest) vs
+    # when picks from one event are also included.
+    template_bank.make_templates(
+        catalog=Catalog([triggering_event]), client=client, **config.template)
+
     tribe = template_bank.get_templates(
         starttime=database_starttime, endtime=database_endtime, **region)
+
     inventory = get_inventory(
         client, tribe, triggering_event=triggering_event,
         max_distance=config.rt_match_filter.max_distance,
@@ -126,14 +137,24 @@ def synthesise_real_time(
     Logger.info("Downloading data")
     wavebank = WaveBank("simulation_wavebank")
     download_chunk_size = min(3600, detection_runtime)
+    # Counter to keep track of download progress
+    n_chans = 0
+    for n in inventory:
+        for s in n:
+            for c in s:
+                n_chans += 1
+
+    n_chan = 0
     for network in inventory:
         for station in network:
             for channel in station:
-                _starttime = trigger_origin.time - 60
+                n_chan += 1
+                _starttime = trigger_origin.time - (config.template.process_len * 2)
                 _endtime = _starttime + detection_runtime
                 while _starttime <= _endtime:
                     Logger.info(
                         f"Downloading for {network.code}.{station.code}.{channel.location_code}.{channel.code} "
+                        f"({n_chan} of {n_chans}) "
                         f"between {_starttime} and {_starttime + download_chunk_size}")
                     # check if the waveform already exists in the wavebank
                     st = None
@@ -167,6 +188,10 @@ def synthesise_real_time(
                         continue
                     _starttime += download_chunk_size
                     wavebank.put_waveforms(st)
+    Logger.info("Updating index of wavebank")
+    wavebank.update_index()
+    df = wavebank.get_availability_df()
+    Logger.info(f"Have a wavebank with the following data: \n{df}")
 
     if pre_empt_len:
         pre_empt_data = True
@@ -196,6 +221,7 @@ def synthesise_real_time(
         client=client,
         listener=listener, trigger_func=trigger_func,
         template_database=template_bank, config=config)
+    reactor._simulation = True
     reactor._speed_up = speed_up
     reactor._test_start_step = listener._test_start_step
     Logger.info("Starting reactor")

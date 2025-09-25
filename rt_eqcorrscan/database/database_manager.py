@@ -298,7 +298,7 @@ class TemplateBank(EventBank):
     @compose_docstring(get_events_params=get_events_parameters)
     def get_templates(self, use_pickled: bool = True, **kwargs) -> Tribe:
         """
-        Get template waveforms from the database
+        Get templates from the database
 
         Supports passing an `concurrent.futures.Executor` using the `executor`
         keyword argument for parallel reading.
@@ -321,10 +321,12 @@ class TemplateBank(EventBank):
     def _template_paths(self, **kwargs) -> Iterable:
         """ Get the paths of templates matching kwargs criteria """
         with self.index_lock:
+            Logger.info("Got lock, accessing bank")
             paths = str(self.bank_path) + os.sep + self.read_index(
                 columns=["path", "latitude", "longitude"], **kwargs).path
         return [path.replace(self.ext, self.template_ext) for path in paths]
 
+     
     def put_templates(
         self,
         templates: Union[list, Tribe],
@@ -532,6 +534,8 @@ def _download_and_make_template(
     except IndexError as e:
         Logger.error(e)
         return None
+    # Require that our templates be named by the event id of the event that made them
+    ##### DO NOT CHANGE THIS NAMING CONVENTION!!!! THINGS WILL BREAK!!!!
     template.name = event.resource_id.id.split('/')[-1]
     # Edit comment to reflect new template_name
     for comment in template.event.comments:
