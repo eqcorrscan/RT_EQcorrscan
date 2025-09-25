@@ -230,8 +230,11 @@ class TestGrowclustPlugin(unittest.TestCase):
         event_ids.update(set(p.event_id_1 for p in new_pairs))
         event_ids.update(set(p.event_id_2 for p in new_pairs))
 
-        Logger.info("Comparing correlations - will take a while")
-        for eid1 in event_ids:
+        Logger.warning("Comparing correlations - will take a while")
+        for i, eid1 in enumerate(event_ids):
+            if i % 20 == 0:
+                Logger.warning(
+                    f"Completed {i} outer event ids of {len(event_ids)}")
             for eid2 in event_ids:
                 pair_1 = [p for p in original_pairs
                           if p.event_id_1 == eid1
