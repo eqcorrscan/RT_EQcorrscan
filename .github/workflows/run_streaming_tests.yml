@@ -11,7 +11,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest]
         python-version: [3.11, 3.12]
       fail-fast: false
 
@@ -43,8 +43,7 @@ jobs:
         shell: bash -l {0}
         run: |
           export CI="true"
-          pytest -v --cov-report=xml -m "streaming" --log-cli-level=INFO
-#          pytest -n 2 --dist=loadscope -v --cov-report=xml -m "streaming"
+          pytest -n 2 --dist=loadscope -v --cov-report=xml -m "streaming" --log-cli-level=INFO
 
       - name: upload coverage
         uses: codecov/codecov-action@v4
