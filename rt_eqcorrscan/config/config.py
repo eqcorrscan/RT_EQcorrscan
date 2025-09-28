@@ -321,12 +321,28 @@ class DatabaseManagerConfig(_ConfigAttribDict):
         "path_structure": "{year}/{month}/{event_id_end}",
         "event_ext": ".xml",
         "min_stations": 5,
-        "lookup_starttime": "1970:01:01T00:00:00.00000Z",
+        "lookup_starttime": UTCDateTime("1970:01:01T00:00:00.00000Z"),
         # TODO: Add wavebank args.
     }
     readonly = []
 
     def __init__(self, *args, **kwargs):
+        # Parse lookup_starttime
+        lk_st = kwargs.get("lookup_starttime", None)
+        if lk_st:
+            if isinstance(lk_st, str):
+                try:
+                    lk_st = UTCDateTime(lk_st)
+                except Exception as e:
+                    Logger.exception(
+                        f"Could not parse {lk_st} to UTCDateTime due to {e}. "
+                        f"Setting to 0.")
+                    lk_st = 0
+            elif not isinstance(lk_st, (float, int)):
+                Logger.warning(f"Lookup_starttime: {lk_st} is not UTCDateTime, "
+                               f"float or int. Setting to 0")
+                lk_st = 0
+        kwargs.update({"lookup_starttime": lk_st})
         super().__init__(*args, **kwargs)
 
 

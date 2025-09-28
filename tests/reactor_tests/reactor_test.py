@@ -6,6 +6,7 @@ import unittest
 import shutil
 import time
 import copy
+from copy import deepcopy
 
 from functools import partial
 
@@ -81,10 +82,29 @@ class ReactorTests(unittest.TestCase):
                 time=UTCDateTime(2019, 1, 1), latitude=-45.,
                 longitude=178.0, depth=10000.)],
             magnitudes=[Magnitude(mag=7.4)])
+        lookup_starttime = reactor._spin_up_starttime(trigger_event)
+        self.assertEqual(UTCDateTime(0), lookup_starttime)
         reactor.spin_up(triggering_event=trigger_event)
         time.sleep(10)
         with self.assertRaises(SystemExit):
             reactor.stop()
+
+    def test_reactor_spin_up_starttime_from_trigger(self):
+        config = deepcopy(self.config)
+        config.database_manager.lookup_starttime = 2 * 86400
+        reactor = Reactor(
+            client=Client("GEONET"),
+            listener=self.listener, trigger_func=self.trigger_func,
+            template_database=self.template_bank,
+            config=config)
+        trigger_event = Event(
+            origins=[Origin(
+                time=UTCDateTime(2019, 1, 1), latitude=-45.,
+                longitude=178.0, depth=10000.)],
+            magnitudes=[Magnitude(mag=7.4)])
+        lookup_starttime = reactor._spin_up_starttime(trigger_event)
+        self.assertEqual(UTCDateTime(2019, 1, 1) - (2 * 86400),
+                         lookup_starttime)
 
 
 class GetInventoryTests(unittest.TestCase):
