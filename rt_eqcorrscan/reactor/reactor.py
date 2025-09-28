@@ -378,6 +378,20 @@ class Reactor(object):
             self._triggered_events.append(trigger_event)
             self.spin_up(trigger_event)
 
+    def _spin_up_starttime(self, triggering_event: Event) -> UTCDateTime:
+        """ Work out lookup starttime. Included for testing purposes. """
+        # Allow lookups prior to trigger-time
+        if isinstance(
+                self.config.database_manager.lookup_starttime, (float, int)):
+            lookup_starttime = (
+                get_origin_attr(triggering_event, "time") -
+                abs(self.config.database_manager.lookup_starttime))
+        else:
+            lookup_starttime = (
+                self.config.database_manager.lookup_starttime or
+                UTCDateTime(0))
+        return lookup_starttime
+
     def spin_up(self, triggering_event: Event) -> None:
         """
         Run the reactors response function as a subprocess.
@@ -400,9 +414,7 @@ class Reactor(object):
             scaling_relation=scaling_relation)
         if region is None:
             return
-        region.update(
-            {"starttime": self.config.database_manager.lookup_starttime or
-                          UTCDateTime.now()})
+        region.update({"starttime": self._spin_up_starttime(triggering_event)})
         Logger.info("Getting templates within {0}".format(region))
         df = self.template_database.get_event_summary(**region)
         event_ids = {e for e in df["event_id"]}
