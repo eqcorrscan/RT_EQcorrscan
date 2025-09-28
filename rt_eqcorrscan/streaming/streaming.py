@@ -194,11 +194,14 @@ class _StreamingClient(ABC):
     def stream(self) -> Stream:
         try:
             self.__stream = self._stream_queue.get(block=False)
+            Logger.debug("Got stream from queue")
             # Need to put it back for future Processes!
             try:
                 self._stream_queue.put(self.__stream, block=False)
+                Logger.debug("Put stream back into queue")
             except Full:
                 # Something else has added while we were not looking! Okay
+                Logger.debug("Another process has queued a stream - not putting back in")
                 pass
         except Empty:
             Logger.debug("No stream in queue")
@@ -221,7 +224,7 @@ class _StreamingClient(ABC):
                 pass
             try:
                 self._stream_queue.put(st, timeout=self._timeout)
-                Logger.debug("Put stream into queue")
+                Logger.debug("Put stream into queue after emptying queue")
             except Full:
                 Logger.warning(
                     "Could not update the state of stream - queue is full")
@@ -278,14 +281,17 @@ class _StreamingClient(ABC):
             kill = False
         Logger.debug(f"Kill status: {kill}")
         if kill:
+            # Need to put back into the killer queue to make sure other
+            # processes get killed
+            self._killer_queue.put(True)
             Logger.warning(
                 "Termination called, stopping collect loop")
             self.on_terminate()
         return kill
 
-    def _bg_run(self):
+    def _bg_run(self, *args, **kwargs):
         while self.streaming:
-            self.run()
+            self.run(*args, **kwargs)
         Logger.info("Running stopped, busy set to False")
         try:
             self._dead_queue.get(block=False)
@@ -321,7 +327,7 @@ class _StreamingClient(ABC):
             Logger.info("Adding trace to local buffer")
             self.buffer.add_stream(tr)
         # Wait until streaming has stopped
-        Logger.debug(
+        Logger.info(
             f"Waiting for streaming to stop: status = {self.streaming}")
         while self.streaming:
             try:
@@ -340,16 +346,18 @@ class _StreamingClient(ABC):
                     break
         # join the processes
         for process in self.processes:
-            Logger.info("Joining process")
+            Logger.info(f"Joining process {process.name}")
             process.join(5)
             if hasattr(process, 'exitcode') and process.exitcode:
                 Logger.info("Process failed to join, terminating")
                 process.terminate()
                 Logger.info("Terminated")
                 process.join()
-            Logger.info("Process joined")
+            Logger.info(f"Process {process.name} joined")
         self.processes = []
         self.streaming = False
+        Logger.info("Streaming background stop completed")
+        return
 
     def on_data(self, trace: Trace):
         """
@@ -436,6 +444,7 @@ class _StreamingClient(ABC):
                 self.stop()
         else:
             Logger.info("Stop already called - not duplicating")
+        self.streaming = False
         self.stream = st
         return st
 

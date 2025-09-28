@@ -15,6 +15,7 @@ from obsplus import WaveBank
 from eqcorrscan import Party
 
 from rt_eqcorrscan.config import read_config
+from rt_eqcorrscan.helpers.sparse_event import get_origin_attr
 from rt_eqcorrscan.reactor import estimate_region, get_inventory
 from rt_eqcorrscan.database import TemplateBank, check_tribe_quality
 from rt_eqcorrscan.database.client_emulation import ClientBank
@@ -46,7 +47,15 @@ def run_real_time_matched_filter(**kwargs):
     if triggering_eventid:
         triggering_event = client.get_events(
             eventid=triggering_eventid)[0]
-        region = estimate_region(triggering_event)
+        if get_origin_attr(triggering_event, "depth") > config.reactor.scaling_depth_switch:
+            scaling_relation = config.reactor.scaling_relation_deep
+        else:
+            scaling_relation = config.reactor.scaling_relation_shallow
+        region = estimate_region(
+            event=triggering_event,
+            scaling_relation=scaling_relation,
+            min_radius=config.reactor.minimum_lookup_radius or 50.0,
+            multiplier=config.reactor.scaling_multiplier or 1.0)
         tribe_name = triggering_eventid
     else:
         triggering_event = None
@@ -90,6 +99,11 @@ def run_real_time_matched_filter(**kwargs):
         location=region, starttime=_detection_starttime,
         max_distance=1000, n_stations=10)
 
+    if config.plugins.hyp:
+        # We need to handle the stationxml file and velocity file here
+        inventory.write("stations.xml", format="STATIONXML")
+        config.plugins.hyp.station_file = "stations.xml"
+
     used_channels = {
         "{net}.{sta}.{loc}.{chan}".format(
             net=net.code, sta=sta.code, loc=chan.location_code, chan=chan.code)
@@ -113,7 +127,9 @@ def run_real_time_matched_filter(**kwargs):
         detect_interval=config.rt_match_filter.detect_interval,
         plot=config.rt_match_filter.plot, name=tribe_name,
         plot_options=config.plot,
-        wavebank=config.rt_match_filter.local_wave_bank)
+        wavebank=config.rt_match_filter.local_wave_bank,
+        plugin_config=config.plugins,
+        notifier=config.notifier)
     try:
         real_time_tribe._speed_up = config.streaming.speed_up
     except AttributeError:

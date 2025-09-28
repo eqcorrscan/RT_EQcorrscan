@@ -23,6 +23,7 @@ SLEEP_STEP = 30
 
 # Note:: Must always have try: finally: to stop the streamer to avoid
 # continuous running on fail!
+@pytest.mark.streaming
 class SeedLinkTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -85,6 +86,7 @@ class SeedLinkTest(unittest.TestCase):
         self.assertNotEqual(stream, stream2)
 
 
+@pytest.mark.streaming
 class SeedLinkThreadedTests(unittest.TestCase):
     """ Checks that operations are thread-safe. """
     @classmethod
@@ -164,7 +166,13 @@ class SeedLinkThreadedTests(unittest.TestCase):
         # Try to add the trace.
         rt_client.on_data(tr)
         st2 = rt_client.stream.split().merge()
+        st2.sort(keys=["starttime"])
+        # Check that the starttimes are essentially the same
+        if st2[0].stats.starttime - tr.stats.starttime >= 0.01:
+            st2.write("borked_seedlinker.ms", format="MSEED")
         self.assertLess(st2[0].stats.starttime - tr.stats.starttime, 0.01)
+        # Check that the endtime of the buffer is after the trace that was
+        # shifted by 100 s
         self.assertGreater(st2[0].stats.endtime, tr.stats.endtime)
 
 

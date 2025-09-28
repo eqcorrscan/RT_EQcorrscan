@@ -7,9 +7,9 @@ import unittest
 import time
 import numpy as np
 import os
+import pytest
 
 from obspy import UTCDateTime
-from obsplus import WaveBank
 
 from rt_eqcorrscan.streaming.clients.seedlink import RealTimeClient
 
@@ -23,6 +23,7 @@ RUN_LENGTH = 600.0    # Run length in seconds.
 SLEEP_INTERVAL = 30.0  # Interval to check the stream at.
 
 
+@pytest.mark.streaming
 @unittest.skipIf("CI" in os.environ and os.environ["CI"] == "true",
                  "Skipping this test on CI.")
 class LongSeedLinkTest(unittest.TestCase):

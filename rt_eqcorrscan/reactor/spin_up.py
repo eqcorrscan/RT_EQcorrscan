@@ -5,10 +5,15 @@ Functions for spinning up and running a real-time tribe based on trigger-events
 
 import os
 import logging
+import shutil
+
+import tqdm
+import glob
 import pickle
 
 from collections import Counter
 from typing import List, Union
+from multiprocessing import Pool
 
 from obspy import read_events, Inventory, UTCDateTime, Stream
 from obspy.core.event import Event
@@ -18,7 +23,8 @@ from obspy.geodetics import locations2degrees, kilometer2degrees
 from eqcorrscan import Tribe
 
 from rt_eqcorrscan import read_config, RealTimeTribe
-from rt_eqcorrscan.database.database_manager import check_tribe_quality
+from rt_eqcorrscan.database.database_manager import (
+    check_tribe_quality, _lazy_template_read)
 from rt_eqcorrscan.event_trigger.listener import event_time
 
 
@@ -31,12 +37,22 @@ def _read_event_list(fname: str) -> List[str]:
     return event_ids
 
 
+def _read_template(t_file: str) -> Tribe:
+    try:
+        tribe = Tribe().read(t_file)
+    except Exception as e:
+        Logger.exception(f"Could not read from {t_file} due to {e}")
+        tribe = Tribe()
+    return tribe
+
+
 def run(
     working_dir: str,
     cores: int = 1,
     log_to_screen: bool = False,
     speed_up: float = 1.0,
     synthetic_time_offset: float = 0,
+    simulation: bool = False,
 ):
     os.chdir(working_dir)
     Logger.debug("Reading config")
@@ -53,11 +69,20 @@ def run(
     Logger.debug(f"Triggered by {triggering_event}")
     min_stations = config.rt_match_filter.get("min_stations", None)
     Logger.info("Reading the Tribe")
-    with open("tribe.pkl", "rb") as f:
-        tribe = pickle.load(f)
     # tribe = Tribe().read("tribe.tgz")
-    # Remove file to avoid re-reading it
-    os.remove("tribe.pkl")
+    # # Remove file to avoid re-reading it
+    # os.remove("tribe.tgz")
+    tribe = Tribe()
+    with Pool() as pool:
+        results = pool.map(_read_template, glob.glob("tribe/*.tgz"))
+    for result in results:
+        tribe += result
+    # for tf in tqdm.tqdm(glob.glob("tribe/*")):
+    #     try:
+    #         tribe += Tribe().read(tf)
+    #     except Exception as e:
+    #         Logger.error(f"Could not read from {tf} due to {e}")
+    shutil.rmtree("tribe")
 
     Logger.info("Read in {0} templates".format(len(tribe)))
     if len(tribe) == 0:
@@ -77,12 +102,21 @@ def run(
     inventory = get_inventory(
         client, tribe, triggering_event=triggering_event,
         max_distance=config.rt_match_filter.max_distance,
-        n_stations=config.rt_match_filter.n_stations)
+        n_stations=config.rt_match_filter.n_stations, level="response")
     if len(inventory) == 0:
         Logger.critical(
             f"No inventory within {config.rt_match_filter.max_distance}"
             f"km of the trigger matching your templates, not running")
         return None, None
+    inventory.write("inventory.xml", format="STATIONXML")
+    for plug in ['hyp', 'picker', 'nll', 'growclust', 'plotter', "magnitude"]:
+        if config.plugins[plug]:
+            # We need to handle the stationxml file and velocity file here
+            config.plugins[plug].station_file = os.path.join(
+                working_dir, "inventory.xml")
+    for plug in ["plotter", "output"]:
+        if config.plugins[plug]:
+            config.plugins[plug].mainshock_id = triggering_event.resource_id.id.split('/')[-1]
     detect_interval = config.rt_match_filter.get(
         "detect_interval", 60)
     plot = config.rt_match_filter.get("plot", False)
@@ -93,7 +127,11 @@ def run(
         backfill_interval=config.rt_match_filter.backfill_interval,
         name=triggering_event.resource_id.id.split('/')[-1],
         wavebank=config.rt_match_filter.local_wave_bank,
-        notifer=config.notifier)
+        notifier=config.notifier, plugin_config=config.plugins,
+    )
+    real_time_tribe._simulation = simulation
+    real_time_tribe._simulation_time_offset = synthetic_time_offset
+
     real_time_tribe._speed_up = speed_up
     if speed_up > 1:
         Logger.warning(f"Speed-up of {speed_up}: disallowing spoilers.")
@@ -119,14 +157,15 @@ def run(
     # TODO: How will this work? Currently notifiers are not implemented
     # real_time_tribe.notifier = None
 
-    backfill_to = event_time(triggering_event) - config.template.process_len
+    backfill_to = event_time(triggering_event) - (
+        4 * config.template.process_len)
     backfill_client = config.rt_match_filter.get_waveform_client()
 
     if backfill_client and real_time_tribe.wavebank:
         # Download the required data and write it to disk.
         endtime = UTCDateTime.now() - synthetic_time_offset  # Adjust for simulations
         Logger.info(
-            f"Backfilling between {backfill_to} and {endtime}")
+            f"Backfilling between {backfill_to} and {endtime} using client: {backfill_client}")
         st = Stream()
         for network in inventory:
             for station in network:
@@ -135,7 +174,7 @@ def run(
                         f"Downloading for {network.code}.{station.code}."
                         f"{channel.location_code}.{channel.code}")
                     try:
-                        st += backfill_client.get_waveforms(
+                        _st = backfill_client.get_waveforms(
                             network=network.code, station=station.code,
                             location=channel.location_code,
                             channel=channel.code,
@@ -144,6 +183,10 @@ def run(
                     except Exception as e:
                         Logger.error(e)
                         continue
+                    else:
+                        for tr in _st:
+                            Logger.info(f"Got {tr}")
+                            st += tr
         st = st.merge()
         Logger.info(f"Downloaded {len(st)} for backfill")
         if len(st) == 0:
@@ -195,7 +238,7 @@ def get_inventory(
         max_distance: float = 1000.,
         n_stations: int = 10,
         duration: float = 10,
-        level: str = "channel",
+        level: str = "response",
         channel_list: Union[list, tuple] = ("EH?", "HH?"),
 ) -> Inventory:
     """
@@ -306,9 +349,14 @@ if __name__ == "__main__":
         "-o", "--offset", type=float, default=0.0,
         help="Synthetic time offset from now in seconds - used for "
              "simulation")
+    parser.add_argument(
+        "--simulation", action="store_true",
+        help="Flag to notify if this is a simulation - extra output will be"
+             "provided in simulation mode.")
 
     args = parser.parse_args()
 
     run(working_dir=args.working_dir, cores=args.n_processors,
         log_to_screen=args.log_to_screen,
-        speed_up=args.speed_up, synthetic_time_offset=args.offset)
+        speed_up=args.speed_up, synthetic_time_offset=args.offset,
+        simulation=args.simulation)

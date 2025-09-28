@@ -9,6 +9,13 @@ recursive-include rt_eqcorrscan *
 # recursive-include docs * # Docs not included in distribution
 # recursive-include tests *  # Tests not included in distribution.
 
+# Include required data files for plugins
+include rt_eqcorrscan/plugins/relocation/run_growclust3D.jl
+include rt_eqcorrscan/plugins/relocation/vmodel.txt
+include rt_eqcorrscan/plugins/relocation/growclust.inp
+include rt_eqcorrscan/plugins/relocation/README.md
+
+
 # exclude rules
 global-exclude *.pyc *.ms *.tgz __pycache__
 prune docs/build

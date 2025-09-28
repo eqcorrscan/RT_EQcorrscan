@@ -107,7 +107,9 @@ class LocalClient(object):
             self._executor = ThreadPoolExecutor(max_workers=max_threads)
         else:
             self._executor = None
+        Logger.info("Building database for LocalClient")
         self._build_db()
+        Logger.info(f"Have data between {self.starttime} and {self.endtime}")
         self.base_url = "I'm not a real client!"
 
     def _build_db(self):
@@ -161,13 +163,15 @@ class LocalClient(object):
                 for f in files]
             for f, future_stream in future_streams:
                 try:
-                    st += future_stream.result()
+                    st += future_stream.result().copy()
                 except Exception as e:
                     Logger.warning(f"Could not read {f} due to {e}")
         else:
             for f in files:
                 try:
-                    st += _cache_read(f)
+                    st += _cache_read(f).copy()  # Note, need to add a copy, otherwise
+                    # anything done to stream in the future will affect the
+                    # cached version as well.
                 except Exception as e:
                     Logger.warning(f"Could not read {f} due to {e}")
         return st.merge().trim(starttime, endtime)

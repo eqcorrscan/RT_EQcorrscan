@@ -5,6 +5,7 @@ Tests for simulating a real-time client.
 import unittest
 import time
 import logging
+import pytest
 
 from obspy import UTCDateTime
 from obspy.clients.fdsn import Client
@@ -13,55 +14,67 @@ from rt_eqcorrscan.streaming.clients.obspy import RealTimeClient, StreamClient
 
 SLEEP_STEP = 20
 
-logging.basicConfig(
-    level="INFO",
-    format="%(asctime)s\t[%(processName)s:%(threadName)s]: %(name)s\t%(levelname)s\t%(message)s")
+Logger = logging.getLogger(__name__)
 
 
+@pytest.mark.streaming
 class TestStreamBuffer(unittest.TestCase):
     def test_maintain(self):
         client = Client("GEONET")
-        buffer = StreamClient(client=client, buffer_length=60, min_buffer_fraction=0.25)
-        buffer.initiate_buffer(["NZ.WVZ.10.HHZ", "NZ.RPZ.10.HHZ"], UTCDateTime(2020, 1, 1))
+        buffer = StreamClient(
+            client=client, buffer_length=60, min_buffer_fraction=0.25)
+        buffer.initiate_buffer(
+            ["NZ.WVZ.10.HHZ", "NZ.RPZ.10.HHZ"],
+            UTCDateTime(2020, 1, 1))
         time.sleep(1)
         initial_stream = buffer.stream
-        print(f"Initialised buffer as: \n{initial_stream}")
+        Logger.info(f"Initialised buffer as: \n{initial_stream}")
         buffer.maintain_buffer()
         st = buffer.get_waveforms_bulk(
             [("NZ", "WVZ", "10", "HHZ",
-              UTCDateTime(2020, 1, 1), UTCDateTime(2020, 1, 1, 0, 0, 6)),
+              UTCDateTime(2020, 1, 1),
+              UTCDateTime(2020, 1, 1, 0, 0, 6)),
              ("NZ", "RPZ", "10", "HHZ",
-              UTCDateTime(2020, 1, 1), UTCDateTime(2020, 1, 1, 0, 0, 6))])
-        self.assertEqual(len(st), 2)
-        trimmed_stream = buffer.stream
-        print(f"Cut out first 6 seconds to give buffer: \n{trimmed_stream}")
-        self.assertLess(trimmed_stream[0].stats.npts, initial_stream[0].stats.npts)
-        # remove more than 75% of buffer
-        st2 = buffer.get_waveforms_bulk(
-            [("NZ", "WVZ", "10", "HHZ",
-              UTCDateTime(2020, 1, 1), UTCDateTime(2020, 1, 1, 0, 0, 50)),
-             ("NZ", "RPZ", "10", "HHZ",
-              UTCDateTime(2020, 1, 1), UTCDateTime(2020, 1, 1, 0, 0, 50))])
-        self.assertEqual(len(st), 2)
-        print("Sleeping to allow buffer to refill")
-        time.sleep(20)  # Sleep for more than half the min buffer fraction
-        out_buffer = buffer.stream
-        for tr in out_buffer:
-            self.assertGreaterEqual(tr.stats.endtime - tr.stats.starttime, 60)
-        buffer.background_stop()
+              UTCDateTime(2020, 1, 1),
+              UTCDateTime(2020, 1, 1, 0, 0, 6))])
+        try:
+            self.assertEqual(len(st), 2)
+            trimmed_stream = buffer.stream
+            Logger.info(f"Cut out first 6 seconds to give buffer: \n{trimmed_stream}")
+            self.assertLess(
+                trimmed_stream[0].stats.npts, initial_stream[0].stats.npts)
+            # remove more than 75% of buffer
+            st2 = buffer.get_waveforms_bulk(
+                [("NZ", "WVZ", "10", "HHZ",
+                  UTCDateTime(2020, 1, 1),
+                  UTCDateTime(2020, 1, 1, 0, 0, 50)),
+                 ("NZ", "RPZ", "10", "HHZ",
+                  UTCDateTime(2020, 1, 1),
+                  UTCDateTime(2020, 1, 1, 0, 0, 50))])
+            self.assertEqual(len(st), 2)
+            Logger.info("Sleeping to allow buffer to refill")
+            time.sleep(20)  # Sleep for more than half the min buffer fraction
+            out_buffer = buffer.stream
+
+            for tr in out_buffer:
+                self.assertGreaterEqual(
+                    tr.stats.endtime - tr.stats.starttime, 60)
+        finally:
+            buffer.background_stop()
 
 
+@pytest.mark.streaming
 class FDSNTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = Client("GEONET")
-        cls.buffer = StreamClient(
-            client=cls.client, buffer_length=60, min_buffer_fraction=0.25)
+        # cls.buffer = StreamClient(
+        #     client=cls.client, buffer_length=60, min_buffer_fraction=0.25)
         cls.rt_client = RealTimeClient(
             server_url="Unreal-streamer",
-            client=cls.buffer, buffer_capacity=10,
+            client=cls.client, buffer_capacity=10,
             starttime=UTCDateTime(2018, 1, 1), speed_up=2., query_interval=5.,
-            pre_empt_data=True)
+            pre_empt_data=False)
 
     def test_background_streaming(self):
         rt_client = self.rt_client.copy()
@@ -73,11 +86,11 @@ class FDSNTest(unittest.TestCase):
         except Exception as e:
             rt_client.background_stop()
             raise e
-        print(f"Sleeping for {SLEEP_STEP}s")
+        Logger.info(f"Sleeping for {SLEEP_STEP}s")
         time.sleep(SLEEP_STEP)
-        print("Stopping buffer")
+        Logger.info("Stopping buffer")
         rt_client.background_stop()
-        print("Running checks")
+        Logger.info("Running checks")
         self.assertTrue(rt_client.buffer_full)
         self.assertEqual(rt_client.buffer_length,
                          rt_client.buffer_capacity)
