@@ -179,6 +179,11 @@ class CatalogListener(_Listener):
     def sleep_interval(self):
         return self.interval / self._speed_up
 
+    def check_event(self, eventid: str) -> Event:
+        """ Check for updates to this events. """
+        event = self.client.get_events(eventid=eventid)
+        return event
+
     def run(
         self,
         make_templates: bool = True,

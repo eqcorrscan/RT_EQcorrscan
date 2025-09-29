@@ -249,6 +249,8 @@ class Reactor(object):
             manual_triggers = self.get_manual_triggers(clean=True)
             if len(manual_triggers) > 0:
                 self.trigger(trigger_events=manual_triggers)
+            # Check for updates to triggered events
+            self.trigger_updates()
             # Process old events
             previous_old_events = old_events  # Overload
             self.set_up_time(UTCDateTime.now())
@@ -265,6 +267,26 @@ class Reactor(object):
                 Logger.info(f"Reverting keep to {listener_keep}")
                 self.listener.keep = listener_keep
                 first_iteration = False
+
+    def trigger_updates(self):
+        """
+        Check for updates to trigger events and increase search regions if
+        needed
+        """
+        for trigger_event in self._triggered_events:
+            trigger_event_id = trigger_event.resource_id.id.split('/')[-1]
+            new_trigger_event = self.listener.check_event(trigger_event_id)
+            if new_trigger_event.preferred_magnitude().mag > trigger_event.preferred_magnitude().mag:
+                Logger.info(
+                    f"Trigger event {trigger_event_id} magnitude "
+                    f"has increased from "
+                    f"{trigger_event.preferred_magnitude().mag} to "
+                    f"{new_trigger_event.preferred_magnitude().mag}")
+                new_region = self._trigger_region(new_trigger_event)
+                # TODO: Get the new templates and put them in the right place
+
+                # TODO: Alter the lookup region for this trigger so that new events are put in as they come in.
+
 
     def check_running_tribes(self) -> None:
         """ 
@@ -378,30 +400,8 @@ class Reactor(object):
             self._triggered_events.append(trigger_event)
             self.spin_up(trigger_event)
 
-    def _spin_up_starttime(self, triggering_event: Event) -> UTCDateTime:
+    def _trigger_region(self, triggering_event: Event) -> Union[dict, None]:
         """ Work out lookup starttime. Included for testing purposes. """
-        # Allow lookups prior to trigger-time
-        if isinstance(
-                self.config.database_manager.lookup_starttime, (float, int)):
-            lookup_starttime = (
-                get_origin_attr(triggering_event, "time") -
-                abs(self.config.database_manager.lookup_starttime))
-        else:
-            lookup_starttime = (
-                self.config.database_manager.lookup_starttime or
-                UTCDateTime(0))
-        return lookup_starttime
-
-    def spin_up(self, triggering_event: Event) -> None:
-        """
-        Run the reactors response function as a subprocess.
-
-        Parameters
-        ----------
-        triggering_event
-            Event that triggered this run - needs to have at-least an origin.
-        """
-        triggering_event_id = triggering_event.resource_id.id.split('/')[-1]
         if get_origin_attr(triggering_event, "depth") > self.config.reactor.scaling_depth_switch:
             scaling_relation = self.config.reactor.scaling_relation_deep
         else:
@@ -413,8 +413,32 @@ class Reactor(object):
             min_radius=self.config.reactor.minimum_lookup_radius or 50.0,
             scaling_relation=scaling_relation)
         if region is None:
-            return
-        region.update({"starttime": self._spin_up_starttime(triggering_event)})
+            return None
+
+        # Allow lookups prior to trigger-time
+        if isinstance(
+                self.config.database_manager.lookup_starttime, (float, int)):
+            lookup_starttime = (
+                get_origin_attr(triggering_event, "time") -
+                abs(self.config.database_manager.lookup_starttime))
+        else:
+            lookup_starttime = (
+                self.config.database_manager.lookup_starttime or
+                UTCDateTime(0))
+        region.update({"starttime": lookup_starttime})
+        return region
+
+    def spin_up(self, triggering_event: Event) -> None:
+        """
+        Run the reactors response function as a subprocess.
+
+        Parameters
+        ----------
+        triggering_event
+            Event that triggered this run - needs to have at-least an origin.
+        """
+        triggering_event_id = triggering_event.resource_id.id.split('/')[-1]
+        region = self._trigger_region(triggering_event)
         Logger.info("Getting templates within {0}".format(region))
         df = self.template_database.get_event_summary(**region)
         event_ids = {e for e in df["event_id"]}

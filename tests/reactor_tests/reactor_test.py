@@ -82,7 +82,7 @@ class ReactorTests(unittest.TestCase):
                 time=UTCDateTime(2019, 1, 1), latitude=-45.,
                 longitude=178.0, depth=10000.)],
             magnitudes=[Magnitude(mag=7.4)])
-        lookup_starttime = reactor._spin_up_starttime(trigger_event)
+        lookup_starttime = reactor._trigger_region(trigger_event)['starttime']
         self.assertEqual(UTCDateTime(0), lookup_starttime)
         reactor.spin_up(triggering_event=trigger_event)
         time.sleep(10)
@@ -102,7 +102,7 @@ class ReactorTests(unittest.TestCase):
                 time=UTCDateTime(2019, 1, 1), latitude=-45.,
                 longitude=178.0, depth=10000.)],
             magnitudes=[Magnitude(mag=7.4)])
-        lookup_starttime = reactor._spin_up_starttime(trigger_event)
+        lookup_starttime = reactor._trigger_region(trigger_event)['starttime']
         self.assertEqual(UTCDateTime(2019, 1, 1) - (2 * 86400),
                          lookup_starttime)
 

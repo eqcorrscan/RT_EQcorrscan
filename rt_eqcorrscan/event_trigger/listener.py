@@ -35,6 +35,10 @@ class _Listener(ABC):
     def run(self, *args, **kwargs):
         """ Run the listener """
 
+    @abstractmethod
+    def check_event(self, eventid: str) -> Event:
+        """ Get a specific event id from the catalog provider. """
+
     def get_old_events(self) -> List[EventInfo]:
         """ Threadsafe access to underlying list of tuples of old-events. """
         with self.lock:
