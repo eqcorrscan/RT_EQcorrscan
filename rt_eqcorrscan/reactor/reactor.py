@@ -10,7 +10,7 @@ import platform
 import pickle
 
 from copy import deepcopy
-from typing import Callable, Union, List, Tuple
+from typing import Callable, Union, List, Tuple, Set
 from multiprocessing import cpu_count
 
 from obspy import UTCDateTime, Catalog, read_events
@@ -275,18 +275,27 @@ class Reactor(object):
         """
         for trigger_event in self._triggered_events:
             trigger_event_id = trigger_event.resource_id.id.split('/')[-1]
+            Logger.info(f"Checking for changes in trigger {trigger_event_id}")
             new_trigger_event = self.listener.check_event(trigger_event_id)
-            if new_trigger_event.preferred_magnitude().mag > trigger_event.preferred_magnitude().mag:
-                Logger.info(
-                    f"Trigger event {trigger_event_id} magnitude "
-                    f"has increased from "
-                    f"{trigger_event.preferred_magnitude().mag} to "
-                    f"{new_trigger_event.preferred_magnitude().mag}")
-                new_region = self._trigger_region(new_trigger_event)
-                # TODO: Get the new templates and put them in the right place
-
-                # TODO: Alter the lookup region for this trigger so that new events are put in as they come in.
-
+            if (new_trigger_event.preferred_magnitude().mag <=
+                    trigger_event.preferred_magnitude().mag):
+                continue
+            Logger.info(
+                f"Trigger event {trigger_event_id} magnitude "
+                f"has increased from "
+                f"{trigger_event.preferred_magnitude().mag} to "
+                f"{new_trigger_event.preferred_magnitude().mag}")
+            new_region = self._trigger_region(new_trigger_event)
+            # Get the new templates and put them in the right place
+            new_tribe_files, new_event_ids = self._get_tribe_files(
+                region=new_region)
+            self._add_templates_to_running_trigger(
+                added_ids=new_event_ids,
+                triggering_event_id=trigger_event_id)
+            # Alter the lookup region for this trigger so that new events
+            # are put in as they come in.
+            self._running_regions.update({trigger_event_id: new_region})
+        return
 
     def check_running_tribes(self) -> None:
         """ 
@@ -347,29 +356,46 @@ class Reactor(object):
             added_ids = {e.resource_id.id for e in add_events}.difference(
                 self.running_template_ids)
             if added_ids:
-                tribe = self.template_database.get_templates(
-                    eventid=added_ids)
-                tribe = check_tribe_quality(
-                    tribe,
-                    min_stations=self.config.rt_match_filter.min_stations,
-                    **self.config.template)
-                if len(tribe) > 0:
-                    Logger.info(f"Adding {len(tribe)} events to {triggering_event_id}")
-                    template_dir = os.path.join(
-                        _get_triggered_working_dir(triggering_event_id),
-                        "new_templates")
-                    if not os.path.isdir(template_dir):
-                        os.makedirs(template_dir)
-                    for template in tribe:
-                        template.write(filename=os.path.join(
-                            template_dir, template.name))
-                    Logger.info(f"Written new templates to {template_dir}")
-                    self._running_templates[triggering_event_id].update(
-                        added_ids)
+                self._add_templates_to_running_trigger(
+                    added_ids=added_ids,
+                    triggering_event_id=triggering_event_id)
         trigger_events = self.trigger_func(new_events)
         # Check for manually added trigger events
         trigger_events += self.get_manual_triggers()
         self.trigger(trigger_events=trigger_events)
+
+    def _add_templates_to_running_trigger(
+        self, added_ids: set, triggering_event_id: str) -> None:
+        """
+        Add templates to an already running RTTribe.
+
+        Parameters
+        ----------
+        added_ids
+            Event ids of events to be added
+        triggering_event_id
+            ID of triggering event for which an RTTribe is running.
+        """
+        tribe = self.template_database.get_templates(
+            eventid=added_ids)
+        tribe = check_tribe_quality(
+            tribe,
+            min_stations=self.config.rt_match_filter.min_stations,
+            **self.config.template)
+        if len(tribe) > 0:
+            Logger.info(f"Adding {len(tribe)} events to {triggering_event_id}")
+            template_dir = os.path.join(
+                _get_triggered_working_dir(triggering_event_id),
+                "new_templates")
+            if not os.path.isdir(template_dir):
+                os.makedirs(template_dir)
+            for template in tribe:
+                template.write(filename=os.path.join(
+                    template_dir, template.name))
+            Logger.info(f"Written new templates to {template_dir}")
+            self._running_templates[triggering_event_id].update(
+                added_ids)
+        return
 
     def trigger(self, trigger_events: Catalog) -> None:
         # Sanitize trigger-events - make sure that multiple events that would otherwise
@@ -428,6 +454,32 @@ class Reactor(object):
         region.update({"starttime": lookup_starttime})
         return region
 
+    def _get_tribe_files(self, region: dict = None) -> Tuple[List[str], Set[str]]:
+        """
+        Get the tribe files for a select region. Skips already running templates
+
+        Parameters
+        ----------
+        region
+            Region kwargs for .get_events
+
+        Returns
+        -------
+        List of paths of templates within region.
+        """
+        Logger.info("Getting templates within {0}".format(region))
+        df = self.template_database.get_event_summary(**region)
+        event_ids = {e for e in df["event_id"]}
+        event_ids = event_ids.difference(self.running_template_ids)
+        Logger.debug(f"event-ids in region: {event_ids}")
+        # Write file of event id's
+        if len(event_ids) == 0:
+            Logger.warning(f"Found no events in region: {region} - no detection to run.")
+            return [], set()
+        tribe_files = self.template_database.get_template_paths(
+            eventid=event_ids)
+        return tribe_files, event_ids
+
     def spin_up(self, triggering_event: Event) -> None:
         """
         Run the reactors response function as a subprocess.
@@ -439,22 +491,9 @@ class Reactor(object):
         """
         triggering_event_id = triggering_event.resource_id.id.split('/')[-1]
         region = self._trigger_region(triggering_event)
-        Logger.info("Getting templates within {0}".format(region))
-        df = self.template_database.get_event_summary(**region)
-        event_ids = {e for e in df["event_id"]}
-        event_ids = event_ids.difference(self.running_template_ids)
-        Logger.debug(f"event-ids in region: {event_ids}")
-        # Write file of event id's
-        if len(event_ids) == 0:
-            Logger.warning(f"Found no events in region: {region} - no detection to run.")
+        tribe_files, event_ids = self._get_tribe_files(region=region)
+        if len(tribe_files) == 0:
             return
-        # tribe = self.template_database.get_templates(eventid=event_ids)
-        # Logger.info(f"Found {len(tribe)} templates")
-        # if len(tribe) == 0:
-        #     Logger.info("No templates, not running")
-        #     return
-        tribe_files = self.template_database.get_template_paths(
-            eventid=event_ids)
         working_dir = _get_triggered_working_dir(
             triggering_event_id, exist_ok=True)
         # tribe.write(os.path.join(working_dir, "tribe.tgz"))
@@ -489,7 +528,7 @@ class Reactor(object):
         self.detecting_processes.update({triggering_event_id: proc})
         self._running_regions.update({triggering_event_id: region})
         self._running_templates.update(
-            {triggering_event_id: set(event_ids)})
+            {triggering_event_id: event_ids})
         Logger.info("Started detector subprocess - continuing listening")
 
     def stop_tribe(self, triggering_event_id: str = None) -> None:
