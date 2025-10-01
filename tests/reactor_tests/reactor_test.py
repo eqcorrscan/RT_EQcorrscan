@@ -6,12 +6,14 @@ import unittest
 import shutil
 import time
 import copy
+import logging
+import warnings
 from copy import deepcopy
 
 from functools import partial
 
 from obspy import UTCDateTime, Catalog
-from obspy.core.event import Event, Origin, Magnitude
+from obspy.core.event import Event, Origin, Magnitude, ResourceIdentifier
 from obspy.geodetics import kilometer2degrees
 from obspy.clients.fdsn import Client
 
@@ -20,8 +22,10 @@ from eqcorrscan.core.match_filter import read_tribe
 from rt_eqcorrscan.config import Config
 from rt_eqcorrscan.reactor import get_inventory, estimate_region, Reactor
 from rt_eqcorrscan.event_trigger import CatalogListener
-from rt_eqcorrscan.database import TemplateBank
+from rt_eqcorrscan.database.database_manager import (
+    TemplateBank, remove_unreferenced)
 from rt_eqcorrscan.event_trigger import magnitude_rate_trigger_func
+from eqcorrscan.utils.catalog_utils import filter_picks
 
 
 class ReactorTests(unittest.TestCase):
@@ -105,6 +109,93 @@ class ReactorTests(unittest.TestCase):
         lookup_starttime = reactor._trigger_region(trigger_event)['starttime']
         self.assertEqual(UTCDateTime(2019, 1, 1) - (2 * 86400),
                          lookup_starttime)
+
+
+class IncreasingMagnitude(Magnitude):
+    def __init__(self, magnitude: Magnitude, mag_step: float = 0.1):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self._previous_mag = magnitude.mag - mag_step
+            self.mag_step = mag_step
+        super().__init__(**magnitude.__dict__)
+        self.resource_id = ResourceIdentifier(
+            id=f"{self.resource_id.id}_increasing")
+
+    @property
+    def mag(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self._previous_mag += self.mag_step
+        return self._previous_mag
+
+
+class IncreasingMagnitudeEvent:
+    """
+    Hack of a "client" that returns the same event but with an increasing
+    magnitude for every query.
+    """
+    def __init__(self, event: Event):
+        self.event = event.copy()
+        self.event.magnitudes = [IncreasingMagnitude(
+            self.event.preferred_magnitude())]
+        self.event.preferred_magnitude_id = self.event.magnitudes[0].resource_id
+
+    def get_events(self, *args, **kwargs):
+        """ We don't care about args. """
+        return Catalog([self.event])
+
+
+class ExpandingRegionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.testing_path = os.path.abspath(
+            os.path.dirname(__file__)) + os.path.sep + "expanding_db"
+        if os.path.isdir(cls.testing_path):
+            shutil.rmtree(cls.testing_path)
+        os.makedirs(cls.testing_path)
+        logging.debug("Making the bank")
+        cls.bank = TemplateBank(
+            base_path=cls.testing_path, name_structure="{event_id_short}")
+        cls.client = Client("GEONET")
+        logging.debug("Downloading the catalog")
+        catalog = cls.client.get_events(
+            starttime=UTCDateTime(2019, 6, 21),
+            endtime=UTCDateTime(2019, 6, 23),
+            latitude=-38.8, longitude=175.8, maxradius=0.5)
+        cls.catalog = remove_unreferenced(
+            filter_picks(catalog=catalog, top_n_picks=5))
+        cls.catalog.events.sort(
+            key=lambda ev: ev.preferred_magnitude().mag)
+        cls.bank.put_events(cls.catalog)
+        logging.debug("Making templates")
+        _ = cls.bank.make_templates(
+            catalog=cls.catalog, client=cls.client, lowcut=2., highcut=15.,
+            samp_rate=50., filt_order=4, prepick=0.5, length=3, swin="all")
+
+    def setUp(self) -> None:
+        self.trigger_event = IncreasingMagnitudeEvent(self.catalog[-1])
+        self.listener = CatalogListener(
+            client=self.trigger_event, catalog=Catalog(),
+            catalog_lookup_kwargs=dict(
+                latitude=-45., longitude=178., maxradius=3.0),
+            template_bank=self.bank, interval=5)
+        self.trigger_func = partial(
+            magnitude_rate_trigger_func, magnitude_threshold=2.9,
+            rate_threshold=20, rate_bin=0.5)
+        config = Config()
+        config.rt_match_filter.rt_client_url = "link.geonet.org.nz"
+        config.rt_match_filter.rt_client_type = "seedlink"
+        config.rt_match_filter.threshold = 8
+        config.rt_match_filter.threshold_type = "MAD"
+        config.rt_match_filter.trig_int = 2
+        config.rt_match_filter.plot = False
+        config.reactor.minimum_lookup_radius = 1
+        self.config = config
+
+    def test_increasing_region(self):
+        # TODO
+        self.assertFalse(True)
+
 
 
 class GetInventoryTests(unittest.TestCase):
