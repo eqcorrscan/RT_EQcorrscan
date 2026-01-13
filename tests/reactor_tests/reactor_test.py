@@ -129,7 +129,7 @@ class IncreasingMagnitude(Magnitude):
         return self._previous_mag
 
 
-class IncreasingMagnitudeEvent:
+class IncreasingMagnitudeClient:
     """
     Hack of a "client" that returns the same event but with an increasing
     magnitude for every query.
@@ -173,7 +173,7 @@ class ExpandingRegionTests(unittest.TestCase):
             samp_rate=50., filt_order=4, prepick=0.5, length=3, swin="all")
 
     def setUp(self) -> None:
-        self.trigger_event = IncreasingMagnitudeEvent(self.catalog[-1])
+        self.trigger_event = IncreasingMagnitudeClient(self.catalog[-1])
         self.listener = CatalogListener(
             client=self.trigger_event, catalog=Catalog(),
             catalog_lookup_kwargs=dict(
@@ -189,12 +189,26 @@ class ExpandingRegionTests(unittest.TestCase):
         config.rt_match_filter.threshold_type = "MAD"
         config.rt_match_filter.trig_int = 2
         config.rt_match_filter.plot = False
-        config.reactor.minimum_lookup_radius = 1
+        config.reactor.minimum_lookup_radius = 0
         self.config = config
 
     def test_increasing_region(self):
-        # TODO
-        self.assertFalse(True)
+        reactor = Reactor(
+            client=Client("GEONET"),
+            listener=self.listener, trigger_func=self.trigger_func,
+            template_database=self.bank, config=self.config)
+        trigger_1 = self.trigger_event.get_events()[0]
+        region_1 = reactor._trigger_region(
+            triggering_event=trigger_1)
+        trigger_2 = self.trigger_event.get_events()[0]
+        region_2 = reactor._trigger_region(
+            triggering_event=trigger_2)
+        self.assertGreater(trigger_2.preferred_magnitude().mag,
+                           trigger_1.preferred_magnitude().mag)
+        self.assertGreater(region_2["maxradius"], region_1["maxradius"])
+        self.assertEqual(region_2["latitude"], region_1["latitude"])
+        self.assertEqual(region_2["longitude"], region_1["longitude"])
+
 
 
 
