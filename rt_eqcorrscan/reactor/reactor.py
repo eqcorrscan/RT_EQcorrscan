@@ -467,6 +467,9 @@ class Reactor(object):
         self._running_templates.update(
             {triggering_event_id: set(event_ids)})
         Logger.info("Started detector subprocess - continuing listening")
+        self.notifier.notify(
+            content=f"Started detector subprocess for {triggering_event_id} "
+                    f"on {platform.node()}")
 
     def stop_tribe(self, triggering_event_id: str = None) -> None:
         """

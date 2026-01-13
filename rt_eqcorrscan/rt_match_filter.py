@@ -556,6 +556,10 @@ class RealTimeTribe(Tribe):
                 hypocentral_separation=hypocentral_separation)
         Logger.info("Completed decluster")
         Logger.info(f"Party contains {len(self.party)} after decluster")
+        if len(self.party) % 25 == 0:
+            self.notifier.notify(
+                content=f"{self.name} has made {len(self.party)} detections on"
+                        f" {platform.node()}.")
         Logger.info("Writing detections to disk")
 
         # Cope with not being given a stream
@@ -1080,6 +1084,9 @@ class RealTimeTribe(Tribe):
 
         long_runs, long_run_time = 0, 0  # Keep track of over-running loops
         overlap = detect_overlap
+        self.notifier.notify(
+            content=f"Starting real-time loop for {self.name} of "
+                    f"{len(self.templates)} templates on {platform.node()}.")
         try:
             while self.busy:
                 try:

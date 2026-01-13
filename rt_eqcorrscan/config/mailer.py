@@ -2,6 +2,7 @@
 
 import logging
 import platform
+import datetime
 
 from notifiers import get_notifier
 
@@ -19,7 +20,8 @@ class Notifier:
         self.default_args = default_args
 
     def notify(self, content: str):
-        content = f"RTEQcorrscan message from {platform.node()}: {content}"
+        content = (f"RTEQcorrscan message at {datetime.datetime.now()} "
+                   f"from {platform.node()}: {content}")
         try:
             self.service.notify(message=content, **self.default_args)
         except Exception as e:
