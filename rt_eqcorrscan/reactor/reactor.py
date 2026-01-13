@@ -429,7 +429,7 @@ class Reactor(object):
         # if len(tribe) == 0:
         #     Logger.info("No templates, not running")
         #     return
-        tribe_files = self.template_database.get_template_paths(
+        tribe_files = self.template_database._template_paths(
             eventid=event_ids)
         working_dir = _get_triggered_working_dir(
             triggering_event_id, exist_ok=True)
