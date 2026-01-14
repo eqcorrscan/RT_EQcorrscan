@@ -26,6 +26,8 @@ class Notifier:
             self.service.notify(message=content, **self.default_args)
         except Exception as e:
             Logger.error(f"Could not send notification due to {e}")
+        else:
+            Logger.info(f"Notification sent to {self.service}")
 
 
 if __name__ == "__main__":
