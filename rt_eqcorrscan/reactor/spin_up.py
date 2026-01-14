@@ -127,7 +127,7 @@ def run(
         backfill_interval=config.rt_match_filter.backfill_interval,
         name=triggering_event.resource_id.id.split('/')[-1],
         wavebank=config.rt_match_filter.local_wave_bank,
-        notifier=config.notifier, plugin_config=config.plugins,
+        notifier=config.notifier.notifier, plugin_config=config.plugins,
     )
     real_time_tribe._simulation = simulation
     real_time_tribe._simulation_time_offset = synthetic_time_offset
