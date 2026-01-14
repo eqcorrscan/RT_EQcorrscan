@@ -27,7 +27,7 @@ class Notifier:
         except Exception as e:
             Logger.error(f"Could not send notification due to {e}")
         else:
-            Logger.info(f"Notification sent to {self.service}")
+            Logger.info(f"Notification sent to {self.service}: {content}")
 
 
 if __name__ == "__main__":
