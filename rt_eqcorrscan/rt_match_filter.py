@@ -519,6 +519,7 @@ class RealTimeTribe(Tribe):
             Location of backfiller if these detections have come from a backfiller.
         """
         _detected_templates = [f.template.name for f in self.party]
+        n_detections_start = len(self.party)
         for family in new_party:
             if family is None:
                 continue
@@ -556,7 +557,7 @@ class RealTimeTribe(Tribe):
                 hypocentral_separation=hypocentral_separation)
         Logger.info("Completed decluster")
         Logger.info(f"Party contains {len(self.party)} after decluster")
-        if len(self.party) % 25 == 0:
+        if len(self.party) % 25 == 0 and len(self.party) > n_detections_start:
             self.notifier.notify(
                 content=f"{self.name} has made {len(self.party)} detections on"
                         f" {platform.node()}.")
