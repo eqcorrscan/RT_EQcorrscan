@@ -206,6 +206,8 @@ class Reactor(object):
         self._running = True
         first_iteration = True
         previous_old_events, working_cat = [], Catalog()  # Initialise state
+        self.notifier.notify(
+            f"Reactor started listening to {self.listener.client}")
         while self._running:
             old_events = deepcopy(self.listener.old_events)
             Logger.info(f"Old events from the listener has {len(old_events)} "
