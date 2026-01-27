@@ -42,6 +42,10 @@ def _get_triggered_working_dir(
 
 def _scan_for_events(directory: str) -> Tuple[Catalog, List[str]]:
     Logger.debug(f"Scanning {directory}")
+    if not os.path.isdir(directory):
+        Logger.warning(
+            f"Manual trigger directory does not exist, recreating {directory}")
+        os.makedirs(directory)
     out_cat, files = Catalog(), []
     with os.scandir(directory) as it:
         for entry in it:
