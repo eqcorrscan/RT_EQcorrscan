@@ -1516,7 +1516,7 @@ class RealTimeTribe(Tribe):
             os.makedirs(backfiller_name, exist_ok=True)
 
         # Just copy all the files to a streams folder and use a LocalClient for backfiller
-        os.makedirs(f"{backfiller_name}/streams")
+        os.makedirs(f"{backfiller_name}/streams", exist_ok=True)
         for st_file in st_files:
             st_file_new_path = st_file.split(str(self.wavebank.bank_path))[-1]
             st_file_new_path = f"{backfiller_name}/streams/{st_file_new_path}"

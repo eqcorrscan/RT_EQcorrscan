@@ -36,6 +36,17 @@ def _get_triggered_working_dir(
 ) -> str:
     working_dir = os.path.join(
         os.path.abspath(os.getcwd()), triggering_event_id)
+    if os.path.isdir(working_dir):
+        Logger.info(
+            f"{working_dir} for {triggering_event_id} trigger already exists.")
+        for i in range(100000):
+            if not os.path.isdir(f"{working_dir}_{i}"):
+                working_dir = f"{working_dir}_{i}"
+                break
+        else:
+            Logger.warning("Could not find an available directory. "
+                           "Clean up your files!")
+        Logger.info(f"Using {working_dir} for {triggering_event_id}")
     os.makedirs(working_dir, exist_ok=exist_ok)
     return working_dir
 
