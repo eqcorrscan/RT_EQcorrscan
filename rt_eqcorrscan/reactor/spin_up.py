@@ -41,8 +41,9 @@ def _read_template(t_file: str) -> Tribe:
     try:
         tribe = Tribe().read(t_file)
     except Exception as e:
-        Logger.exception(f"Could not read from {t_file} due to {e}")
+        Logger.warning(f"Could not read from {t_file} due to {e}")
         tribe = Tribe()
+        Logger.info(f"Skipping reading {t_file} and continuing")
     return tribe
 
 
