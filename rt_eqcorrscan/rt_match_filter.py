@@ -858,6 +858,8 @@ class RealTimeTribe(Tribe):
         threshold: float,
         threshold_type: str,
         trig_int: float,
+        xcorr_func: str = "fftw",
+        concurrency: str = "concurrent",
         hypocentral_separation: float = None,
         min_stations: int = None,
         keep_detections: float = 86400,
@@ -1210,7 +1212,8 @@ class RealTimeTribe(Tribe):
                         new_party = self.detect(
                             stream=st, plot=False, threshold=threshold,
                             threshold_type=threshold_type, trig_int=trig_int,
-                            xcorr_func="fftw", concurrency="concurrent",
+                            xcorr_func=xcorr_func,
+                            concurrency=concurrency,
                             cores=self.max_correlation_cores,
                             process_cores=self.process_cores,
                             parallel_process=self._parallel_processing,

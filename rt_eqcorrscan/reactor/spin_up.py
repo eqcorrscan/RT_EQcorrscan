@@ -218,6 +218,8 @@ def run(
         threshold=config.rt_match_filter.threshold,
         threshold_type=config.rt_match_filter.threshold_type,
         trig_int=config.rt_match_filter.trig_int,
+        xcorr_func=config.rt_match_filter.xcorr_func,
+        concurrency=config.rt_match_filter.concurrency,
         hypocentral_separation=config.rt_match_filter.hypocentral_separation,
         min_stations=min_stations,
         keep_detections=config.rt_match_filter.keep_detections,
