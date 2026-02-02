@@ -24,7 +24,7 @@ from obsplus.utils.bank import _get_path, _get_time_values
 from obsplus.utils.events import _summarize_event
 from obsplus.utils.time import _get_event_origin_time
 
-from obspy import Catalog, Stream
+from obspy import Catalog, Stream, UTCDateTime
 from obspy.core.event import Event
 
 from eqcorrscan.core.match_filter import Tribe, read_template, Template
@@ -326,7 +326,6 @@ class TemplateBank(EventBank):
                 columns=["path", "latitude", "longitude"], **kwargs).path
         return [path.replace(self.ext, self.template_ext) for path in paths]
 
-     
     def put_templates(
         self,
         templates: Union[list, Tribe],
@@ -506,12 +505,13 @@ def _download_and_make_template(
         origin.arrivals = [
             arr for arr in origin.arrivals 
             if arr.pick_id in pick_dict]
-    _process_len = kwargs.pop("process_len", download_data_len)
-    if _process_len > download_data_len:
+    # Buffer process len by two to get at least enough data.
+    _process_len = kwargs.get("process_len", download_data_len)
+    if _process_len * 2 > download_data_len:
         Logger.info(
-            "Downloading {0}s of data as required by process len".format(
-                _process_len))
-        download_data_len = _process_len
+            "Downloading {0}s of data as required by (2x) process len".format(
+                _process_len * 2))
+        download_data_len = _process_len * 2
     st = _get_data_for_event(
         event=event, client=client,
         download_data_len=download_data_len, path_structure=path_structure,
@@ -524,7 +524,7 @@ def _download_and_make_template(
     try:
         tribe = Tribe().construct(
             method="from_meta_file", meta_file=Catalog([event]), st=st,
-            process_len=download_data_len, **kwargs)
+            **kwargs)
     except Exception as e:
         Logger.error(e)
         return None
@@ -584,11 +584,18 @@ def _get_data_for_event(
     if len(event.picks) == 0:
         Logger.warning("Event has no picks, no template created")
         return Stream()
-    bulk = [
-        (p.waveform_id.network_code, p.waveform_id.station_code,
-         p.waveform_id.location_code, p.waveform_id.channel_code,
-         p.time - (.5 * download_data_len),
-         p.time + (.6 * download_data_len)) for p in event.picks]
+    bulk = []
+    for p in event.picks:
+        endtime = p.time + (.6 * download_data_len)
+        if endtime > UTCDateTime.now():
+            Logger.info("Requested endtime in the future, setting end of "
+                        "download to now")
+            endtime = UTCDateTime.now()
+        starttime = endtime - download_data_len
+        bulk.append(
+            (p.waveform_id.network_code, p.waveform_id.station_code,
+             p.waveform_id.location_code, p.waveform_id.channel_code,
+             starttime, endtime))
     Logger.debug(bulk)
     try:
         st = client.get_waveforms_bulk(bulk)
@@ -621,9 +628,9 @@ def _get_data_for_event(
             Logger.warning("No data downloaded for {0}".format(
                 pick.waveform_id.get_seed_string()))
             continue
-        trimmed_stream += tr.slice(
-            starttime=pick.time - (.45 * download_data_len),
-            endtime=pick.time + (.55 * download_data_len)).copy()
+        endtime = min(tr.stats.endtime, pick.time + (.6 * download_data_len))
+        starttime = endtime - download_data_len
+        trimmed_stream += tr.slice(starttime, endtime).copy()
     if len(trimmed_stream) == 0:
         Logger.error("No data downloaded, no template.")
         return None
