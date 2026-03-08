@@ -36,12 +36,27 @@ def _get_triggered_working_dir(
 ) -> str:
     working_dir = os.path.join(
         os.path.abspath(os.getcwd()), triggering_event_id)
+    if os.path.isdir(working_dir):
+        Logger.info(
+            f"{working_dir} for {triggering_event_id} trigger already exists.")
+        for i in range(100000):
+            if not os.path.isdir(f"{working_dir}_{i}"):
+                working_dir = f"{working_dir}_{i}"
+                break
+        else:
+            Logger.warning("Could not find an available directory. "
+                           "Clean up your files!")
+        Logger.info(f"Using {working_dir} for {triggering_event_id}")
     os.makedirs(working_dir, exist_ok=exist_ok)
     return working_dir
 
 
 def _scan_for_events(directory: str) -> Tuple[Catalog, List[str]]:
     Logger.debug(f"Scanning {directory}")
+    if not os.path.isdir(directory):
+        Logger.warning(
+            f"Manual trigger directory does not exist, recreating {directory}")
+        os.makedirs(directory)
     out_cat, files = Catalog(), []
     with os.scandir(directory) as it:
         for entry in it:
@@ -206,6 +221,8 @@ class Reactor(object):
         self._running = True
         first_iteration = True
         previous_old_events, working_cat = [], Catalog()  # Initialise state
+        self.notifier.notify(
+            f"Reactor started listening to {self.listener.client}")
         while self._running:
             old_events = deepcopy(self.listener.old_events)
             Logger.info(f"Old events from the listener has {len(old_events)} "

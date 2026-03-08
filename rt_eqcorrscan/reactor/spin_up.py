@@ -41,8 +41,9 @@ def _read_template(t_file: str) -> Tribe:
     try:
         tribe = Tribe().read(t_file)
     except Exception as e:
-        Logger.exception(f"Could not read from {t_file} due to {e}")
+        Logger.warning(f"Could not read from {t_file} due to {e}")
         tribe = Tribe()
+        Logger.info(f"Skipping reading {t_file} and continuing")
     return tribe
 
 
@@ -127,7 +128,7 @@ def run(
         backfill_interval=config.rt_match_filter.backfill_interval,
         name=triggering_event.resource_id.id.split('/')[-1],
         wavebank=config.rt_match_filter.local_wave_bank,
-        notifier=config.notifier, plugin_config=config.plugins,
+        notifier=config.notifier.notifier, plugin_config=config.plugins,
     )
     real_time_tribe._simulation = simulation
     real_time_tribe._simulation_time_offset = synthetic_time_offset
@@ -217,6 +218,8 @@ def run(
         threshold=config.rt_match_filter.threshold,
         threshold_type=config.rt_match_filter.threshold_type,
         trig_int=config.rt_match_filter.trig_int,
+        xcorr_func=config.rt_match_filter.xcorr_func,
+        concurrency=config.rt_match_filter.concurrency,
         hypocentral_separation=config.rt_match_filter.hypocentral_separation,
         min_stations=min_stations,
         keep_detections=config.rt_match_filter.keep_detections,

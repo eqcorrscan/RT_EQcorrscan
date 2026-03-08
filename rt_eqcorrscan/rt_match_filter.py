@@ -519,6 +519,7 @@ class RealTimeTribe(Tribe):
             Location of backfiller if these detections have come from a backfiller.
         """
         _detected_templates = [f.template.name for f in self.party]
+        n_detections_start = len(self.party)
         for family in new_party:
             if family is None:
                 continue
@@ -556,7 +557,7 @@ class RealTimeTribe(Tribe):
                 hypocentral_separation=hypocentral_separation)
         Logger.info("Completed decluster")
         Logger.info(f"Party contains {len(self.party)} after decluster")
-        if len(self.party) % 25 == 0:
+        if len(self.party) % 25 == 0 and len(self.party) > n_detections_start:
             self.notifier.notify(
                 content=f"{self.name} has made {len(self.party)} detections on"
                         f" {platform.node()}.")
@@ -857,6 +858,8 @@ class RealTimeTribe(Tribe):
         threshold: float,
         threshold_type: str,
         trig_int: float,
+        xcorr_func: str = "fftw",
+        concurrency: str = "concurrent",
         hypocentral_separation: float = None,
         min_stations: int = None,
         keep_detections: float = 86400,
@@ -1209,7 +1212,8 @@ class RealTimeTribe(Tribe):
                         new_party = self.detect(
                             stream=st, plot=False, threshold=threshold,
                             threshold_type=threshold_type, trig_int=trig_int,
-                            xcorr_func="fftw", concurrency="concurrent",
+                            xcorr_func=xcorr_func,
+                            concurrency=concurrency,
                             cores=self.max_correlation_cores,
                             process_cores=self.process_cores,
                             parallel_process=self._parallel_processing,
@@ -1515,7 +1519,7 @@ class RealTimeTribe(Tribe):
             os.makedirs(backfiller_name, exist_ok=True)
 
         # Just copy all the files to a streams folder and use a LocalClient for backfiller
-        os.makedirs(f"{backfiller_name}/streams")
+        os.makedirs(f"{backfiller_name}/streams", exist_ok=True)
         for st_file in st_files:
             st_file_new_path = st_file.split(str(self.wavebank.bank_path))[-1]
             st_file_new_path = f"{backfiller_name}/streams/{st_file_new_path}"
