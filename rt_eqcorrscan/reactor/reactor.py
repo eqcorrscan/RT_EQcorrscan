@@ -32,11 +32,11 @@ Logger = logging.getLogger(__name__)
 
 def _get_triggered_working_dir(
         triggering_event_id: str,
-        exist_ok: bool = True
+        exist_ok: bool = False
 ) -> str:
     working_dir = os.path.join(
         os.path.abspath(os.getcwd()), triggering_event_id)
-    if os.path.isdir(working_dir):
+    if os.path.isdir(working_dir) and not exist_ok:
         Logger.info(
             f"{working_dir} for {triggering_event_id} trigger already exists.")
         for i in range(100000):
@@ -354,7 +354,8 @@ class Reactor(object):
                     Logger.info(
                         f"Adding {len(tribe)} events to {triggering_event_id}")
                     template_dir = os.path.join(
-                        _get_triggered_working_dir(triggering_event_id),
+                        _get_triggered_working_dir(
+                            triggering_event_id, exist_ok=True),
                         "new_templates")
                     if not os.path.isdir(template_dir):
                         os.makedirs(template_dir)
@@ -452,7 +453,7 @@ class Reactor(object):
         tribe_files = self.template_database._template_paths(
             eventid=event_ids)
         working_dir = _get_triggered_working_dir(
-            triggering_event_id, exist_ok=True)
+            triggering_event_id, exist_ok=False)
         # tribe.write(os.path.join(working_dir, "tribe.tgz"))
         tribe_dir = os.path.join(working_dir, "tribe")
         os.makedirs(tribe_dir, exist_ok=True)
