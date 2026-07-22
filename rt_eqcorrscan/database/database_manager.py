@@ -26,6 +26,7 @@ from obsplus.utils.time import _get_event_origin_time
 
 from obspy import Catalog, Stream
 from obspy.core.event import Event
+from obspy.clients.fdsn import Client as FDSNClient
 
 from eqcorrscan.core.match_filter import Tribe, read_template, Template
 
@@ -431,9 +432,14 @@ class TemplateBank(EventBank):
                 method="from_metafile", meta_file=catalog, stream=stream,
                 **kwargs)
         else:
+            if isinstance(client, FDSNClient):
+                # Can't pickle Obspy FDSN clients
+                client = client.base_url
+            else:
+                Logger.debug(f"Attempting to pickle client of type {type(client)}")
             Logger.debug("Making templates")
             inner_download_and_make_template = partial(
-                _download_and_make_template, client=client,
+                _download_and_make_template, client=client,  # Can't pickle client
                 download_data_len=download_data_len,
                 path_structure=self.path_structure,
                 bank_path=self.bank_path,
@@ -485,6 +491,10 @@ def _download_and_make_template(
     **kwargs,
 ) -> Template:
     """ Make the template using downloaded data"""
+    if isinstance(client, str):
+        # Can't pickle FDSN Clients so this has been passed as a string to be
+        # reinstantiated
+        client = FDSNClient(client)
     Logger.debug("Making template for event {0}".format(event.resource_id))
     if not rebuild:
         try:
