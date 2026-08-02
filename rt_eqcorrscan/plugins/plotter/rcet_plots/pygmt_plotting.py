@@ -67,6 +67,11 @@ def _eq_map(
         max(-90, all_lats.min() - (all_lat_range * 0.15)),
         min(90, all_lats.max() + (all_lat_range * 0.15)),
     ]
+    # Make sure large region doesn't exceed 360 degrees
+    if large_region[1] - large_region[0] > 360:
+        large_region[0] = -180
+        large_region[1] = 180
+
     if middle_lon and middle_lat:
         region = [
             middle_lon - search_radius_deg,
