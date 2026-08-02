@@ -587,6 +587,7 @@ def _get_data_for_event(
     bulk = []
     for p in event.picks:
         endtime = p.time + (.6 * download_data_len)
+        # TODO: Should this wait until such time as endtime is before now?
         if endtime > UTCDateTime.now():
             Logger.info("Requested endtime in the future, setting end of "
                         "download to now")
