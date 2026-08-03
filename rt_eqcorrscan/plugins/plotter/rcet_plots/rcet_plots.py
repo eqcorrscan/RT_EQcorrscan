@@ -80,9 +80,11 @@ def plot_confidence_ellipsoid(
     ax_nstd.add_patch(circle)
     ax_nstd.scatter(x_mean, y_mean, s=20.0, color="k", label="Aftershock Centroid")
     ax_nstd.scatter(0, 0, s=100.0, color="gold", marker="*", label="GeoNet Mainshock")
-    ax_nstd.scatter(
-        xrm, yrm, s=100.0, color="orange", marker="*", label="Relocated Mainshock"
-    )
+    if xrm[0] is not None:
+        ax_nstd.scatter(
+            xrm, yrm, s=100.0, color="orange", marker="*", label="Relocated Mainshock"
+        )
+
     if LOWESS == True and len(x) > 20:
         ax_nstd.plot(smoothed[:, 0], smoothed[:, 1], c="k", label="Lowess")
     get_cov_ellipse(
@@ -130,13 +132,13 @@ def plot_confidence_ellipsoid(
         + str(datetime.timedelta(seconds=t)).split(".")[0]
         + " (days, HH:MM:SS)"
         + "\n"
-        + "$2\sigma$ length = "
+        + r"$2\sigma$ length = "
         + str(round(length, 1))
         + " km,    azimuth = "
         + str(int(azimuth)).zfill(3)
-        + "$\degree$/ "
+        + r"$\degree$/ "
         + str(int(azimuth + 180)).zfill(3)
-        + "$\degree$"
+        + r"$\degree$"
     )
     ax_nstd.legend(loc="upper left")
 
@@ -182,9 +184,10 @@ def plot_confidence_ellipsoid_vertical(
     ax_nstd.scatter(x, z, s=1, marker="o", color="#5f8dd3ff")
     # green ax_nstd.scatter(x, z, s=1, marker='o', color='#5aa02cff')
     # orange ax_nstd.scatter(x, z, s=1, marker='o', color='#ff9955ff')
-    ax_nstd.scatter(
-        xrm, zrm, s=100.0, color="orange", marker="*", label="Relocated_Mainshock"
-    )
+    if xrm[0] is not None:
+        ax_nstd.scatter(
+            xrm, zrm, s=100.0, color="orange", marker="*", label="Relocated_Mainshock"
+        )
     ax_nstd.scatter(x_mean, y_mean, s=20.0, color="k", label="Aftershock centroid")
     ax_nstd.scatter(0, -z_m, s=100.0, color="gold", marker="*", label="Mainshock")
     get_cov_ellipse(
@@ -209,11 +212,11 @@ def plot_confidence_ellipsoid_vertical(
         + str(datetime.timedelta(seconds=t)).split(".")[0]
         + " (days, HH:MM:SS)"
         + "\n"
-        + "$2\sigma$ length (width) = "
+        + r"$2\sigma$ length (width) = "
         + str(round(length, 1))
         + " km,   Dip = "
         + str(int(90 - azimuth)).zfill(3)
-        + "$\degree$"
+        + r"$\degree$"
     )
     # ax_nstd.legend()
 
@@ -235,8 +238,12 @@ def ellipse_plots(
 
     # Calculate metrics
     x, y = extract_xy(catalog=catalog_origins, mainshock=mainshock)
-    x_rm, y_rm = extract_xy(catalog=[relocated_mainshock], mainshock=mainshock)
-    z_rm = relocated_mainshock.origins[-1].depth / 1000
+    if relocated_mainshock is not None:
+        x_rm, y_rm = extract_xy(catalog=[relocated_mainshock],
+                                mainshock=mainshock)
+        z_rm = [relocated_mainshock.origins[-1].depth / -1000]
+    else:
+        x_rm, y_rm, z_rm = [None], [None], [None]
 
     # Identifying outliers
     # rotate into new fabric aligned coordinate system
@@ -286,9 +293,12 @@ def ellipse_plots(
     x_z, y_z, z_z = to_xz_yz_z_centroid(
         catalog=catalog_good_depths, mainshock=mainshock, azimuth=azimuth
     )
-    x_zrm, y_zrm, z_zrm = to_xz_yz_z_centroid(
-        catalog=[relocated_mainshock], mainshock=mainshock, azimuth=azimuth
-    )
+    if relocated_mainshock is not None:
+        x_zrm, y_zrm, z_zrm = to_xz_yz_z_centroid(
+            catalog=[relocated_mainshock], mainshock=mainshock,
+            azimuth=azimuth)
+    else:
+        x_zrm, y_zrm, z_zrm = [None], [None], [None]
 
     length_z, azimuth_z, cov_z, width_z, Ds_z, db_z, x_mean_z, y_mean_z = get_len_theta(
         x=y_z, y=z_z, sd=ellipse_std
@@ -304,8 +314,8 @@ def ellipse_plots(
         z=z_z,
         xo=[],
         yo=[],
-        xrm=y_zrm[0],
-        zrm=z_rm * -1,
+        xrm=y_zrm,
+        zrm=z_rm,
         z_m=mainshock.preferred_origin().depth / 1000.,
         mainshock=mainshock,
         sd=ellipse_std,
@@ -1115,7 +1125,7 @@ def plot_geometry_with_time(
         marker=".",
         markersize="0.01",
         linewidth=3,
-        label="2$\sigma$ Length",
+        label=r"2$\sigma$ Length",
         color="lightblue",
     )
     _additional_plot_elements(ax=ax3, xlim_upper=max_time)
@@ -1152,7 +1162,7 @@ def plot_geometry_with_time(
     _additional_plot_elements(ax=ax4, xlim_upper=max_time)
     ax4.legend()
     ax4.set_xlabel("Seconds since mainshock")
-    ax4.set_ylabel("Degrees ($\degree$)")
+    ax4.set_ylabel(r"Degrees ($\degree$)")
 
     # plot dips
     ax5 = fig.add_subplot(4, 2, 8)
@@ -1172,7 +1182,7 @@ def plot_geometry_with_time(
     _additional_plot_elements(ax=ax5, xlim_upper=max_time)
     ax5.legend()
     ax5.set_xlabel("Seconds since mainshock")
-    ax5.set_ylabel("Degrees ($\degree$)")
+    ax5.set_ylabel(r"Degrees ($\degree$)")
 
     # plot magnitudes
     ax6 = fig.add_subplot(4, 2, 4)

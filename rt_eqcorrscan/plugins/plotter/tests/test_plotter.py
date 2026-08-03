@@ -106,6 +106,7 @@ def setup_testcase() -> Tuple[List[Template], Catalog, Catalog, Inventory]:
     drop_ids = [5, 25, 30, 32, 100, 105, 106, 107, 108, 109, 110, 145, 167, 188]
     reloc_cat = Catalog([ev.copy() for i, ev in enumerate(cat)
                          if i not in drop_ids])
+    cat.events = [ev for i, ev in enumerate(cat) if i in drop_ids]
     for ev in reloc_cat:
         ev.preferred_origin().method_id.id = "Growclust"
 
@@ -171,8 +172,8 @@ class TestOutputPlugin(unittest.TestCase):
         config.write(self.config_file)
         plotter = Plotter(config_file=self.config_file)
         plotter.core(
-            new_files=glob.glob(f"{self.location_dir}/*.xml") +
-                      glob.glob(f"{self.relocation_dir}/*.xml")
+            new_files=glob.glob(f"{self.location_dir}/*.pkl") +
+                      glob.glob(f"{self.relocation_dir}/*.pkl")
         )
         # TODO: This test doesn't really do anything?
 

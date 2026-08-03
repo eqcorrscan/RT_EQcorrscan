@@ -193,11 +193,22 @@ class Plotter(_Plugin):
         # Read from pkl
         cat = []  # We read SparseEvents, so this has to be a list
         for f in copied_files:
+            if not os.path.isfile(f):
+                Logger.warning(
+                    f"Cache file ({f}) does not exist - likely already read")
+                continue
             with open(f, "rb") as fp:
                 try:
-                    cat.extend(pickle.load(fp))
+                    ev = pickle.load(fp)
                 except Exception as e:
                     Logger.exception(f"Could not read from {f} due to {e}")
+            if isinstance(ev, SparseEvent):
+                cat.append(ev)
+            elif isinstance(ev, list):
+                cat.extend(ev)
+            else:
+                Logger.exception(f"NotImplemented. {f} is type {type(ev)}")
+            Logger.info(f"Read from {f}")
             # Cleanup
             os.remove(f)
 
@@ -223,7 +234,11 @@ class Plotter(_Plugin):
             else:
                 Logger.warning("Could not find mainshock in cat, not clustering")
 
-        Logger.info(f"Making plots for {len(self.events)} events")
+        if len(self.events):
+            Logger.info(f"Making plots for {len(self.events)} events")
+        else:
+            self._add_to_history()
+            return []
 
         # TODO: Make maps after ellipse plots and scale to the non-outlier catalogue
         Logger.info("Computing ellipse statistics and plotting")
@@ -271,7 +286,8 @@ class Plotter(_Plugin):
         (geonet_mainshock_mag, geonet_mainshock_mag_uncertainty,
          geonet_mainshock_depth, geonet_mainshock_depth_uncertainty,
          RT_mainshock_depth, RT_mainshock_depth_uncertainty) = mainshock_mags(
-            mainshock=self._get_mainshock(), RT_mainshock=self._get_relocated_mainshock())
+            mainshock=self._get_mainshock(),
+            RT_mainshock=self._get_relocated_mainshock())
 
         _, summary_filename = summary_files(
             eventid=internal_config.mainshock_id,
@@ -549,7 +565,7 @@ class Plotter(_Plugin):
             lowess=self.config.lowess,
             lowess_f=self.config.lowess_f,
             radius_km=self.config.search_radius,
-            elapsed_secs=self.now - get_origin_attr(self._get_mainshock(), "time"))
+            elapsed_secs=self.now - get_origin_attr(mainshock, "time"))
 
         ellipse_map.savefig(
             f'{self.config.out_dir}/confidence_ellipsoid_latest.png',
