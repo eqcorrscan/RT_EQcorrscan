@@ -101,6 +101,10 @@ def inv_to_nll(
     lats, lons, elevs, depths = dict(), dict(), dict(), dict()
     for net in inv:
         for sta in net:
+            if len(sta) == 0:
+                # No channels, set elevation and depth to 0
+                lats[sta.code], lons[sta.code] = sta.latitude, sta.longitude
+                elevs[sta.code], depths[sta.code] = 0, 0
             for chan in sta:
                 depth = chan.depth / 1000.0
                 elev = chan.elevation / 1000.0
@@ -116,12 +120,12 @@ def inv_to_nll(
                     if choice == "o":
                         depth = depths.get(sta.code)
 
-                assert elevs.get(sta.code) in [None,
-                                               elev], f"{elev} for {sta.code} is changed from {elevs.get(sta.code)}"
-                assert lats.get(sta.code) in [None,
-                                              lat], f"{lat} for {sta.code} is changed from {lats.get(sta.code)}"
-                assert lons.get(sta.code) in [None,
-                                              lon], f"{lon} for {sta.code} is changed from {lons.get(sta.code)}"
+                assert elevs.get(sta.code) in [
+                    None, elev], f"{elev} for {sta.code} is changed from {elevs.get(sta.code)}"
+                assert lats.get(sta.code) in [
+                    None, lat], f"{lat} for {sta.code} is changed from {lats.get(sta.code)}"
+                assert lons.get(sta.code) in [
+                    None, lon], f"{lon} for {sta.code} is changed from {lons.get(sta.code)}"
 
                 depths[sta.code] = depth
                 elevs[sta.code] = elev
@@ -186,7 +190,7 @@ def setup_nll(
         for s in n:
             if len(s) == 0:
                 Logger.warning(
-                    f"{s.code} has no channels and will not be used.")
+                    f"{s.code} has no channels. Elevation will be set to 0.")
             for c in s:
                 if c.elevation > 3000.0:
                     Logger.warning(f"Nonsensical elevation ({c.elevation}), "
@@ -198,9 +202,15 @@ def setup_nll(
 
     # Check box
     sta_lats = [c.latitude for n in inv for s in n for c in s]
+    # Add in station locations in case there were no channels
+    sta_lats.extend([s.latitude for n in inv for s in n])
     sta_lons = [c.longitude for n in inv for s in n for c in s]
+    # Add in station locations in case there were no channels
+    sta_lons.extend([s.longitude for n in inv for s in n])
     sta_depths = [(c.depth / - 1000) - (c.elevation / 1000) for n in inv for s
                   in n for c in s]
+    if len(sta_depths) == 0:
+        sta_depths = [0]
 
     min_depth = min(min_depth or MINDEPTH, min(sta_depths))
     max_depth = max(max_depth or MAXDEPTH, max(sta_depths))
