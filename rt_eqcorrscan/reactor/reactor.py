@@ -303,6 +303,8 @@ class Reactor(object):
             if os.path.isfile(f"{working_dir}/.stopfile"):
                 Logger.info(f"Found stopfile for {trigger_event_id}")
                 self.stop_tribe(trigger_event_id)
+                # Don't find the stopfile again.
+                os.remove(f"{working_dir}/.stopfile")
 
     def get_manual_triggers(self, clean=True) -> Catalog:
         manual_triggers, event_files = _scan_for_events(
@@ -510,9 +512,13 @@ class Reactor(object):
         if triggering_event_id is None:
             return self.stop()
         Logger.info(f"Current status of detecting process:\n{self.detecting_processes}")
-        self.detecting_processes[triggering_event_id].kill()
-        self.detecting_processes.pop(triggering_event_id)
-        self._running_templates.pop(triggering_event_id)
+        if triggering_event_id in self.detecting_processes.keys():
+            self.detecting_processes[triggering_event_id].kill()
+            self.detecting_processes.pop(triggering_event_id)
+            self._running_templates.pop(triggering_event_id)
+        else:
+            Logger.warning(f"{triggering_event_id} not found in detected processes")
+            return
 
     def _handle_interupt(self, signum, frame) -> None:
         Logger.critical(f"Received signal: {signum}")
