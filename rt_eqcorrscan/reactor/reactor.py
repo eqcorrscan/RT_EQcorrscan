@@ -228,6 +228,7 @@ class Reactor(object):
         self.notifier.notify(
             f"Reactor started listening to {self.listener.client}")
         while self._running:
+            self.check_running_tribes()
             old_events = deepcopy(self.listener.old_events)
             Logger.info(f"Old events from the listener has {len(old_events)} "
                         f"events")
