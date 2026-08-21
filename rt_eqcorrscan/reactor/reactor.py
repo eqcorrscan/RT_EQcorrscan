@@ -2,6 +2,7 @@
 Overarching tool for listening to and triggering from FDSN earthquakes.
 """
 import logging
+import shutil
 import time
 import os
 import signal
@@ -157,9 +158,12 @@ class Reactor(object):
             starttime=listener_starttime)
         self.notifier = config.notifier.notifier
         self._manual_trigger_dir = os.path.join(
-            os.path.abspath(os.curdir), f"manual_triggers_{id(self)}")
-        if not os.path.isdir(self._manual_trigger_dir):
-            os.makedirs(self._manual_trigger_dir)
+            os.path.abspath(os.curdir), f"manual_triggers")
+        if os.path.isdir(self._manual_trigger_dir):
+            Logger.warning(
+                f"{self._manual_trigger_dir} exists - removing contents")
+            shutil.rmtree(self._manual_trigger_dir)
+        os.makedirs(self._manual_trigger_dir)
         Logger.info(f"To manually trigger this Reactor, write the trigger "
                     f"event quakeml to {self._manual_trigger_dir}")
         # Time-keepers
