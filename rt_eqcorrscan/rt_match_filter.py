@@ -151,7 +151,7 @@ class RealTimeTribe(Tribe):
                 key: value for key, value in plot_options.items()
                 if key != "plot_length"})
         self.detections = []
-        self._killfile = f"kill_{self.name}_{id(self)}"
+        self._killfile = f"kill_{self.name}"
         self._plugins, self._backfillers = dict(), dict()
 
         # Wavebank status to avoid accessing the underlying, lockable, wavebank
