@@ -489,6 +489,7 @@ class Reactor(object):
         Logger.info("Running `{call}`".format(call=" ".join(_call)))
         proc = subprocess.Popen(_call)
         self.detecting_processes.update({triggering_event_id: proc})
+        Logger.info(f"Current status of detecting process:\n{self.detecting_processes}")
         self._running_regions.update({triggering_event_id: region})
         self._running_templates.update(
             {triggering_event_id: set(event_ids)})
@@ -508,6 +509,7 @@ class Reactor(object):
         """
         if triggering_event_id is None:
             return self.stop()
+        Logger.info(f"Current status of detecting process:\n{self.detecting_processes}")
         self.detecting_processes[triggering_event_id].kill()
         self.detecting_processes.pop(triggering_event_id)
         self._running_templates.pop(triggering_event_id)
