@@ -647,15 +647,16 @@ def _eq_map_summary(
             )
 
         # plot relocated mainshock
-        mainshock_origin = RT_mainshock.preferred_origin() or RT_mainshock.origins[-1]
-        fig.plot(
-            x=mainshock_origin.longitude,
-            y=mainshock_origin.latitude,
-            style=f"a1c",
-            fill="orange",
-            pen="black",
-            label=f"Relocated mainshock+S0.3c",
-        )
+        if RT_mainshock is not None:
+            mainshock_origin = RT_mainshock.preferred_origin() or RT_mainshock.origins[-1]
+            fig.plot(
+                x=mainshock_origin.longitude,
+                y=mainshock_origin.latitude,
+                style=f"a1c",
+                fill="orange",
+                pen="black",
+                label=f"Relocated mainshock+S0.3c",
+            )
         # plot mainshock
         mainshock_origin = mainshock.preferred_origin() or mainshock.origins[-1]
         fig.plot(

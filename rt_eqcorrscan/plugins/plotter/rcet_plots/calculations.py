@@ -98,6 +98,12 @@ def mainshock_mags(mainshock, RT_mainshock):
     except (IndexError, TypeError):
         geonet_mainshock_depth_uncertainty = 0.0
 
+    if RT_mainshock is None:
+        return (
+            geonet_mainshock_mag, geonet_mainshock_mag_uncertainty,
+            geonet_mainshock_depth, geonet_mainshock_depth_uncertainty,
+            geonet_mainshock_depth, geonet_mainshock_depth_uncertainty)
+
     try:
         RT_mainshock_depth = round(
             (RT_mainshock.preferred_origin() or RT_mainshock.origins[-1]).depth / 1000,
@@ -396,9 +402,16 @@ def find_outliers(x, y, x1, y1, k, catalog_origins):
     catalog_outliers = []
     catalog = []
 
+    if len(x1) < 2:
+        return [], [], x, y, [], catalog_origins
+
     # calculate outliers
     IQR = iqr(x1)
-    Q1 = np.percentile(x1, 25)
+    try:
+        Q1 = np.percentile(x1, 25)
+    except IndexError:
+        # Happens if sample size too small - docs do not say what min size is
+        return [], [], x, y, [], catalog_origins
     Q3 = np.percentile(x1, 75)
 
     x1_upper = Q3 + k * IQR

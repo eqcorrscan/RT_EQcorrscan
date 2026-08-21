@@ -191,8 +191,9 @@ def backfill(
             det_endtime = max(p.time for p in detection.event.picks)
             det_starttime -= 20
             det_endtime += 20
-            st = st_client.get_waveforms(
-                "*", "*", "*", "*", det_starttime, det_endtime)
+            if plot_detections or save_waveforms:
+                st = st_client.get_waveforms(
+                    "*", "*", "*", "*", det_starttime, det_endtime)
             fig = _write_detection(
                 detection=detection,
                 detect_file_base=_detection_filename(

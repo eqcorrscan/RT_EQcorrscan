@@ -341,6 +341,8 @@ class Reactor(object):
             # TODO: Implement region growth based on new events added.
             added_ids = {e.resource_id.id for e in add_events}.difference(
                 self.running_template_ids)
+            Logger.info(f"There are {len(added_ids)} new events to add to "
+                        f"tribe running for {triggering_event_id}")
             if added_ids:
                 tribe = self.template_database.get_templates(
                     eventid=added_ids)
@@ -349,7 +351,8 @@ class Reactor(object):
                     min_stations=self.config.rt_match_filter.min_stations,
                     **self.config.template)
                 if len(tribe) > 0:
-                    Logger.info(f"Adding {len(tribe)} events to {triggering_event_id}")
+                    Logger.info(
+                        f"Adding {len(tribe)} events to {triggering_event_id}")
                     template_dir = os.path.join(
                         _get_triggered_working_dir(
                             triggering_event_id, exist_ok=True),
