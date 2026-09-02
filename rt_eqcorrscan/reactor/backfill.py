@@ -194,6 +194,8 @@ def backfill(
             if plot_detections or save_waveforms:
                 st = st_client.get_waveforms(
                     "*", "*", "*", "*", det_starttime, det_endtime)
+            else:
+                st = None
             fig = _write_detection(
                 detection=detection,
                 detect_file_base=_detection_filename(

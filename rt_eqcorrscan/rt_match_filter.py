@@ -1793,9 +1793,10 @@ def _write_detection(
         Logger.info(f"Written detection at {detection.detect_time} to "
                     f"{detect_file_base}")
     detection.event.picks.sort(key=lambda p: p.time)
-    st = stream.slice(
-        detection.event.picks[0].time - 10,
-        detection.event.picks[-1].time + 20).copy()
+    if save_waveform or plot_detection:
+        st = stream.slice(
+            detection.event.picks[0].time - 10,
+            detection.event.picks[-1].time + 20).copy()
     if plot_detection:
         # Make plot
         fig = plot_event(fig=fig, event=detection.event, st=st,
