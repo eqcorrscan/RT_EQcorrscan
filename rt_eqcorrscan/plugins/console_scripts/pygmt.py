@@ -34,6 +34,7 @@ def aftershock_map(
     timestamp: UTCDateTime = UTCDateTime.now(),
     min_depth: float | None = None,
     max_depth: float | None = None,
+    colorby: str = "depth",
 ) -> pygmt.Figure:
     """
 
@@ -69,6 +70,7 @@ def aftershock_map(
         lats=cat_df.Latitude.to_numpy(),
         lons=cat_df.Longitude.to_numpy(),
         depths=cat_df["Depth (km)"].to_numpy(),
+        times=np.array([e.to_numpy() for e in cat_df["Origin Time (UTC)"]]),
         mags=mags,
         middle_lon=mainshock_origin.longitude,
         middle_lat=mainshock_origin.latitude,
@@ -83,7 +85,8 @@ def aftershock_map(
         hillshade=hillshade,
         timestamp=timestamp,
         min_depth=min_depth,
-        max_depth=max_depth
+        max_depth=max_depth,
+        colorby=colorby,
     )
 
     # Plot mainshock
@@ -256,6 +259,20 @@ def main():
         f"{args.out_dir}/catalog_RT_latest.png", dpi=args.png_dpi)
     detection_map.savefig(
         f"{args.out_dir}/catalog_RT_latest.pdf", dpi=args.eps_dpi)
+
+    Logger.info("Making real-time map colored by time")
+    detection_map = aftershock_map(
+        catalog_csv=args.catalog_csv,
+        inventory_csv=args.inventory_csv,
+        mainshock_qml=args.mainshock_qml,
+        relocated_mainshock_qml=args.relocated_mainshock_qml,
+        search_radius=args.search_radius,
+        timestamp=args.timestamp,
+        colorby="time")
+    detection_map.savefig(
+        f"{args.out_dir}/catalog_RT_time_latest.png", dpi=args.png_dpi)
+    detection_map.savefig(
+        f"{args.out_dir}/catalog_RT_time_latest.pdf", dpi=args.eps_dpi)
 
     Logger.info("Making summary map")
     output_summary_map = summary_map(

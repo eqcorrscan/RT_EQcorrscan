@@ -32,6 +32,7 @@ def _eq_map(
     lons: np.ndarray,
     depths: np.ndarray,
     mags: np.ndarray,
+    times: np.ndarray,
     middle_lon: float,
     middle_lat: float,
     search_radius_deg: float,
@@ -45,9 +46,11 @@ def _eq_map(
     hillshade: bool,
     timestamp: Union[UTCDateTime, datetime.datetime],
     min_depth: float | None = None,
-    max_depth: float | None = None
+    max_depth: float | None = None,
+    colorby: str = "depth",
 ) -> pygmt.Figure:
     """ """
+    assert colorby.lower() in ("depth", "time"), "colorby must be depth or time"
     if station_lons.max() - station_lons.min() > 180:
         station_lons %= 360
 
@@ -129,19 +132,28 @@ def _eq_map(
         depth_range[0] -= 5
         depth_range[1] += 5
 
-    pygmt.makecpt(cmap="plasma", series=depth_range)
+    if colorby.lower() == "time":
+        # Color by seconds
+        colors = (times - times.min()) / np.timedelta64(1, 'h')
+        pygmt.makecpt(cmap="viridis", series=[colors.min(), colors.max()])
+        cbar_label = f"Time (hours) since {times.min()}"
+    else:
+        # Assume colorby depth
+        pygmt.makecpt(cmap="plasma", series=depth_range)
+        colors = depths
+        cbar_label = "Depth (km)"
 
     # Plot earthquakes
     fig.plot(
         x=lons,
         y=lats,
         size=0.02 * 2**mags,
-        fill=depths,
+        fill=colors,
         cmap=True,
         style="cc",
         pen="black",
     )
-    fig.colorbar(frame='af+lDepth (km)')
+    fig.colorbar(frame=f'af+l{cbar_label}')
 
     # Plot stations
     if len(station_lons) and len(station_lats):
@@ -231,6 +243,7 @@ def aftershock_map(
     topo_cmap: str = "geo",
     hillshade: bool = False,
     timestamp: Union[UTCDateTime, datetime.datetime] = UTCDateTime.now(),
+    colorby: str = "depth",
 ) -> pygmt.Figure:
     """
     Make a basic aftershock map.
@@ -268,6 +281,10 @@ def aftershock_map(
         [(ev.preferred_origin() or ev.origins[-1]).depth / 1000.0 for ev in catalog]
     )
     mags = np.array([get_magnitude_attr(ev, "mag") or 3.0 for ev in catalog])
+    times = np.array(
+        [np.datetime64((ev.preferred_origin() or ev.origins[-1]).time.datetime)
+         for ev in catalog]
+    )
 
     if inventory:
         station_lats = np.array([sta.latitude for net in inventory for sta in net])
@@ -282,6 +299,7 @@ def aftershock_map(
         lons=lons,
         depths=depths,
         mags=mags,
+        times=times,
         middle_lon=mainshock_origin.longitude,
         middle_lat=mainshock_origin.latitude,
         search_radius_deg=kilometer2degrees(search_radius),
@@ -294,6 +312,7 @@ def aftershock_map(
         topo_cmap=topo_cmap,
         hillshade=hillshade,
         timestamp=timestamp,
+        colorby=colorby,
     )
 
     # Plot mainshock
