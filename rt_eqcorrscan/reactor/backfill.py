@@ -7,6 +7,8 @@ import os
 import logging
 import gc
 import pickle
+import shutil
+
 import numpy as np
 import traceback
 import matplotlib.pyplot as plt
@@ -40,6 +42,7 @@ def backfill(
     cores: int = None,
     parallel_processing: bool = True,
     process_cores: int = None,
+    group_size: int = None,
     log_to_screen: bool = False,
     starttime: UTCDateTime = None,
     endtime: UTCDateTime = None,
@@ -122,6 +125,10 @@ def backfill(
     chunk_times = chunk_times[::-1]
 
     new_parties = []
+    party_temp_dir = ".parties"
+    if not os.path.isdir(party_temp_dir):
+        os.makedirs(party_temp_dir)
+    chunk_index = 0
     for _starttime, _endtime in chunk_times:
         Logger.info(f"Running between {_starttime} and {_endtime}")
         st_chunk = st_client.get_waveforms(
@@ -147,14 +154,18 @@ def backfill(
                 parallel_process=parallel_processing,
                 process_cores=process_cores, copy_data=False,
                 ignore_bad_data=True,
-                overlap=overlap,
+                overlap=overlap, group_size=group_size,
                 **kwargs)
             # Remove nan channels from templates - there are sometimes issues with
             for family in _party:
                 family.template = _rm_nan(family.template)
             Logger.info(f"Backfiller made {len(_party)} detections between {_starttime} and {_endtime}")
             if len(_party):
-                new_parties.append(_party)
+                pf = f"{party_temp_dir}/Party_{chunk_index}.pkl"
+                with open(pf, "wb") as f:
+                    pickle.dump(_party, f)
+                del _party
+                new_parties.append(pf)
         except Exception as e:
             Logger.critical(f"Uncaught error: {e}")
             Logger.error(traceback.format_exc())
@@ -162,7 +173,8 @@ def backfill(
 
         Logger.info(
             f"Backfill detection between {_starttime} and {_endtime} "
-            f"completed - handling detections")
+            f"completed")
+        chunk_index += 1
 
         # Clear up un-needed objects
         del st_chunk
@@ -175,8 +187,12 @@ def backfill(
         Logger.info(f"Total memory used by {os.getpid()}: {total_memory_mb:.2f} MB")
     # Make a single party from all these parties
     new_party = Party()
-    for _party in new_parties:
+    for pf in new_parties:
+        with open(pf, "rb") as f:
+            _party = pickle.load(f)
+        os.remove(pf)
         new_party += _party
+    shutil.rmtree(party_temp_dir)
     # Because of overlap we need to decluster
     new_party = new_party.decluster(trig_int=trig_int)
     new_party.families = [f for f in new_party if len(f)]
@@ -257,6 +273,9 @@ if __name__ == "__main__":
         "-C", "--process-cores", type=int, required=False, default=None,
         help="Number of cores to use for parallel processing - only enabled with -P")
     parser.add_argument(
+        "-g", "--group-size", type=int, required=False, default=None,
+        help="Number of templates to run in parallel, can be used to reduce memory")
+    parser.add_argument(
         "-l", "--log-to-screen", action="store_true",
         help="Whether to log to screen or not, defaults to False")
     parser.add_argument(
@@ -287,4 +306,4 @@ if __name__ == "__main__":
              process_cores=args.process_cores,
              log_to_screen=args.log_to_screen, starttime=args.starttime,
              endtime=args.endtime, plot_detections=args.plot,
-             save_waveforms=args.save_waveforms)
+             save_waveforms=args.save_waveforms, group_size=args.group_size)

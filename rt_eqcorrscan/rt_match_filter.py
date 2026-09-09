@@ -89,6 +89,7 @@ class RealTimeTribe(Tribe):
     _last_backfill_start = UTCDateTime.now()  # Time of last backfill run - update on run
     _number_of_backfillers = 0  # Book-keeping of backfiller processes.
     _clean_backfillers = False  # If false will leave temporary backfiller dirs
+    _backfill_group_size = 30  # Maximum number of concurrent templates to run for backfilling
 
     _plugins = None # dict()  # Plugin subprocesses
 
@@ -1559,6 +1560,7 @@ class RealTimeTribe(Tribe):
             "-c", str(self.max_correlation_cores),
             "--starttime", str(starttime),
             "--endtime", str(endtime),
+            "--group-size", self._backfill_group_size,
             "-P",  # Enable parallel processing
         ]
         if plot_detections:
