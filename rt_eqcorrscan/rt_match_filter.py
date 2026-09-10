@@ -1560,7 +1560,7 @@ class RealTimeTribe(Tribe):
             "-c", str(self.max_correlation_cores),
             "--starttime", str(starttime),
             "--endtime", str(endtime),
-            "--group-size", self._backfill_group_size,
+            "--group-size", str(self._backfill_group_size),
             "-P",  # Enable parallel processing
         ]
         if plot_detections:
