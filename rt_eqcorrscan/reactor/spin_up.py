@@ -194,7 +194,16 @@ def run(
             Logger.warning("No backfill available, skipping")
         else:
             st = st.split()  # Cannot write masked data
-            real_time_tribe.wavebank.put_waveforms(st)
+            # Write in chunks of a sensible length
+            st_starttime = min(tr.stats.starttime for tr in st)
+            st_endtime = max(tr.stats.endtime for tr in st)
+            chunk_start, chunk_length = (
+                st_starttime, 3 * config.streaming.buffer_capacity)
+            Logger.info(f"Writing stream to wavebank in chunks of length {chunk_length}")
+            while chunk_start + chunk_length <= st_endtime:
+                real_time_tribe.wavebank.put_waveforms(
+                    st.slice(chunk_start, chunk_start + chunk_length))
+                chunk_start += chunk_length
             # Add backfill traces to real-time buffer
             for tr in st:
                 real_time_tribe.rt_client.on_data(tr)
