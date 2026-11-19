@@ -250,7 +250,7 @@ class CatalogListener(_Listener):
             now = UTCDateTime.now() - self._test_start_step
             # Remove old events from cache
             self._remove_old_events(now)
-            Logger.debug("Checking for new events between {0} and {1}".format(
+            Logger.info("Checking for new events between {0} and {1}".format(
                 self.previous_time, now))
             try:
                 # Check for new events - add in a pad of five times the
@@ -272,6 +272,7 @@ class CatalogListener(_Listener):
                 loop_duration = toc - tic
                 continue
             if new_events is not None:
+                missed_templates = True  # Set just in case anything goes awry
                 if filter_func is not None:
                     new_events = filter_func(
                         new_events, min_stations=min_stations,
@@ -320,7 +321,9 @@ class CatalogListener(_Listener):
                             if ev_info[0] not in new_tribe_event_ids:
                                 # Time may have changed, even though event id may be the same.
                                 Logger.error(f"Could not make template for {ev_info[0]}")
+                                missed_templates = True
                             else:
+                                missed_templates = False
                                 new_tribe_event_info.append(ev_info)
                         # Only update the database with events that we actually made templates for.
                         event_info = new_tribe_event_info
@@ -334,7 +337,12 @@ class CatalogListener(_Listener):
                     # self.extend(event_info)
                     Logger.debug("Old events current state: {0}".format(
                         self.old_events))
-            self.previous_time = now
+            else:
+                # No new events means no missed templates
+                missed_templates = False
+            if not missed_templates:
+                # If we got all the templates then we can move on in time.
+                self.previous_time = now
             # Sleep in steps to make death responsive
             _sleep_step = min(10.0, self.sleep_interval)
             _slept = 0.0
