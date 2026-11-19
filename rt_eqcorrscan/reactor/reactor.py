@@ -516,6 +516,7 @@ class Reactor(object):
             self.detecting_processes[triggering_event_id].kill()
             self.detecting_processes.pop(triggering_event_id)
             self._running_templates.pop(triggering_event_id)
+            self._running_regions.pop(triggering_event_id)
         else:
             Logger.warning(f"{triggering_event_id} not found in detected processes")
             return
