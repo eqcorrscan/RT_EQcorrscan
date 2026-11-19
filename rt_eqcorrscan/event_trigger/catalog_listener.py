@@ -315,7 +315,7 @@ class CatalogListener(_Listener):
                         # issues can result in templates being missed that we may later
                         # actually be able to make
                         new_tribe_event_info = [
-                            EventInfo(t.event.resource_id, event_time(t.event))
+                            EventInfo(t.event.resource_id.id, event_time(t.event))
                             for t in new_tribe]
                         for ev_info in event_info:
                             if ev_info not in new_tribe_event_info:
