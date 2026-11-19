@@ -816,7 +816,8 @@ class Correlator:
         with open(self.outfile, "a") as f:
             for event_pair in tqdm.tqdm(differential_times):
                 obs = [o for o in event_pair.obs if o.weight >= self.min_cc]
-                if len(obs) == 0:
+                # Apply minlink here
+                if len(obs) < self.minlink:
                     continue
                 if self.weight_by_square:
                     sq_obs = []
