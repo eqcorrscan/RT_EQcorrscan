@@ -314,12 +314,14 @@ class CatalogListener(_Listener):
                         # Check that we actually made all the templates - data download
                         # issues can result in templates being missed that we may later
                         # actually be able to make
-                        new_tribe_event_info = [
-                            EventInfo(t.event.resource_id.id, event_time(t.event))
-                            for t in new_tribe]
+                        new_tribe_event_ids = [t.event.resource_id.id for t in new_tribe]
+                        new_tribe_event_info = []
                         for ev_info in event_info:
-                            if ev_info not in new_tribe_event_info:
-                                Logger.error(f"Could not make template for {ev_info}")
+                            if ev_info[0] not in new_tribe_event_ids:
+                                # Time may have changed, even though event id may be the same.
+                                Logger.error(f"Could not make template for {ev_info[0]}")
+                            else:
+                                new_tribe_event_info.append(ev_info)
                         # Only update the database with events that we actually made templates for.
                         event_info = new_tribe_event_info
                     else:
