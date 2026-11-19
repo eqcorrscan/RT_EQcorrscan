@@ -639,9 +639,14 @@ def _get_data_for_event(
             Logger.warning("No data downloaded for {0}".format(
                 pick.waveform_id.get_seed_string()))
             continue
-        endtime = min(tr.stats.endtime, pick.time + (.6 * download_data_len))
+        endtime = pick.time + (.6 * download_data_len)
+        if endtime > tr.stats.endtime:
+            Logger.warning(f"Endtime for {tr.id}: {tr.stats.endtime} "
+                           f"less than required endtime: {endtime}")
+            endtime = tr.stats.endtime
         starttime = endtime - download_data_len
-        trimmed_stream += tr.slice(starttime, endtime).copy()
+        trimmed_tr = tr.slice(starttime, endtime).copy()
+        trimmed_stream += trimmed_tr
     if len(trimmed_stream) == 0:
         Logger.error("No data downloaded, no template.")
         return None

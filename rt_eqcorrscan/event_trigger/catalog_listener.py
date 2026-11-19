@@ -308,9 +308,20 @@ class CatalogListener(_Listener):
                         EventInfo(ev.resource_id.id, event_time(ev))
                         for ev in new_events]
                     if make_templates:
-                        self.template_bank.make_templates(
+                        new_tribe = self.template_bank.make_templates(
                             new_events, client=self.waveform_client,
                             **template_kwargs)
+                        # Check that we actually made all the templates - data download
+                        # issues can result in templates being missed that we may later
+                        # actually be able to make
+                        new_tribe_event_info = [
+                            EventInfo(t.event.resource_id, event_time(t.event))
+                            for t in new_tribe]
+                        for ev_info in event_info:
+                            if ev_info not in new_tribe_event_info:
+                                Logger.error(f"Could not make template for {ev_info}")
+                        # Only update the database with events that we actually made templates for.
+                        event_info = new_tribe_event_info
                     else:
                         self.template_bank.put_events(new_events)
                     # Putting the events in the bank clears the catalog.
