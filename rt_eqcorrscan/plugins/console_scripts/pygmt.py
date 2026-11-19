@@ -55,7 +55,7 @@ def aftershock_map(
     -------
 
     """
-    cat_df = pd.read_csv(catalog_csv)
+    cat_df = pd.read_csv(catalog_csv, parse_dates=["Origin Time (UTC)"])
     inv_df = pd.read_csv(inventory_csv)
     mainshock, relocated_mainshock = None, None
     if mainshock_qml:
@@ -70,7 +70,7 @@ def aftershock_map(
         lats=cat_df.Latitude.to_numpy(),
         lons=cat_df.Longitude.to_numpy(),
         depths=cat_df["Depth (km)"].to_numpy(),
-        times=np.array([e.to_numpy() for e in cat_df["Origin Time (UTC)"]]),
+        times=cat_df["Origin Time (UTC)"].to_numpy(),
         mags=mags,
         middle_lon=mainshock_origin.longitude,
         middle_lat=mainshock_origin.latitude,
