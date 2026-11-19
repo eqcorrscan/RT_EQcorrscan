@@ -343,6 +343,8 @@ class CatalogListener(_Listener):
             if not missed_templates:
                 # If we got all the templates then we can move on in time.
                 self.previous_time = now
+            else:
+                Logger.warning("Missed templates, not advancing search time")
             # Sleep in steps to make death responsive
             _sleep_step = min(10.0, self.sleep_interval)
             _slept = 0.0
